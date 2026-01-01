@@ -2,14 +2,20 @@
 // config/db.php
 declare(strict_types=1);
 
-$host = "localhost";
-$dbname = "cevimep-db"; // <- importante
-$user = "root";
-$pass = "";
+$host = getenv("DB_HOST") ?: "localhost";
+$dbname = getenv("DB_NAME") ?: "cevimep-db"; // <- importante
+$user = getenv("DB_USER") ?: "root";
+$pass = getenv("DB_PASS") ?: "";
+$port = getenv("DB_PORT") ?: "";
 
 try {
+  $dsn = "mysql:host=$host;dbname=$dbname;charset=utf8mb4";
+  if ($port !== "") {
+    $dsn = "mysql:host=$host;port=$port;dbname=$dbname;charset=utf8mb4";
+  }
+
   $pdo = new PDO(
-    "mysql:host=$host;dbname=$dbname;charset=utf8mb4",
+    $dsn,
     $user,
     $pass,
     [
