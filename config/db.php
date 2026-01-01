@@ -2,11 +2,12 @@
 // config/db.php
 declare(strict_types=1);
 
-$host = getenv("DB_HOST") ?: "localhost";
-$dbname = getenv("DB_NAME") ?: "cevimep-db"; // <- importante
-$user = getenv("DB_USER") ?: "root";
-$pass = getenv("DB_PASS") ?: "";
-$port = getenv("DB_PORT") ?: "";
+$host = getenv("DB_HOST") ?: (getenv("MYSQLHOST") ?: "localhost");
+$dbname = getenv("DB_NAME")
+  ?: (getenv("MYSQLDATABASE") ?: (getenv("MYSQL_DATABASE") ?: "cevimep-db")); // <- importante
+$user = getenv("DB_USER") ?: (getenv("MYSQLUSER") ?: "root");
+$pass = getenv("DB_PASS") ?: (getenv("MYSQLPASSWORD") ?: "");
+$port = getenv("DB_PORT") ?: (getenv("MYSQLPORT") ?: "");
 
 try {
   $dsn = "mysql:host=$host;dbname=$dbname;charset=utf8mb4";
