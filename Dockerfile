@@ -1,10 +1,6 @@
 FROM php:8.2-apache
 
-# Forzar un solo MPM (prefork) y evitar AH00534
-RUN set -eux; \
-    a2dismod mpm_event mpm_worker mpm_prefork || true; \
-    rm -f /etc/apache2/mods-enabled/mpm_*.load /etc/apache2/mods-enabled/mpm_*.conf || true; \
-    a2enmod mpm_prefork rewrite
+RUN a2enmod rewrite
 
 COPY . /var/www/html
 
@@ -16,5 +12,3 @@ RUN sed -i 's#/var/www/html#/var/www/html/public#g' /etc/apache2/sites-available
 
 EXPOSE 8080
 ENV PORT=8080
-
-CMD ["apache2-foreground"]
