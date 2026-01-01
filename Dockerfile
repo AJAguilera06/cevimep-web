@@ -10,6 +10,9 @@ RUN a2dismod mpm_event \
 WORKDIR /var/www/html
 COPY . /var/www/html
 
+COPY apache-cevimep.conf /etc/apache2/conf-available/cevimep.conf
+RUN a2enconf cevimep
+
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
