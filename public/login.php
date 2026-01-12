@@ -3,7 +3,7 @@ session_start();
 require_once __DIR__ . "/../config/db.php";
 
 if (isset($_SESSION["user"])) {
-  header("Location: ../private/dashboard.php");
+  header("Location: /private/dashboard.php");
   exit;
 }
 
@@ -15,212 +15,89 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   $password = $_POST["password"] ?? "";
 
   if ($email === "" || $password === "") {
-    $error = "Completa todos los campos.";
+    $error = "Completa correo y contraseña.";
   } else {
     try {
-      $stmt = $pdo->prepare("
-        SELECT id, full_name, email, password_hash, role, branch_id, is_active
-        FROM users
-        WHERE email = :email
-        LIMIT 1
-      ");
-      $stmt->execute(["email" => $email]);
-      $user = $stmt->fetch(PDO::FETCH_ASSOC);
+      $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? LIMIT 1");
+      $stmt->execute([$email]);
+      $user = $stmt->fetch();
 
-      if (!$user || (int)$user["is_active"] !== 1 || !password_verify($password, $user["password_hash"])) {
+      if (!$user) {
         $error = "Correo o contraseña incorrectos.";
       } else {
-        $_SESSION["user"] = [
-          "id" => (int)$user["id"],
-          "name" => $user["full_name"],
-          "email" => $user["email"],
-          "role" => $user["role"],
-          "branch_id" => $user["branch_id"] !== null ? (int)$user["branch_id"] : null
-        ];
+        // intenta password_hash primero, si no, compara plano
+        $dbPass = (string)($user["password"] ?? "");
+        $ok = false;
 
-        header("Location: ../private/dashboard.php");
-        exit;
+        if ($dbPass !== "" && password_verify($password, $dbPass)) {
+          $ok = true;
+        } elseif ($dbPass !== "" && hash_equals($dbPass, $password)) {
+          $ok = true;
+        }
+
+        if (!$ok) {
+          $error = "Correo o contraseña incorrectos.";
+        } else {
+          // guarda en sesión lo que usas en dashboard
+          $_SESSION["user"] = [
+            "id"    => $user["id"] ?? null,
+            "name"  => $user["name"] ?? ($user["full_name"] ?? "Usuario"),
+            "email" => $user["email"] ?? $email,
+            "role"  => $user["role"] ?? "admin"
+          ];
+
+          header("Location: /private/dashboard.php");
+          exit;
+        }
       }
     } catch (Throwable $e) {
-      // Para no exponer detalles en producción
-      $error = "Ocurrió un error al iniciar sesión. Intenta de nuevo.";
-      // Si quieres depurar: descomenta la línea de abajo temporalmente
-      // $error = "Error: " . $e->getMessage();
+      $error = "Error interno: " . $e->getMessage();
     }
   }
 }
+
+$year = date("Y");
 ?>
 <!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CEVIMEP | Iniciar sesión</title>
-  <link rel="stylesheet" href="../assets/css/styles.css">
-
-  <style>
-    /* ====== FIX: QUITAR SCROLL EN LOGIN ====== */
-    html, body { height:100%; }
-    body{
-      margin:0;
-      display:flex;
-      flex-direction:column;
-      overflow:hidden; /* NO scroll */
-    }
-    main{
-      flex:1;
-      display:flex;
-      min-height:0; /* CLAVE para que no “empuje” */
-    }
-
-    /* Contenedor del login: ocupa el espacio entre navbar y footer */
-    .login-wrap{
-      flex:1;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      padding:0; /* evita que se pase de alto */
-    }
-
-    /* Card */
-    .login-card{
-      width:100%;
-      max-width:420px;
-      background:#fff;
-      border:1px solid var(--border);
-      border-radius:var(--radius);
-      padding:22px;
-      box-shadow:var(--shadow);
-    }
-
-    .login-title{
-      margin:0;
-      color:var(--primary-2);
-    }
-    .login-sub{
-      margin:8px 0 0;
-      color:var(--muted);
-      font-weight:600;
-    }
-
-    label{
-      display:block;
-      margin-top:14px;
-      font-weight:900;
-      color:var(--text);
-    }
-
-    input{
-      width:100%;
-      margin-top:6px;
-      padding:12px 14px;
-      border-radius:14px;
-      border:1px solid var(--border);
-      font-size:14px;
-      outline:none;
-      background:#fff;
-    }
-    input:focus{ border-color:rgba(28,100,242,.55); }
-
-    .btn-login{
-      width:100%;
-      margin-top:16px;
-      padding:12px;
-      border:none;
-      border-radius:16px;
-      background:linear-gradient(135deg,var(--primary),var(--primary-2));
-      color:#fff;
-      font-weight:900;
-      cursor:pointer;
-    }
-    .btn-login:hover{ filter:brightness(.95); }
-
-    .error{
-      margin-top:14px;
-      padding:10px 12px;
-      border-radius:14px;
-      background:#ffe8e8;
-      border:1px solid #ffb2b2;
-      color:#7a1010;
-      font-size:13px;
-      font-weight:800;
-    }
-
-    .back{
-      display:inline-block;
-      margin-top:14px;
-      text-decoration:none;
-      color:var(--primary-2);
-      font-weight:900;
-    }
-  </style>
+  <title>CEVIMEP - Login</title>
+  <link rel="stylesheet" href="/assets/css/styles.css">
 </head>
+<body style="min-height:100vh; display:flex; flex-direction:column;">
 
-<body>
+  <main style="flex:1; display:flex; align-items:center; justify-content:center; padding:24px;">
+    <div style="width:100%; max-width:420px;">
+      <h2 style="margin:0 0 14px;">Iniciar sesión</h2>
 
-<!-- ====== NAVBAR (TU CSS) ====== -->
-<header class="navbar">
-  <div class="inner">
-    <div></div>
-
-    <div class="brand">
-      <span class="dot"></span>
-      CEVIMEP
-    </div>
-
-    <div class="nav-right">
-      <a href="#">Iniciar sesión</a>
-    </div>
-  </div>
-</header>
-
-<!-- ====== CONTENIDO ====== -->
-<main>
-  <div class="login-wrap">
-    <div class="login-card">
-
-      <h2 class="login-title">Iniciar sesión</h2>
-      <p class="login-sub">Accede al sistema interno</p>
-
-      <?php if ($error): ?>
-        <div class="error"><?php echo htmlspecialchars($error); ?></div>
+      <?php if ($error !== ""): ?>
+        <div style="background:#ffe5e5; border:1px solid #ffb3b3; padding:10px; border-radius:8px; margin-bottom:12px;">
+          <?= htmlspecialchars($error) ?>
+        </div>
       <?php endif; ?>
 
-      <form method="post" autocomplete="on">
-        <label>Correo</label>
-        <input type="email" name="email" value="<?php echo htmlspecialchars($email); ?>" required>
+      <form method="POST" action="/login.php" style="display:flex; flex-direction:column; gap:10px;">
+        <label>
+          Correo
+          <input type="email" name="email" value="<?= htmlspecialchars($email) ?>" required style="width:100%; padding:10px; border-radius:8px; border:1px solid #ccc;">
+        </label>
 
-        <label>Contraseña</label>
-        <input type="password" name="password" required>
+        <label>
+          Contraseña
+          <input type="password" name="password" required style="width:100%; padding:10px; border-radius:8px; border:1px solid #ccc;">
+        </label>
 
-        <button class="btn-login" type="submit">Entrar</button>
-
-        <?php
-          $is_local =
-            ($_SERVER['SERVER_NAME'] ?? '') === 'localhost'
-            || ($_SERVER['REMOTE_ADDR'] ?? '') === '127.0.0.1'
-            || ($_SERVER['REMOTE_ADDR'] ?? '') === '::1';
-        ?>
-
-        <?php if ($is_local): ?>
-          <div style="margin-top:12px; font-size:12px; color:var(--muted);">
-            
-          </div>
-        <?php endif; ?>
+        <button type="submit" style="padding:11px; border-radius:10px; border:0; cursor:pointer;">
+          Entrar
+        </button>
       </form>
-
-      <a href="index.php" class="back">← Volver al inicio</a>
-
     </div>
-  </div>
-</main>
+  </main>
 
-<!-- ====== FOOTER (TU CSS) ====== -->
-<footer class="footer">
-  <div class="inner">
-    © 2025 CEVIMEP. Todos los derechos reservados.
-  </div>
-</footer>
-
+  <footer class="footer">
+    <div class="inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
+  </footer>
 </body>
 </html>
