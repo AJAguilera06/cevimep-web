@@ -1,21 +1,19 @@
 FROM php:8.2-apache
 
-ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
-ENV PORT=8080
+# Activar mod_rewrite
+RUN a2enmod rewrite
 
-RUN a2dismod mpm_event \
-  && a2enmod mpm_prefork rewrite \
-  && sed -ri 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/000-default.conf /etc/apache2/apache2.conf
+# Extensiones MySQL
+RUN docker-php-ext-install mysqli pdo pdo_mysql
 
-WORKDIR /var/www/html
-COPY . /var/www/html
+# Copiar proyecto
+COPY . /var/www/html/
 
-COPY apache-cevimep.conf /etc/apache2/conf-available/cevimep.conf
-RUN a2enconf cevimep
+# Cambiar DocumentRoot a /public
+RUN sed -i 's#DocumentRoot /var/www/html#DocumentRoot /var/www/html/public#g' /etc/apache2/sites-available/000-default.conf \
+ && sed -i 's#/var/www/#/var/www/html/#g' /etc/apache2/apache2.conf \
+ && sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf
 
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
+# Puerto dinámico Railway
 EXPOSE 8080
-ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["apache2-foreground"]
+CMD ["bash", "-lc", "sed -i \"s/Listen 80/Listen ${PORT:-8080}/g\" /etc/apache2/ports.conf && apache2-foreground"]
