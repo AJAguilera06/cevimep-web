@@ -5,20 +5,17 @@ FROM php:8.2-fpm
 RUN docker-php-ext-install mysqli pdo pdo_mysql
 
 # ---------- NGINX ----------
-RUN apt-get update && apt-get install -y nginx \
+RUN apt-get update && apt-get install -y nginx gettext-base \
  && rm -rf /var/lib/apt/lists/*
-
-# Remove default site
-RUN rm /etc/nginx/sites-enabled/default
 
 # App
 COPY . /var/www/html/
 WORKDIR /var/www/html
 
-# NGINX config usando $PORT
+# NGINX template (usa $PORT)
 RUN printf '%s\n' \
 'server {' \
-'  listen ${PORT};' \
+'  listen $PORT;' \
 '  root /var/www/html/public;' \
 '  index index.php index.html;' \
 '' \
@@ -33,7 +30,7 @@ RUN printf '%s\n' \
 '    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' \
 '  }' \
 '}' \
-> /etc/nginx/conf.d/default.conf
+> /etc/nginx/conf.d/default.conf.template
 
-# Start PHP-FPM + NGINX
-CMD ["sh", "-c", "echo \"PORT=$PORT\" && php-fpm -D && nginx -g 'daemon off;'"]
+# ---------- START ----------
+CMD ["sh", "-c", "echo \"PORT=$PORT\" && envsubst '$PORT' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf && php-fpm -D && nginx -g 'daemon off;'"]
