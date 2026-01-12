@@ -1,113 +1,106 @@
 <?php
+declare(strict_types=1);
 session_start();
-require_once __DIR__ . "/../config/db.php";
 
-if (isset($_SESSION["user"])) {
-  header("Location: /private/dashboard.php");
+require_once __DIR__ . '/../config/db.php'; // /public/login.php -> /config/db.php
+
+if (!empty($_SESSION['user'])) {
+  header('Location: ../private/dashboard.php');
   exit;
 }
 
-$error = "";
-$email = "";
+$error = '';
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
-  $email = trim($_POST["email"] ?? "");
-  $password = (string)($_POST["password"] ?? "");
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  $email = trim($_POST['email'] ?? '');
+  $password = (string)($_POST['password'] ?? '');
 
-  if ($email === "" || $password === "") {
-    $error = "Completa correo y contraseña.";
+  if ($email === '' || $password === '') {
+    $error = 'Completa correo y contraseña.';
   } else {
     try {
-      $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? AND is_active = 1 LIMIT 1");
-      $stmt->execute([$email]);
-      $user = $stmt->fetch();
+      $stmt = $pdo->prepare("
+        SELECT id, full_name, email, password_hash, role, branch_id, is_active
+        FROM users
+        WHERE email = :email
+        LIMIT 1
+      ");
+      $stmt->execute([':email' => $email]);
+      $u = $stmt->fetch(PDO::FETCH_ASSOC);
 
-      if (!$user) {
-        $error = "Correo o contraseña incorrectos.";
+      if (!$u || (int)$u['is_active'] !== 1 || !password_verify($password, $u['password_hash'])) {
+        $error = 'Correo o contraseña incorrectos.';
       } else {
-        $dbHash = (string)($user["password_hash"] ?? "");
-
-        if ($dbHash !== "" && password_verify($password, $dbHash)) {
-          $_SESSION["user"] = [
-            "id"        => $user["id"] ?? null,
-            "name"      => $user["full_name"] ?? "Usuario",
-            "email"     => $user["email"] ?? $email,
-            "role"      => $user["role"] ?? "user",
-            "branch_id" => $user["branch_id"] ?? null,
-          ];
-
-          header("Location: /private/dashboard.php");
-          exit;
-        } else {
-          $error = "Correo o contraseña incorrectos.";
-        }
+        $_SESSION['user'] = [
+          'id'        => (int)$u['id'],
+          'full_name' => $u['full_name'],
+          'email'     => $u['email'],
+          'role'      => $u['role'],
+          'branch_id' => $u['branch_id'],
+        ];
+        header('Location: ../private/dashboard.php');
+        exit;
       }
     } catch (Throwable $e) {
-      $error = "Error interno: " . $e->getMessage();
+      $error = 'Error al conectar con la base de datos.';
     }
   }
 }
-
-$year = date("Y");
 ?>
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CEVIMEP - Iniciar sesión</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CEVIMEP | Iniciar sesión</title>
 
-  <!-- ✅ CSS correcto (está dentro de public/assets/...) -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=1">
+  <!-- ✅ desde /public -->
+  <link rel="stylesheet" href="assets/css/styles.css?v=1" />
 </head>
+<body>
 
-<body style="min-height:100vh; display:flex; flex-direction:column;">
-
-  <!-- ✅ Navbar igual al index -->
-  <header class="navbar">
-    <div class="inner">
-      <div></div>
-      <div class="brand"><span class="dot"></span> CEVIMEP</div>
-      <div class="nav-right"><a class="active" href="/login.php">Iniciar sesión</a></div>
+<header class="topbar">
+  <div class="inner">
+    <div class="brand">
+      <span class="dot"></span>
+      <span class="brand-name">CEVIMEP</span>
     </div>
-  </header>
+    <div class="top-actions">
+      <a class="pill" href="login.php">Iniciar sesión</a>
+    </div>
+  </div>
+</header>
 
-  <main class="container" style="flex:1; display:flex; align-items:center; justify-content:center;">
-    <div class="card" style="max-width:460px; width:100%;">
-      <h2 style="margin:0;">Iniciar sesión</h2>
-      <p class="muted" style="margin-top:6px;">Accede al sistema interno</p>
+<main>
+  <div class="login-wrap">
+    <div class="login-card">
+      <h2 class="login-title">Iniciar sesión</h2>
+      <p class="login-sub">Accede al sistema interno</p>
 
-      <?php if ($error !== ""): ?>
-        <div class="alert error" style="margin-top:12px;">
-          <?= htmlspecialchars($error) ?>
-        </div>
+      <?php if ($error): ?>
+        <div class="error"><?php echo htmlspecialchars($error); ?></div>
       <?php endif; ?>
 
-      <form method="POST" action="/login.php" style="margin-top:14px;">
-        <div class="form-group">
-          <label for="email">Correo</label>
-          <input id="email" type="email" name="email" value="<?= htmlspecialchars($email) ?>" required>
-        </div>
+      <form method="POST" action="login.php" class="login-form" autocomplete="off">
+        <label class="label">Correo</label>
+        <input class="input" type="email" name="email" value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>" required />
 
-        <div class="form-group" style="margin-top:10px;">
-          <label for="password">Contraseña</label>
-          <input id="password" type="password" name="password" required>
-        </div>
+        <label class="label mt">Contraseña</label>
+        <input class="input" type="password" name="password" required />
 
-        <button class="btn primary" type="submit" style="margin-top:14px; width:100%;">
-          Entrar
-        </button>
+        <button class="btn-primary mt-lg" type="submit">Entrar</button>
+
+        <div class="mt-lg">
+          <a class="link" href="index.php">← Volver al inicio</a>
+        </div>
       </form>
-
-      <div style="margin-top:14px;">
-        <a href="/index.php">← Volver al inicio</a>
-      </div>
     </div>
-  </main>
+  </div>
+</main>
 
-  <footer class="footer">
-    <div class="inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
-  </footer>
+<footer class="footer">
+  <div class="inner">© <?php echo date('Y'); ?> CEVIMEP. Todos los derechos reservados.</div>
+</footer>
 
 </body>
 </html>

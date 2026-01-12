@@ -1,41 +1,59 @@
 <?php
 session_start();
 
-if (!isset($_SESSION["user"])) {
-  header("Location: /login.php");
-  exit;
+if (!isset($_SESSION['user'])) {
+    header('Location: ../public/login.php');
+    exit;
 }
 
-$user = $_SESSION["user"];
-$year = date("Y");
-
-$displayName = trim((string)($user["name"] ?? ""));
-if ($displayName === "") $displayName = "Administrador";
-
-$role = (string)($user["role"] ?? "admin");
+$user = $_SESSION['user'];
 ?>
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CEVIMEP - Dashboard</title>
-  <link rel="stylesheet" href="/assets/css/styles.css">
+    <meta charset="UTF-8">
+    <title>CEVIMEP | Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- ✅ RUTA CORRECTA -->
+    <link rel="stylesheet" href="../assets/css/styles.css?v=1">
 </head>
-<body style="min-height:100vh; display:flex; flex-direction:column;">
+<body>
 
-<main style="flex:1; padding:24px;">
-  <h2 style="margin:0 0 10px;">Panel interno</h2>
-  <p style="margin:0 0 14px;">Hola, <b><?= htmlspecialchars($displayName) ?></b> — Rol: <b><?= htmlspecialchars($role) ?></b></p>
+<header class="topbar">
+    <div class="inner">
+        <div class="brand">
+            <span class="dot"></span>
+            <span class="brand-name">CEVIMEP</span>
+        </div>
+        <div class="top-actions">
+            <span class="pill pill-soft">
+                <?php echo htmlspecialchars($user['full_name']); ?>
+            </span>
+            <a class="pill" href="logout.php">Cerrar sesión</a>
+        </div>
+    </div>
+</header>
 
-  <div style="display:flex; gap:10px; flex-wrap:wrap;">
-    <a href="/private/dashboard.php" style="text-decoration:none; padding:10px 12px; border:1px solid #ccc; border-radius:10px;">Dashboard</a>
-    <a href="/logout.php" style="text-decoration:none; padding:10px 12px; border:1px solid #ccc; border-radius:10px;">Cerrar sesión</a>
-  </div>
+<main>
+    <div class="page-wrap">
+        <div class="page-card">
+            <h2 class="page-title">Panel interno</h2>
+            <p class="page-sub">
+                Hola, <strong><?php echo htmlspecialchars($user['full_name']); ?></strong><br>
+                Rol: <strong><?php echo htmlspecialchars($user['role']); ?></strong>
+            </p>
+
+            <div class="actions-row">
+                <a class="btn-primary" href="#">Dashboard</a>
+                <a class="btn-outline" href="logout.php">Cerrar sesión</a>
+            </div>
+        </div>
+    </div>
 </main>
 
 <footer class="footer">
-  <div class="inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
+    © <?php echo date('Y'); ?> CEVIMEP. Todos los derechos reservados.
 </footer>
 
 </body>
