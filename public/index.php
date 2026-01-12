@@ -1,4 +1,8 @@
 <?php
+echo "CEVIMEP OK";
+exit;
+
+<?php
 session_start();
 $year = date("Y");
 ?>
