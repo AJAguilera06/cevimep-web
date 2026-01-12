@@ -18,7 +18,7 @@ $year = date("Y");
     <div class="inner">
       <div></div>
       <div class="brand"><span class="dot"></span> CEVIMEP</div>
-      <div class="nav-right"><a href="login.php">EL MENOR ME LA CHUPA</a></div>
+      <div class="nav-right"><a href="login.php">Iniciar Sesion</a></div>
     </div>
   </header>
 
