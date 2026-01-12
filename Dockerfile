@@ -1,19 +1,24 @@
 # ---------- PHP FPM ----------
 FROM php:8.2-fpm
 
-# Extensiones necesarias
+# PHP extensions
 RUN docker-php-ext-install mysqli pdo pdo_mysql
 
 # ---------- NGINX ----------
 RUN apt-get update && apt-get install -y nginx \
  && rm -rf /var/lib/apt/lists/*
 
-# Configuración NGINX
+# Remove default site
 RUN rm /etc/nginx/sites-enabled/default
 
+# App
+COPY . /var/www/html/
+WORKDIR /var/www/html
+
+# NGINX config usando $PORT
 RUN printf '%s\n' \
 'server {' \
-'  listen 8080;' \
+'  listen ${PORT};' \
 '  root /var/www/html/public;' \
 '  index index.php index.html;' \
 '' \
@@ -30,10 +35,5 @@ RUN printf '%s\n' \
 '}' \
 > /etc/nginx/conf.d/default.conf
 
-# ---------- APP ----------
-COPY . /var/www/html/
-
-WORKDIR /var/www/html
-
-# ---------- START ----------
-CMD ["sh", "-c", "php-fpm -D && nginx -g 'daemon off;'"]
+# Start PHP-FPM + NGINX
+CMD ["sh", "-c", "echo \"PORT=$PORT\" && php-fpm -D && nginx -g 'daemon off;'"]
