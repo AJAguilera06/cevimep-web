@@ -18,7 +18,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $error = "Completa correo y contraseña.";
   } else {
     try {
-      // Solo usuarios activos
       $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? AND is_active = 1 LIMIT 1");
       $stmt->execute([$email]);
       $user = $stmt->fetch();
@@ -56,42 +55,53 @@ $year = date("Y");
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CEVIMEP - Login</title>
+  <title>CEVIMEP - Iniciar sesión</title>
 
-  <!-- ✅ Tu CSS está en public/assets/... -->
+  <!-- ✅ CSS correcto (está dentro de public/assets/...) -->
   <link rel="stylesheet" href="/assets/css/styles.css?v=1">
 </head>
+
 <body style="min-height:100vh; display:flex; flex-direction:column;">
 
-  <main style="flex:1; display:flex; align-items:center; justify-content:center; padding:24px;">
-    <div style="width:100%; max-width:420px;">
+  <!-- ✅ Navbar igual al index -->
+  <header class="navbar">
+    <div class="inner">
+      <div></div>
+      <div class="brand"><span class="dot"></span> CEVIMEP</div>
+      <div class="nav-right"><a class="active" href="/login.php">Iniciar sesión</a></div>
+    </div>
+  </header>
 
-      <h2 style="margin:0 0 14px; text-align:center;">Iniciar sesión</h2>
+  <main class="container" style="flex:1; display:flex; align-items:center; justify-content:center;">
+    <div class="card" style="max-width:460px; width:100%;">
+      <h2 style="margin:0;">Iniciar sesión</h2>
+      <p class="muted" style="margin-top:6px;">Accede al sistema interno</p>
 
       <?php if ($error !== ""): ?>
-        <div style="background:#ffe5e5; border:1px solid #ffb3b3; padding:10px; border-radius:8px; margin-bottom:12px;">
+        <div class="alert error" style="margin-top:12px;">
           <?= htmlspecialchars($error) ?>
         </div>
       <?php endif; ?>
 
-      <form method="POST" action="/login.php" style="display:flex; flex-direction:column; gap:10px;">
-        <label>
-          Correo
-          <input type="email" name="email" value="<?= htmlspecialchars($email) ?>" required
-                 style="width:100%; padding:10px; border-radius:8px; border:1px solid #ccc;">
-        </label>
+      <form method="POST" action="/login.php" style="margin-top:14px;">
+        <div class="form-group">
+          <label for="email">Correo</label>
+          <input id="email" type="email" name="email" value="<?= htmlspecialchars($email) ?>" required>
+        </div>
 
-        <label>
-          Contraseña
-          <input type="password" name="password" required
-                 style="width:100%; padding:10px; border-radius:8px; border:1px solid #ccc;">
-        </label>
+        <div class="form-group" style="margin-top:10px;">
+          <label for="password">Contraseña</label>
+          <input id="password" type="password" name="password" required>
+        </div>
 
-        <button type="submit" style="padding:11px; border-radius:10px; border:0; cursor:pointer;">
+        <button class="btn primary" type="submit" style="margin-top:14px; width:100%;">
           Entrar
         </button>
       </form>
 
+      <div style="margin-top:14px;">
+        <a href="/index.php">← Volver al inicio</a>
+      </div>
     </div>
   </main>
 
