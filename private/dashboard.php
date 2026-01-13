@@ -37,7 +37,7 @@
       <span class="ico">🏠</span> Panel
     </a>
 
-    <a href="/private/pacientes/index.php">
+    <a href="/private/patients/index.php">
       <span class="ico">👥</span> Pacientes
     </a>
 
