@@ -30,23 +30,38 @@
 
   <!-- SIDEBAR -->
   <aside class="sidebar">
-    <div class="title">CEVIMEP Moca</div>
+  <div class="title">Menú</div>
 
-    <nav class="menu">
-      <a class="active" href="/private/dashboard.php">
-        <span class="ico">🏠</span> Dashboard
-      </a>
-      <a href="#">
-        <span class="ico">💉</span> Vacunas
-      </a>
-      <a href="#">
-        <span class="ico">📦</span> Inventario
-      </a>
-      <a href="#">
-        <span class="ico">📊</span> Estadísticas
-      </a>
-    </nav>
-  </aside>
+  <nav class="menu">
+    <a class="active" href="/private/dashboard.php">
+      <span class="ico">🏠</span> Panel
+    </a>
+
+    <a href="/private/pacientes/index.php">
+      <span class="ico">👥</span> Pacientes
+    </a>
+
+    <a class="disabled" href="#">
+      <span class="ico">📅</span> Citas
+    </a>
+
+    <a class="disabled" href="#">
+      <span class="ico">🧾</span> Facturación
+    </a>
+
+    <a class="disabled" href="#">
+      <span class="ico">💵</span> Caja
+    </a>
+
+    <a href="/private/inventario/index.php">
+      <span class="ico">📦</span> Inventario
+    </a>
+
+    <a class="disabled" href="#">
+      <span class="ico">⏳</span> Coming Soon
+    </a>
+  </nav>
+</aside>
 
   <!-- CONTENIDO -->
   <main class="main">

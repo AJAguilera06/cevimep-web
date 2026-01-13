@@ -408,3 +408,21 @@ body{
   min-width:0;
   overflow:auto;
 }
+/* Sidebar como antes */
+.sidebar .title{
+  text-align:center;
+  font-weight:900;
+  letter-spacing:.3px;
+}
+
+/* Items deshabilitados (gris) */
+.menu a.disabled{
+  opacity:.45;
+  pointer-events:none;
+  cursor:not-allowed;
+  filter: grayscale(1);
+}
+
+.menu a.disabled:hover{
+  background:transparent;
+}
