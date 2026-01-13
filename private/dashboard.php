@@ -1,59 +1,87 @@
-<?php
-session_start();
-
-if (!isset($_SESSION['user'])) {
-    header('Location: ../public/login.php');
-    exit;
-}
-
-$user = $_SESSION['user'];
-?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>CEVIMEP | Dashboard</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel interno | CEVIMEP</title>
 
-    <!-- ✅ RUTA CORRECTA -->
-    <link rel="stylesheet" href="../assets/css/styles.css?v=1">
+    <!-- CSS GLOBAL (ruta correcta para Railway) -->
+    <link rel="stylesheet" href="/assets/css/styles.css">
 </head>
 <body>
 
-<header class="topbar">
-    <div class="inner">
-        <div class="brand">
-            <span class="dot"></span>
-            <span class="brand-name">CEVIMEP</span>
-        </div>
-        <div class="top-actions">
-            <span class="pill pill-soft">
-                <?php echo htmlspecialchars($user['full_name']); ?>
-            </span>
-            <a class="pill" href="logout.php">Cerrar sesión</a>
-        </div>
+<!-- ===== NAVBAR ===== -->
+<div class="navbar">
+  <div class="inner">
+    <div></div>
+
+    <div class="brand">
+      <span class="dot"></span>
+      CEVIMEP
     </div>
-</header>
 
-<main>
-    <div class="page-wrap">
-        <div class="page-card">
-            <h2 class="page-title">Panel interno</h2>
-            <p class="page-sub">
-                Hola, <strong><?php echo htmlspecialchars($user['full_name']); ?></strong><br>
-                Rol: <strong><?php echo htmlspecialchars($user['role']); ?></strong>
-            </p>
-
-            <div class="actions-row">
-                <a class="btn-primary" href="#">Dashboard</a>
-                <a class="btn-outline" href="logout.php">Cerrar sesión</a>
-            </div>
-        </div>
+    <div class="nav-right">
+      <a href="/logout.php">Cerrar sesión</a>
     </div>
-</main>
+  </div>
+</div>
 
+<!-- ===== APP ===== -->
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="title">CEVIMEP Moca</div>
+
+    <nav class="menu">
+      <a class="active" href="/private/dashboard.php">
+        <span class="ico">🏠</span> Dashboard
+      </a>
+      <a href="#">
+        <span class="ico">💉</span> Vacunas
+      </a>
+      <a href="#">
+        <span class="ico">📦</span> Inventario
+      </a>
+      <a href="#">
+        <span class="ico">📊</span> Estadísticas
+      </a>
+    </nav>
+  </aside>
+
+  <!-- CONTENIDO -->
+  <main class="main">
+
+    <div class="hero">
+      <h1>Panel interno</h1>
+      <p>Hola, <strong>CEVIMEP Moca</strong> · Rol: <strong>branch_admin</strong></p>
+    </div>
+
+    <div class="grid-top">
+      <div class="card">
+        <h3>Estado del sistema</h3>
+        <p class="muted">Sistema operativo correctamente</p>
+      </div>
+
+      <div class="card">
+        <h3>Sucursal</h3>
+        <p class="muted">Moca</p>
+      </div>
+
+      <div class="card">
+        <h3>Usuario</h3>
+        <p class="muted">Administrador</p>
+      </div>
+    </div>
+
+  </main>
+
+</div>
+
+<!-- ===== FOOTER ===== -->
 <footer class="footer">
-    © <?php echo date('Y'); ?> CEVIMEP. Todos los derechos reservados.
+  <div class="inner">
+    © 2026 CEVIMEP. Todos los derechos reservados.
+  </div>
 </footer>
 
 </body>
