@@ -29,9 +29,16 @@ body{
     radial-gradient(1200px 700px at 18% 0%, rgba(5,42,122,.18), transparent 58%),
     radial-gradient(1200px 700px at 92% 8%, rgba(20,184,166,.18), transparent 55%),
     var(--bg);
+
+  /* Layout estable: el scroll lo maneja el contenido, no el body */
+  overflow:hidden;
+
+  /* Reserva espacio para navbar y footer fijos */
+  padding-top: var(--cev-bar-h);
+  padding-bottom: var(--cev-bar-h);
 }
 
-/* ====== NAVBAR / FOOTER PUBLICO (UNIFICADO) ====== */
+/* ====== NAVBAR / FOOTER (FIJOS) ====== */
 .navbar{
   height:var(--cev-bar-h);
   background:var(--cev-bar-bg);
@@ -39,6 +46,10 @@ body{
   display:flex;
   align-items:center;
   box-shadow:0 10px 25px rgba(2,21,44,.20);
+
+  position:fixed;
+  top:0; left:0; right:0;
+  z-index:1000;
 }
 
 .navbar .inner{
@@ -93,6 +104,10 @@ body{
   align-items:center;
   justify-content:center;
   box-shadow:0 -10px 25px rgba(2,21,44,.20);
+
+  position:fixed;
+  bottom:0; left:0; right:0;
+  z-index:1000;
 }
 
 .footer .inner{
@@ -104,7 +119,7 @@ body{
   font-size:13px;
 }
 
-/* ====== LAYOUT ====== */
+/* ====== CONTAINER PUBLICO ====== */
 .container{
   width:100%;
   max-width:1200px;
@@ -120,6 +135,9 @@ body{
   color:#fff;
   box-shadow:0 20px 40px rgba(2,21,44,.20);
   text-align:center;
+
+  /* IMPORTANTE: que no se baje solo */
+  margin:0;
 }
 
 .hero h1{
@@ -164,105 +182,73 @@ body{
   font-weight:600;
 }
 
-/* SUCURSALES */
-.suc-grid{
-  display:grid;
-  grid-template-columns: repeat(3, minmax(0,1fr));
-  gap:12px;
+/* Tabla simple */
+.table{
+  border-collapse:collapse;
+  width:100%;
+  font-size:14px;
 }
 
-.suc-item{
-  border:1px solid var(--border);
-  border-radius:18px;
-  padding:12px;
-  background:#fff;
+.table th,
+.table td{
+  padding:10px 12px;
+  border-bottom:1px solid var(--border);
+  text-align:left;
 }
 
-.pin{
-  display:inline-block;
-  width:8px;
-  height:8px;
-  border-radius:50%;
-  background:var(--cev-accent);
-  margin-right:8px;
-  vertical-align:middle;
-}
-
-.addr{
-  margin-top:8px;
-  font-size:13px;
-  color:#43546d;
-  line-height:1.35;
-}
-
-.wa{
-  margin-top:10px;
-  font-size:13px;
+.table th{
   font-weight:900;
   color:var(--primary-2);
 }
 
-.wa a{
-  color:var(--primary);
-  text-decoration:none;
-  font-weight:900;
-}
-
-/* BLOQUES (Horarios / Servicios) */
-.block{
+.btn{
+  appearance:none;
   border:1px solid var(--border);
-  border-radius:18px;
-  padding:12px;
-  background:#fff;
-}
-
-.block-title{
-  font-weight:900;
+  background:linear-gradient(135deg, rgba(20,184,166,.18), rgba(5,42,122,.10));
   color:var(--primary-2);
-  font-size:13px;
-  margin-bottom:4px;
+  font-weight:900;
+  padding:10px 14px;
+  border-radius:14px;
+  cursor:pointer;
+  box-shadow: var(--shadow-soft);
 }
+.btn:hover{ transform: translateY(-1px); }
 
-.block-text{
-  color:#43546d;
-  font-size:13px;
-  font-weight:600;
-}
+/* =========================================================
+   LAYOUT INTERNO (SIDEBAR + CONTENIDO)
+   Soporta: .app/.main Y también .layout/.content (tu dashboard)
+========================================================= */
 
-/* RESPONSIVE */
-@media(max-width: 1050px){
-  .grid-top{ grid-template-columns:1fr; }
-  .suc-grid{ grid-template-columns:1fr 1fr; }
-}
-
-@media(max-width: 640px){
-  .suc-grid{ grid-template-columns:1fr; }
-  .hero h1{ font-size:26px; }
-}
-/* ====== LAYOUT INTERNO CON SIDEBAR ====== */
-.app{
-  flex:1;
+/* Contenedor interno principal (altura exacta visible) */
+.app, .layout{
+  height: calc(100vh - (var(--cev-bar-h) * 2));
   display:flex;
   min-height:0;
   width:100%;
 }
 
+/* Sidebar */
 .sidebar{
   width:260px;
+  min-width:260px;
+  max-width:260px;
   background:#fff;
   border-right:1px solid var(--border);
   box-shadow: var(--shadow-soft);
   padding:14px 10px;
-  overflow:auto; /* si hay muchos items, scrollea solo el menú */
+  overflow-y:auto;
 }
 
-.sidebar .title{
+.sidebar .title,
+.sidebar .menu-title{
+  text-align:left;
   font-weight:900;
   color:var(--primary-2);
   padding:10px 12px;
-  margin-bottom:8px;
+  margin:0 0 8px;
 }
 
+/* Menú */
 .menu{
   display:flex;
   flex-direction:column;
@@ -296,133 +282,49 @@ body{
   opacity:.85;
 }
 
-.main{
-  flex:1;
-  min-width:0;
-  overflow:auto; /* scroll SOLO del contenido */
-  padding:26px 22px 32px;
-}
-
-/* Responsive */
-@media(max-width: 980px){
-  .sidebar{ width:220px; }
-}
-@media(max-width: 760px){
-  .app{ flex-direction:column; }
-  .sidebar{
-    width:100%;
-    border-right:none;
-    border-bottom:1px solid var(--border);
-  }
-}
-/* Toggle del formulario */
-.hidden{ display:none !important; }
-.topActions{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:flex-end; }
-/* ====== FIX LAYOUT SIN SCROLL GENERAL ====== */
-body{
-  overflow:hidden;
-}
-
-.main{
-  overflow:auto;
-}
-
-/* Tabla simple */
-.table{
-  border-collapse:collapse;
-  width:100%;
-  font-size:14px;
-}
-
-.table th,
-.table td{
-  padding:10px 12px;
-  border-bottom:1px solid var(--border);
-  text-align:left;
-}
-
-.table th{
-  font-weight:900;
-  color:var(--primary-2);
-}
-.btn{
-  appearance:none;
-  border:1px solid var(--border);
-  background:linear-gradient(135deg, rgba(20,184,166,.18), rgba(5,42,122,.10));
-  color:var(--primary-2);
-  font-weight:900;
-  padding:10px 14px;
-  border-radius:14px;
-  cursor:pointer;
-  box-shadow: var(--shadow-soft);
-}
-.btn:hover{
-  transform: translateY(-1px);
-}
-/* =========================================================
-   LAYOUT FINAL ESTABLE (NO SE PELEA CON NADA)
-========================================================= */
-
-html, body{
-  height:100%;
-}
-
-body{
-  overflow:hidden;
-  padding-top: var(--cev-bar-h);
-  padding-bottom: var(--cev-bar-h);
-}
-
-/* Header */
-.navbar{
-  position:fixed;
-  top:0; left:0; right:0;
-  z-index:1000;
-}
-
-/* Footer */
-.footer{
-  position:fixed;
-  bottom:0; left:0; right:0;
-  z-index:1000;
-}
-
-/* App */
-.app{
-  height: calc(100vh - (var(--cev-bar-h) * 2));
-  display:flex;
-  min-height:0;
-}
-
-/* Sidebar (SIEMPRE IGUAL) */
-.sidebar{
-  width:260px;
-  min-width:260px;
-  max-width:260px;
-  overflow-y:auto;
-}
-
-/* Contenido */
-.main{
-  flex:1;
-  min-width:0;
-  overflow:auto;
-}
-/* Sidebar como antes */
-.sidebar .title{
-  text-align:center;
-  font-weight:900;
-  letter-spacing:.3px;
-}
-
-/* Items deshabilitados (gris) */
+/* Items deshabilitados (si los usas) */
 .menu a.disabled{
   opacity:.45;
   pointer-events:none;
   cursor:not-allowed;
   filter: grayscale(1);
 }
+.menu a.disabled:hover{ background:transparent; }
 
-.menu a.disabled:hover{
-  background:transparent;
+/* Contenido (soporta .main y .content) */
+.main, .content{
+  flex:1;
+  min-width:0;
+  overflow:auto;            /* scroll SOLO del contenido */
+  padding:26px 22px 32px;
 }
+
+/* FIX clave: en algunos HTML aparece un bloque vacío arriba, esto lo neutraliza */
+.content > :first-child,
+.main > :first-child{
+  margin-top:0 !important;
+}
+
+/* Responsive */
+@media(max-width: 1050px){
+  .grid-top{ grid-template-columns:1fr; }
+}
+
+@media(max-width: 980px){
+  .sidebar{ width:220px; min-width:220px; max-width:220px; }
+}
+
+@media(max-width: 760px){
+  .app, .layout{ flex-direction:column; }
+  .sidebar{
+    width:100%;
+    min-width:100%;
+    max-width:100%;
+    border-right:none;
+    border-bottom:1px solid var(--border);
+  }
+}
+
+/* Toggle del formulario */
+.hidden{ display:none !important; }
+.topActions{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:flex-end; }
