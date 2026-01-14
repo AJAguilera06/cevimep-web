@@ -1,6 +1,6 @@
 <?php
 session_start();
-if (!isset($_SESSION["user"])) { header("Location: ../../public/login.php"); exit; }
+if (!isset($_SESSION["user"])) { header("Location: /login.php"); exit; }
 
 require_once __DIR__ . "/../../config/db.php";
 
@@ -8,7 +8,7 @@ $isAdmin = (($_SESSION["user"]["role"] ?? "") === "admin");
 $branchId = $_SESSION["user"]["branch_id"] ?? null;
 
 if (!$isAdmin && empty($branchId)) {
-  header("Location: ../../public/logout.php");
+  header("Location: /logout.php");
   exit;
 }
 
@@ -18,10 +18,14 @@ function calcAge(?string $birthDate): string {
     $dob = new DateTime($birthDate);
     $now = new DateTime();
     return (string)$now->diff($dob)->y;
-  } catch (Exception $e) {
+  } catch (Throwable $e) {
     return "";
   }
 }
+
+/* ====== TODO: el resto de tu archivo se queda IGUAL (no lo recorto) ====== */
+?>
+<?php
 
 $q = trim($_GET["q"] ?? "");
 
