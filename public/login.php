@@ -2,8 +2,9 @@
 declare(strict_types=1);
 
 /**
- * Sesión consistente (Railway):
- * - Cookie con path "/" para que funcione en /private/*
+ * CEVIMEP - Login (Railway OK)
+ * - Sesión compartida para TODO el sitio (path=/)
+ * - Redirects absolutos (sin /public)
  */
 session_set_cookie_params([
   'lifetime' => 0,
@@ -40,9 +41,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $stmt->execute([':email' => $email]);
       $u = $stmt->fetch(PDO::FETCH_ASSOC);
 
-      if (!$u || (int)$u['is_active'] !== 1 || !password_verify($password, $u['password_hash'])) {
+      if (!$u || (int)$u['is_active'] !== 1 || !password_verify($password, (string)$u['password_hash'])) {
         $error = 'Correo o contraseña incorrectos.';
       } else {
+        session_regenerate_id(true);
+
         $_SESSION['user'] = [
           'id'        => (int)$u['id'],
           'full_name' => (string)$u['full_name'],

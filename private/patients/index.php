@@ -2,9 +2,7 @@
 declare(strict_types=1);
 
 /**
- * Sesión consistente en Railway:
- * - Forzamos cookie a path "/" para que sirva a /private/* también.
- * - Aceptamos estructuras viejas de sesión (por si el dashboard/login antiguo guardaba otras claves).
+ * CEVIMEP - Pacientes (Railway OK)
  */
 session_set_cookie_params([
   'lifetime' => 0,
@@ -14,31 +12,6 @@ session_set_cookie_params([
   'samesite' => 'Lax',
 ]);
 session_start();
-
-/** Normaliza sesión antigua -> $_SESSION['user'] */
-if (empty($_SESSION['user'])) {
-  // Caso: sesión vieja con claves planas
-  if (!empty($_SESSION['role']) || !empty($_SESSION['branch_id']) || !empty($_SESSION['email'])) {
-    $_SESSION['user'] = [
-      'id'        => (int)($_SESSION['user_id'] ?? 0),
-      'full_name' => (string)($_SESSION['full_name'] ?? $_SESSION['nombre'] ?? ''),
-      'email'     => (string)($_SESSION['email'] ?? ''),
-      'role'      => (string)($_SESSION['role'] ?? $_SESSION['rol'] ?? ''),
-      'branch_id' => ($_SESSION['branch_id'] ?? $_SESSION['sucursal_id'] ?? null),
-    ];
-  }
-  // Caso: sesión vieja guardada en $_SESSION['usuario']
-  elseif (!empty($_SESSION['usuario']) && is_array($_SESSION['usuario'])) {
-    $u = $_SESSION['usuario'];
-    $_SESSION['user'] = [
-      'id'        => (int)($u['id'] ?? $u['user_id'] ?? 0),
-      'full_name' => (string)($u['full_name'] ?? $u['nombre'] ?? ''),
-      'email'     => (string)($u['email'] ?? ''),
-      'role'      => (string)($u['role'] ?? $u['rol'] ?? ''),
-      'branch_id' => ($u['branch_id'] ?? $u['sucursal_id'] ?? null),
-    ];
-  }
-}
 
 if (empty($_SESSION["user"])) { header("Location: /login.php"); exit; }
 
@@ -63,12 +36,70 @@ function calcAge(?string $birthDate): string {
   }
 }
 
-/* ====== AQUÍ DEBAJO PEGAS TODO TU HTML/PHP ORIGINAL SIN CAMBIAR NADA ======
-   Yo no lo corto para no dañarte el diseño.
-   (Si quieres, pégame el resto y te lo devuelvo 100% completo en 1 sola pieza.)
-*/
-?>
+$error = '';
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  $email = trim($_POST['email'] ?? '');
+  $password = (string)($_POST['password'] ?? '');
+
+  if ($email === '' || $password === '') {
+    $error = 'Completa correo y contraseña.';
+  } else {
+    try {
+      $stmt = $pdo->prepare("
+        SELECT id, full_name, email, password_hash, role, branch_id, is_active
+        FROM users
+        WHERE email = :email
+        LIMIT 1
+      ");
+      $stmt->execute([':email' => $email]);
+      $u = $stmt->fetch(PDO::FETCH_ASSOC);
+
+      if (!$u || (int)$u['is_active'] !== 1 || !password_verify($password, (string)$u['password_hash'])) {
+        $error = 'Correo o contraseña incorrectos.';
+      } else {
+        session_regenerate_id(true);
+        $_SESSION['user'] = [
+          'id'        => (int)$u['id'],
+          'full_name' => (string)$u['full_name'],
+          'email'     => (string)$u['email'],
+          'role'      => (string)$u['role'],
+          'branch_id' => $u['branch_id'],
+        ];
+        header('Location: /private/dashboard.php');
+        exit;
+      }
+    } catch (Throwable $e) {
+      $error = 'Error al conectar con la base de datos.';
+    }
+  }
+}
+
+/** ====== TU CÓDIGO ORIGINAL (consulta pacientes) ====== */
+$search = trim($_GET['search'] ?? '');
+$params = [];
+
+$where = [];
+if (!$isAdmin && !empty($branchId)) {
+  $where[] = "branch_id = :branch_id";
+  $params[':branch_id'] = $branchId;
+}
+
+if ($search !== '') {
+  $where[] = "(full_name LIKE :search OR cedula LIKE :search OR phone LIKE :search)";
+  $params[':search'] = "%{$search}%";
+}
+
+$sql = "SELECT * FROM patients";
+if ($where) $sql .= " WHERE " . implode(" AND ", $where);
+$sql .= " ORDER BY id DESC";
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+$patients = $stmt->fetchAll();
+
+$year = date("Y");
+?>
 <!doctype html>
 <html lang="es">
 <head>
@@ -76,135 +107,93 @@ function calcAge(?string $birthDate): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Pacientes</title>
 
-  <link rel="stylesheet" href="../../assets/css/styles.css">
-
-  <style>
-    html,body{height:100%;}
-    body{margin:0; display:flex; flex-direction:column; min-height:100vh; overflow:hidden !important;}
-    .app{flex:1; display:flex; min-height:0;}
-    .main{flex:1; min-width:0; overflow:auto;}
-
-    .menu a.active{
-      background:#fff4e6;
-      color:#b45309;
-      border:1px solid #fed7aa;
-    }
-
-    .wrap{
-      max-width:1200px;
-      margin:auto;
-      padding:22px;
-      flex:1;
-      display:flex;
-      flex-direction:column;
-      gap:18px;
-    }
-
-    .card{
-      background:#fff;
-      border:1px solid #e6eef7;
-      border-radius:22px;
-      padding:18px;
-      box-shadow:0 10px 30px rgba(2,6,23,.08);
-    }
-  </style>
+  <link rel="stylesheet" href="/assets/css/styles.css">
 </head>
 
 <body>
 
-<header class="navbar">
+<!-- NAVBAR -->
+<div class="navbar">
   <div class="inner">
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
-    <div class="nav-right"><a href="../../public/logout.php">Salir</a></div>
+    <div class="nav-right">
+      <a class="btn" href="/logout.php">Cerrar sesión</a>
+    </div>
   </div>
-</header>
+</div>
 
-<main class="app">
+<div class="layout">
 
-  <!-- ✅ MENU (ORDEN FIJO COMO TU IMAGEN) -->
+  <!-- SIDEBAR -->
   <aside class="sidebar">
-    <div class="title">Menú</div>
+    <h3 class="menu-title">Menú</h3>
+
     <nav class="menu">
-      <a href="../dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a class="active" href="index.php"><span class="ico">🧑‍🤝‍🧑</span> Pacientes</a>
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;"><span class="ico">📅</span> Citas</a>
-      <a href="../facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
-      <a href="../caja/index.php"><span class="ico">💳</span> Caja</a>
-      <a href="../inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="../estadistica/index.php"><span class="ico">⏳</span> Estadística</a>
+      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
+      <a class="active" href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
+      <a href="/private/citas/index.php"><span class="ico">📅</span> Citas</a>
+      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
+      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
+      <a href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
+      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
     </nav>
   </aside>
 
-  <section class="main">
+  <!-- CONTENT -->
+  <main class="content">
 
-    <div class="wrap">
-
-      <div class="card">
-        <div class="top" style="display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap;">
-          <div>
-            <h2 style="margin:0; color:#052a7a;">Pacientes</h2>
-            <div class="muted" style="color:#6b7280; font-weight:600;">Listado filtrado por sucursal (automático).</div>
-          </div>
-
-          <div class="actions" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:flex-end;">
-            <form method="get" style="margin:0; display:flex; gap:10px; align-items:center;">
-              <input type="text" name="q" value="<?php echo htmlspecialchars($q); ?>" placeholder="Buscar por nombre, cédula, teléfono..." style="padding:10px 12px; border-radius:14px; border:1px solid #e6eef7; outline:none; min-width:260px;">
-              <button class="btn" type="submit" style="display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:14px;border:1px solid #dbeafe;background:#fff;color:#052a7a;font-weight:900;text-decoration:none;cursor:pointer;">Buscar</button>
-            </form>
-
-            <a class="btn primary" href="create.php" style="display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:14px;border:none;color:#fff;background:linear-gradient(135deg,#0b4be3,#052a7a);font-weight:900;text-decoration:none;cursor:pointer;">+ Nuevo paciente</a>
-            <a class="btn" href="../dashboard.php" style="display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:14px;border:1px solid #dbeafe;background:#fff;color:#052a7a;font-weight:900;text-decoration:none;cursor:pointer;">Volver</a>
-          </div>
-        </div>
-
-        <table style="width:100%; border-collapse:collapse; margin-top:12px; overflow:hidden; border-radius:16px; border:1px solid #e6eef7;">
-          <thead>
-            <tr>
-              <th style="padding:12px 10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px; background:#f7fbff; color:#0b3b9a; font-weight:900;">ID</th>
-              <th style="padding:12px 10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px; background:#f7fbff; color:#0b3b9a; font-weight:900;">Nombre</th>
-              <th style="padding:12px 10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px; background:#f7fbff; color:#0b3b9a; font-weight:900;">Cédula</th>
-              <th style="padding:12px 10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px; background:#f7fbff; color:#0b3b9a; font-weight:900;">Teléfono</th>
-              <th style="padding:12px 10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px; background:#f7fbff; color:#0b3b9a; font-weight:900;">Correo</th>
-              <th style="padding:12px 10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px; background:#f7fbff; color:#0b3b9a; font-weight:900;">Edad</th>
-              <th style="padding:12px 10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px; background:#f7fbff; color:#0b3b9a; font-weight:900;">Género</th>
-              <th style="padding:12px 10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px; background:#f7fbff; color:#0b3b9a; font-weight:900;">Sangre</th>
-              <th style="padding:12px 10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px; background:#f7fbff; color:#0b3b9a; font-weight:900;">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-          <?php if (empty($patients)): ?>
-            <tr><td colspan="9" style="padding:12px 10px;">No hay pacientes registrados.</td></tr>
-          <?php else: ?>
-            <?php foreach ($patients as $p): ?>
-              <tr>
-                <td style="padding:12px 10px; border-bottom:1px solid #eef2f7; font-size:13px;"><?php echo (int)$p["id"]; ?></td>
-                <td style="padding:12px 10px; border-bottom:1px solid #eef2f7; font-size:13px;"><?php echo htmlspecialchars(trim(($p["first_name"] ?? "")." ".($p["last_name"] ?? ""))); ?></td>
-                <td style="padding:12px 10px; border-bottom:1px solid #eef2f7; font-size:13px;"><?php echo htmlspecialchars($p["cedula"] ?? ""); ?></td>
-                <td style="padding:12px 10px; border-bottom:1px solid #eef2f7; font-size:13px;"><?php echo htmlspecialchars($p["phone"] ?? ""); ?></td>
-                <td style="padding:12px 10px; border-bottom:1px solid #eef2f7; font-size:13px;"><?php echo htmlspecialchars($p["email"] ?? ""); ?></td>
-                <td style="padding:12px 10px; border-bottom:1px solid #eef2f7; font-size:13px;"><?php echo htmlspecialchars(calcAge($p["birth_date"] ?? null)); ?></td>
-                <td style="padding:12px 10px; border-bottom:1px solid #eef2f7; font-size:13px;"><?php echo htmlspecialchars($p["gender"] ?? ""); ?></td>
-                <td style="padding:12px 10px; border-bottom:1px solid #eef2f7; font-size:13px;"><?php echo htmlspecialchars($p["blood_type"] ?? ""); ?></td>
-                <td style="padding:12px 10px; border-bottom:1px solid #eef2f7; font-size:13px;">
-                  <a href="edit.php?id=<?php echo (int)$p["id"]; ?>" style="margin-right:10px; font-weight:900; color:#0b4be3; text-decoration:none;">Editar</a>
-                  <a href="delete.php?id=<?php echo (int)$p["id"]; ?>" onclick="return confirm('¿Eliminar paciente?');" style="font-weight:900; color:#0b4be3; text-decoration:none;">Eliminar</a>
-                </td>
-              </tr>
-            <?php endforeach; ?>
-          <?php endif; ?>
-          </tbody>
-        </table>
-
-      </div>
-
+    <div class="hero">
+      <h1>Pacientes</h1>
+      <p class="muted">Listado y gestión de pacientes</p>
     </div>
 
-  </section>
-</main>
+    <div class="card" style="margin-top:14px;">
+      <form method="get" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <input type="text" name="search" placeholder="Buscar por nombre, cédula o teléfono" value="<?= htmlspecialchars($search) ?>" style="min-width:280px;">
+        <button class="btn" type="submit">Buscar</button>
+        <a class="btn" href="/private/patients/index.php">Limpiar</a>
+      </form>
+    </div>
+
+    <div class="card" style="margin-top:14px; overflow:auto;">
+      <table class="table" style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Nombre</th>
+            <th>Cédula</th>
+            <th>Teléfono</th>
+            <th>Edad</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+        <?php if (!$patients): ?>
+          <tr><td colspan="6" class="muted">No hay pacientes.</td></tr>
+        <?php else: ?>
+          <?php foreach ($patients as $p): ?>
+            <tr>
+              <td><?= (int)$p['id'] ?></td>
+              <td><?= htmlspecialchars((string)$p['full_name']) ?></td>
+              <td><?= htmlspecialchars((string)($p['cedula'] ?? '')) ?></td>
+              <td><?= htmlspecialchars((string)($p['phone'] ?? '')) ?></td>
+              <td><?= htmlspecialchars(calcAge($p['birth_date'] ?? null)) ?></td>
+              <td>
+                <a class="btn" href="/private/patients/view.php?id=<?= (int)$p['id'] ?>">Ver</a>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        <?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+</div>
 
 <footer class="footer">
-  <div class="inner">© <?php echo $year; ?> CEVIMEP. Todos los derechos reservados.</div>
+  <div class="inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
 </footer>
 
 </body>
