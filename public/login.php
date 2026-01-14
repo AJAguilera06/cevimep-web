@@ -1,8 +1,20 @@
 <?php
 declare(strict_types=1);
+
+/**
+ * Sesión consistente (Railway):
+ * - Cookie con path "/" para que funcione en /private/*
+ */
+session_set_cookie_params([
+  'lifetime' => 0,
+  'path' => '/',
+  'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+  'httponly' => true,
+  'samesite' => 'Lax',
+]);
 session_start();
 
-require_once __DIR__ . '/../config/db.php'; // /public/login.php -> /config/db.php
+require_once __DIR__ . '/../config/db.php';
 
 if (!empty($_SESSION['user'])) {
   header('Location: /private/dashboard.php');
@@ -33,11 +45,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       } else {
         $_SESSION['user'] = [
           'id'        => (int)$u['id'],
-          'full_name' => $u['full_name'],
-          'email'     => $u['email'],
-          'role'      => $u['role'],
+          'full_name' => (string)$u['full_name'],
+          'email'     => (string)$u['email'],
+          'role'      => (string)$u['role'],
           'branch_id' => $u['branch_id'],
         ];
+
         header('Location: /private/dashboard.php');
         exit;
       }
@@ -53,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Iniciar sesión | CEVIMEP</title>
-  <link rel="stylesheet" href="assets/css/styles.css?v=1">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=1">
 </head>
 <body class="auth">
 
@@ -65,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
     <?php endif; ?>
 
-    <form method="post" action="login.php" autocomplete="on">
+    <form method="post" action="/login.php" autocomplete="on">
       <label>Correo</label>
       <input type="email" name="email" required>
 
@@ -76,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </form>
 
     <div class="auth-links">
-      <a href="index.php">Volver</a>
+      <a href="/index.php">Volver</a>
     </div>
   </div>
 
