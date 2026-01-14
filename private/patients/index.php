@@ -2,11 +2,10 @@
 declare(strict_types=1);
 
 /**
- * CEVIMEP - Pacientes (Railway OK + UI completa)
- * - Sesión compartida path=/
- * - Rutas absolutas (sin /public)
- * - Tabla completa + buscador + botones (Nuevo paciente / Volver)
- * - SIN el cuadro grande (hero) arriba
+ * CEVIMEP - Pacientes (Railway OK, sin HERO, UI completa)
+ * - No rompe si tu BD tiene nombres de columnas distintos
+ * - SELECT * + fallbacks (email/correo, phone/telefono, gender/genero, blood_type/sangre, etc.)
+ * - Botones: Buscar + Nuevo paciente + Volver
  */
 
 session_set_cookie_params([
@@ -25,6 +24,15 @@ if (empty($_SESSION['user'])) {
 
 require_once __DIR__ . '/../../config/db.php';
 
+/** Soporta $pdo (PDO). Si tu db.php usa otro nombre, lo detectamos */
+$db = $pdo ?? null;
+if (!$db || !($db instanceof PDO)) {
+  // Si por alguna razón no hay PDO, fallamos con mensaje claro (evita 500 silencioso)
+  http_response_code(500);
+  echo "DB no inicializada (PDO). Revisa config/db.php";
+  exit;
+}
+
 $isAdmin  = (($_SESSION['user']['role'] ?? '') === 'admin');
 $branchId = $_SESSION['user']['branch_id'] ?? null;
 
@@ -33,6 +41,7 @@ if (!$isAdmin && empty($branchId)) {
   exit;
 }
 
+/** Helpers */
 function calcAge(?string $birthDate): string {
   if (!$birthDate) return '';
   try {
@@ -44,7 +53,23 @@ function calcAge(?string $birthDate): string {
   }
 }
 
+function field(array $row, array $keys, string $default = ''): string {
+  foreach ($keys as $k) {
+    if (array_key_exists($k, $row) && $row[$k] !== null && $row[$k] !== '') {
+      return (string)$row[$k];
+    }
+  }
+  return $default;
+}
+
 $search = trim((string)($_GET['search'] ?? ''));
+
+/**
+ * IMPORTANTE:
+ * - Para evitar 500 por columnas que no existan, usamos SELECT *
+ * - El filtro de sucursal lo mantenemos con branch_id porque tu sistema ya lo estaba usando.
+ * - La búsqueda la hacemos “tolerante” intentando varias columnas comunes.
+ */
 $params = [];
 $where  = [];
 
@@ -54,35 +79,28 @@ if (!$isAdmin && !empty($branchId)) {
 }
 
 if ($search !== '') {
-  // Busca por nombre / cedula / telefono / correo
-  $where[] = "(full_name LIKE :q OR cedula LIKE :q OR phone LIKE :q OR email LIKE :q)";
+  // Esto asume que al menos full_name/cedula/phone/email existen.
+  // Si no existe alguna, NO pasa nada porque no la referenciamos con SELECT fijo,
+  // pero en WHERE sí puede fallar si la columna no existe. Para evitar eso,
+  // usamos solo columnas que usualmente sí están en tu tabla actual:
+  // (full_name, cedula, phone) — si tu tabla no tiene alguna, me dices y lo ajusto.
+  $where[] = "(full_name LIKE :q OR cedula LIKE :q OR phone LIKE :q)";
   $params[':q'] = "%{$search}%";
 }
 
-/**
- * Columnas esperadas según tu vista vieja:
- * full_name, cedula, phone, email, birth_date, gender, blood_type
- * (Si alguna columna no existe en tu BD, dime el nombre real y lo ajusto.)
- */
-$sql = "
-  SELECT
-    id,
-    full_name,
-    cedula,
-    phone,
-    email,
-    birth_date,
-    gender,
-    blood_type
-  FROM patients
-";
-
+$sql = "SELECT * FROM patients";
 if ($where) $sql .= " WHERE " . implode(" AND ", $where);
 $sql .= " ORDER BY id DESC";
 
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
+try {
+  $stmt = $db->prepare($sql);
+  $stmt->execute($params);
+  $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+  http_response_code(500);
+  echo "Error consultando pacientes: " . htmlspecialchars($e->getMessage());
+  exit;
+}
 
 $year = date('Y');
 ?>
@@ -92,9 +110,9 @@ $year = date('Y');
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pacientes | CEVIMEP</title>
-  <link rel="stylesheet" href="/assets/css/styles.css?v=4">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=5">
 
-  <!-- Estilos mínimos para que quede como tu captura "antes" -->
+  <!-- UI como tu versión anterior (sin el cuadro grande HERO) -->
   <style>
     .page-wrap{ padding:18px 22px 28px; }
     .panel-card{
@@ -147,7 +165,7 @@ $year = date('Y');
     }
     .btn-solid{
       background:linear-gradient(135deg,#0ea5e9,#052a7a);
-      border:1px solid rgba(255,255,255,.0);
+      border:1px solid rgba(255,255,255,0);
       color:#fff;
       font-weight:900;
     }
@@ -166,6 +184,7 @@ $year = date('Y');
       font-size:12px;
       white-space:nowrap;
     }
+    .td-actions{ display:flex; gap:8px; flex-wrap:wrap; }
   </style>
 </head>
 
@@ -198,7 +217,6 @@ $year = date('Y');
   <main class="content">
     <div class="page-wrap">
 
-      <!-- SIN HERO: aquí va el header compacto como tu vista de antes -->
       <div class="panel-card">
         <div class="page-head">
           <div>
@@ -212,6 +230,7 @@ $year = date('Y');
               <button class="btn btn-primary" type="submit">Buscar</button>
             </form>
 
+            <!-- Si tu archivo real de crear paciente tiene otro nombre, cámbialo aquí -->
             <a class="btn btn-solid" href="/private/patients/create.php">+ Nuevo paciente</a>
             <a class="btn btn-ghost" href="/private/dashboard.php">Volver</a>
           </div>
@@ -226,42 +245,44 @@ $year = date('Y');
                 <th>Cédula</th>
                 <th>Teléfono</th>
                 <th>Correo</th>
-                <th style="width:80px;">Edad</th>
+                <th style="width:90px;">Edad</th>
                 <th style="width:110px;">Género</th>
                 <th style="width:110px;">Sangre</th>
-                <th style="width:140px;">Acciones</th>
+                <th style="width:160px;">Acciones</th>
               </tr>
             </thead>
 
             <tbody>
-              <?php if (!$patients): ?>
+            <?php if (!$patients): ?>
+              <tr><td colspan="9" class="muted">No hay pacientes registrados.</td></tr>
+            <?php else: ?>
+              <?php foreach ($patients as $p): ?>
+                <?php
+                  $id     = (int)($p['id'] ?? 0);
+                  $nombre = field($p, ['full_name','nombre','name']);
+                  $cedula = field($p, ['cedula','cédula','identificacion','identificación']);
+                  $tel    = field($p, ['phone','telefono','teléfono','celular']);
+                  $correo = field($p, ['email','correo']);
+                  $birth  = field($p, ['birth_date','fecha_nacimiento','fecha_de_nacimiento']);
+                  $genero = field($p, ['gender','genero','género','sex']);
+                  $sangre = field($p, ['blood_type','sangre','tipo_sangre','tipo_de_sangre']);
+                ?>
                 <tr>
-                  <td colspan="9" class="muted">No hay pacientes registrados.</td>
+                  <td><?= $id ?></td>
+                  <td><?= htmlspecialchars($nombre) ?></td>
+                  <td><?= htmlspecialchars($cedula) ?></td>
+                  <td><?= htmlspecialchars($tel) ?></td>
+                  <td><?= htmlspecialchars($correo) ?></td>
+                  <td><?= htmlspecialchars(calcAge($birth !== '' ? $birth : null)) ?></td>
+                  <td><?= $genero !== '' ? '<span class="pill">'.htmlspecialchars($genero).'</span>' : '' ?></td>
+                  <td><?= $sangre !== '' ? '<span class="pill">'.htmlspecialchars($sangre).'</span>' : '' ?></td>
+                  <td class="td-actions">
+                    <a class="btn btn-small" href="/private/patients/view.php?id=<?= $id ?>">Ver</a>
+                    <a class="btn btn-small btn-ghost" href="/private/patients/edit.php?id=<?= $id ?>">Editar</a>
+                  </td>
                 </tr>
-              <?php else: ?>
-                <?php foreach ($patients as $p): ?>
-                  <tr>
-                    <td><?= (int)$p['id'] ?></td>
-                    <td><?= htmlspecialchars((string)($p['full_name'] ?? '')) ?></td>
-                    <td><?= htmlspecialchars((string)($p['cedula'] ?? '')) ?></td>
-                    <td><?= htmlspecialchars((string)($p['phone'] ?? '')) ?></td>
-                    <td><?= htmlspecialchars((string)($p['email'] ?? '')) ?></td>
-                    <td><?= htmlspecialchars(calcAge($p['birth_date'] ?? null)) ?></td>
-                    <td>
-                      <?php $g = (string)($p['gender'] ?? ''); ?>
-                      <?= $g !== '' ? '<span class="pill">'.htmlspecialchars($g).'</span>' : '' ?>
-                    </td>
-                    <td>
-                      <?php $bt = (string)($p['blood_type'] ?? ''); ?>
-                      <?= $bt !== '' ? '<span class="pill">'.htmlspecialchars($bt).'</span>' : '' ?>
-                    </td>
-                    <td style="display:flex; gap:8px; flex-wrap:wrap;">
-                      <a class="btn btn-small" href="/private/patients/view.php?id=<?= (int)$p['id'] ?>">Ver</a>
-                      <a class="btn btn-small btn-ghost" href="/private/patients/edit.php?id=<?= (int)$p['id'] ?>">Editar</a>
-                    </td>
-                  </tr>
-                <?php endforeach; ?>
-              <?php endif; ?>
+              <?php endforeach; ?>
+            <?php endif; ?>
             </tbody>
           </table>
         </div>
