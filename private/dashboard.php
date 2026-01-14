@@ -45,11 +45,11 @@
       <span class="ico">📅</span> Citas
     </a>
 
-    <a class="active" href="/private/facturacion/index.php">
+    <a href="/private/facturacion/index.php">
       <span class="ico">🧾</span> Facturación
     </a>
 
-    <a class="active" href="/private/caja/index.php">
+    <a href="/private/caja/index.php">
       <span class="ico">💵</span> Caja
     </a>
 
@@ -57,7 +57,7 @@
       <span class="ico">📦</span> Inventario
     </a>
 
-    <a class="active" href="/private/estadisticas/index.php">
+    <a href="/private/estadistica/index.php">
       <span class="ico">⏳</span> Estadísticas
     </a>
   </nav>
