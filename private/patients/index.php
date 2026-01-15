@@ -300,6 +300,6 @@ $year = date('Y');
 
 <footer class="footer">
   <div class="footer-inner">
-    © 2026 CEVIMEP. Todos los derechos reservados.
+    © <?= $year ?> CEVIMEP. Todos los derechos reservados.
   </div>
 </footer>
