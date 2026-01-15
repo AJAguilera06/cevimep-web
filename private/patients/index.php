@@ -299,7 +299,5 @@ $year = date('Y');
 </div>
 
 <footer class="footer">
-  <div class="footer-inner">
-    © <?= $year ?> CEVIMEP. Todos los derechos reservados.
-  </div>
+  <div class="inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
 </footer>
