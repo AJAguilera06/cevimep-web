@@ -61,15 +61,21 @@ body{
 }
 
 .navbar .inner,
-.footer .inner{
+.footer .inner
+/* ===== Footer con footer-inner (para que quede igual en todos los módulos) ===== */
+.footer .footer-inner{
   width:100%;
   max-width:1400px;
   margin:0 auto;
   padding:0 22px;
-  display:grid;
-  grid-template-columns: 1fr auto 1fr;
+  display:flex;
   align-items:center;
+  justify-content:center;
+  text-align:center;
+  font-weight:700;
+  font-size:13px;
 }
+
 
 .brand{
   justify-self:center;
