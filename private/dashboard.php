@@ -63,7 +63,9 @@ $branchLabel = $branch ? $branch : 'Sucursal';
     <nav class="menu">
       <a class="active" href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
       <a href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
-      <a href="/private/citas/index.php"><span class="ico">🗓️</span> Citas</a>
+      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;">
+  <span class="ico">🗓️</span> Citas
+</a>
       <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
       <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
       <a href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>

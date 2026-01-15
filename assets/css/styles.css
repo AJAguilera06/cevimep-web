@@ -310,3 +310,22 @@ body{
     border-bottom:1px solid var(--border);
   }
 }
+/* ===== FIX GLOBAL FOOTER ALIGNMENT ===== */
+.footer,
+.footer * {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+.footer {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  text-align: center !important;
+}
+
+.footer-inner {
+  width: 100%;
+  text-align: center !important;
+  font-weight: 700;
+  font-size: 13px;
+}
