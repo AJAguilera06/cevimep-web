@@ -40,7 +40,7 @@ $branchLabel = $branch ? $branch : 'Sucursal';
   <title>CEVIMEP | Panel</title>
 
   <!-- IMPORTANTE: mismo CSS y misma versión que los demás módulos -->
-  <link rel="stylesheet" href="/public/assets/css/styles.css?v=9">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
 </head>
 
 <body>
