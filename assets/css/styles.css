@@ -60,9 +60,28 @@ body{
   z-index:1000;
 }
 
+/* ✅ ARREGLADO: contenedor estándar para navbar/footer */
 .navbar .inner,
-.footer .inner
-/* ===== Footer con footer-inner (para que quede igual en todos los módulos) ===== */
+.footer .inner{
+  width:100%;
+  max-width:1400px;
+  margin:0 auto;
+  padding:0 22px;
+  display:grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items:center;
+}
+
+/* ✅ Footer centrado igual en todos los módulos */
+.footer .inner{
+  display:flex;
+  justify-content:center;
+  text-align:center;
+  font-weight:700;
+  font-size:13px;
+}
+
+/* ✅ Compatibilidad: si algún módulo usa footer-inner */
 .footer .footer-inner{
   width:100%;
   max-width:1400px;
@@ -75,7 +94,6 @@ body{
   font-weight:700;
   font-size:13px;
 }
-
 
 .brand{
   justify-self:center;
