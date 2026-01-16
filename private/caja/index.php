@@ -15,15 +15,40 @@ $userId   = (int)($user["id"] ?? 0);
 if (!$isAdmin && $branchId <= 0) { header("Location: ../../public/logout.php"); exit; }
 
 date_default_timezone_set("America/Santo_Domingo");
+
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function fmtMoney($n){ return number_format((float)$n, 2, ".", ","); }
+
+// ✅ helpers BD (robustos)
+function tableExists(PDO $pdo, string $table): bool {
+  try {
+    $st = $pdo->prepare("SHOW TABLES LIKE ?");
+    $st->execute([$table]);
+    return (bool)$st->fetchColumn();
+  } catch(Throwable $e){ return false; }
+}
+
+function columnExists(PDO $pdo, string $table, string $column): bool {
+  try {
+    $st = $pdo->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
+    $st->execute([$column]);
+    return (bool)$st->fetchColumn();
+  } catch(Throwable $e){ return false; }
+}
+
+function firstExistingColumn(PDO $pdo, string $table, array $candidates): ?string {
+  foreach($candidates as $c){
+    if (columnExists($pdo, $table, $c)) return $c;
+  }
+  return null;
+}
 
 $today = date("Y-m-d");
 
 // ✅ Auto cerrar vencidas y abrir sesión actual (sin botones)
 $activeSessionId = caja_get_or_open_current_session($pdo, $branchId, $userId);
 
-// Nombre sucursal (si existe branches)
+// Nombre sucursal
 $branchName = "Sucursal #".$branchId;
 try {
   $stB = $pdo->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
@@ -40,21 +65,85 @@ function getSession(PDO $pdo, int $branchId, int $cajaNum, string $date, string 
   return $st->fetch(PDO::FETCH_ASSOC) ?: null;
 }
 
-function getTotals(PDO $pdo, int $sessionId){
+/**
+ * ✅ Cobertura desde facturas:
+ * - Busca tabla: facturas / invoices / billing_invoices (por si cambia)
+ * - Busca columna monto: cobertura / coverage / descuento / discount
+ * - Filtra por sucursal y rango de tiempo (created_at / fecha / created_on)
+ */
+function getCoverageFromInvoices(PDO $pdo, int $branchId, string $startDT, string $endDT): float {
+  $tables = ["facturas", "invoices", "billing_invoices"];
+  $table = null;
+  foreach($tables as $t){
+    if (tableExists($pdo, $t)) { $table = $t; break; }
+  }
+  if (!$table) return 0.0;
+
+  // columna monto cobertura (en tu caso antes era "descuento")
+  $amountCol = firstExistingColumn($pdo, $table, ["cobertura", "coverage", "descuento", "discount", "monto_cobertura"]);
+  if (!$amountCol) return 0.0;
+
+  // columna sucursal
+  $branchCol = firstExistingColumn($pdo, $table, ["branch_id", "sucursal_id", "id_sucursal"]);
+  if (!$branchCol) return 0.0;
+
+  // columna fecha/hora creación
+  $dateCol = firstExistingColumn($pdo, $table, ["created_at", "fecha", "created_on", "date_created", "timestamp"]);
+  if (!$dateCol) return 0.0;
+
+  // suma cobertura en ese rango
+  try{
+    $sql = "SELECT COALESCE(SUM(CASE WHEN `$amountCol` > 0 THEN `$amountCol` ELSE 0 END),0) AS total
+            FROM `$table`
+            WHERE `$branchCol` = ?
+              AND `$dateCol` >= ?
+              AND `$dateCol` <= ?";
+    $st = $pdo->prepare($sql);
+    $st->execute([$branchId, $startDT, $endDT]);
+    return (float)$st->fetchColumn();
+  } catch(Throwable $e){
+    return 0.0;
+  }
+}
+
+function getTotals(PDO $pdo, int $sessionId, int $branchId, string $rangeStart, string $rangeEnd){
+  // 1) Movimientos de caja
   $st = $pdo->prepare("SELECT
       COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='efectivo' THEN amount END),0) AS efectivo,
       COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='tarjeta' THEN amount END),0) AS tarjeta,
       COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='transferencia' THEN amount END),0) AS transferencia,
-      -- Cobertura / Seguro (por si el método de pago se guarda como 'cobertura' o 'seguro')
-      COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago IN ('cobertura','seguro') THEN amount END),0) AS cobertura,
+      COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago IN ('cobertura','seguro') THEN amount END),0) AS cobertura_mov,
       COALESCE(SUM(CASE WHEN type='desembolso' THEN amount END),0) AS desembolso
     FROM cash_movements
     WHERE session_id=?");
   $st->execute([$sessionId]);
-  $r = $st->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0];
-  $ing = (float)$r["efectivo"]+(float)$r["tarjeta"]+(float)$r["transferencia"]+(float)$r["cobertura"];
-  $net = $ing-(float)$r["desembolso"];
-  return [$r,$ing,$net];
+  $r = $st->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura_mov"=>0,"desembolso"=>0];
+
+  // 2) ✅ Cobertura desde facturas (si ahí es donde realmente se guarda)
+  $cobInv = getCoverageFromInvoices($pdo, $branchId, $rangeStart, $rangeEnd);
+
+  $ef  = (float)$r["efectivo"];
+  $ta  = (float)$r["tarjeta"];
+  $tr  = (float)$r["transferencia"];
+  $coM = (float)$r["cobertura_mov"];
+  $des = (float)$r["desembolso"];
+
+  $cobertura = $coM + $cobInv;
+
+  $ing = $ef + $ta + $tr + $cobertura;
+  $net = $ing - $des;
+
+  return [
+    "efectivo"=>$ef,
+    "tarjeta"=>$ta,
+    "transferencia"=>$tr,
+    "cobertura"=>$cobertura,
+    "cob_mov"=>$coM,
+    "cob_inv"=>$cobInv,
+    "desembolso"=>$des,
+    "ing"=>$ing,
+    "net"=>$net
+  ];
 }
 
 [$s1Start,$s1End] = ["08:00:00","13:00:00"];
@@ -63,13 +152,24 @@ function getTotals(PDO $pdo, int $sessionId){
 $caja1 = getSession($pdo, $branchId, 1, $today, $s1Start, $s1End);
 $caja2 = getSession($pdo, $branchId, 2, $today, $s2Start, $s2End);
 
+// rangos por caja
+$now = date("Y-m-d H:i:s");
+$caja1StartDT = $today." ".$s1Start;
+$caja1EndDT   = $today." ".$s1End;
+$caja2StartDT = $today." ".$s2Start;
+$caja2EndDT   = $today." ".$s2End;
+
+// si está en curso, el end real es "ahora"
+if ($now < $caja1EndDT) $caja1EndDT = $now;
+if ($now < $caja2EndDT) $caja2EndDT = $now;
+
 $sum = [
-  1 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
-  2 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
+  1 => ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0,"ing"=>0,"net"=>0,"cob_mov"=>0,"cob_inv"=>0],
+  2 => ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0,"ing"=>0,"net"=>0,"cob_mov"=>0,"cob_inv"=>0],
 ];
 
-if ($caja1) { [$r,$ing,$net] = getTotals($pdo, (int)$caja1["id"]); $sum[1]=["r"=>$r,"ing"=>$ing,"net"=>$net]; }
-if ($caja2) { [$r,$ing,$net] = getTotals($pdo, (int)$caja2["id"]); $sum[2]=["r"=>$r,"ing"=>$ing,"net"=>$net]; }
+if ($caja1) { $sum[1] = getTotals($pdo, (int)$caja1["id"], $branchId, $caja1StartDT, $caja1EndDT); }
+if ($caja2) { $sum[2] = getTotals($pdo, (int)$caja2["id"], $branchId, $caja2StartDT, $caja2EndDT); }
 
 $currentCajaNum = caja_get_current_caja_num();
 ?>
@@ -108,8 +208,8 @@ $currentCajaNum = caja_get_current_caja_num();
     .actions{display:flex; gap:10px; flex-wrap:wrap;}
     .btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:14px;border:1px solid #dbeafe;background:#fff;color:#052a7a;font-weight:900;text-decoration:none;cursor:pointer;}
 
-    /* Asegura el footer centrado aunque el CSS global no cargue */
     footer.footer .inner{width:100%; text-align:center;}
+    .subnote{font-size:12px; color:#6b7280; margin-top:6px;}
   </style>
 </head>
 <body>
@@ -178,15 +278,19 @@ $currentCajaNum = caja_get_current_caja_num();
         <table>
           <thead><tr><th>Concepto</th><th>Monto</th></tr></thead>
           <tbody>
-            <tr><td>Efectivo</td><td>RD$ <?php echo fmtMoney($sum[1]["r"]["efectivo"]); ?></td></tr>
-            <tr><td>Tarjeta</td><td>RD$ <?php echo fmtMoney($sum[1]["r"]["tarjeta"]); ?></td></tr>
-            <tr><td>Transferencia</td><td>RD$ <?php echo fmtMoney($sum[1]["r"]["transferencia"]); ?></td></tr>
-            <tr><td>Cobertura</td><td>RD$ <?php echo fmtMoney($sum[1]["r"]["cobertura"]); ?></td></tr>
-            <tr><td>Desembolsos</td><td>- RD$ <?php echo fmtMoney($sum[1]["r"]["desembolso"]); ?></td></tr>
+            <tr><td>Efectivo</td><td>RD$ <?php echo fmtMoney($sum[1]["efectivo"]); ?></td></tr>
+            <tr><td>Tarjeta</td><td>RD$ <?php echo fmtMoney($sum[1]["tarjeta"]); ?></td></tr>
+            <tr><td>Transferencia</td><td>RD$ <?php echo fmtMoney($sum[1]["transferencia"]); ?></td></tr>
+            <tr><td>Cobertura</td><td>RD$ <?php echo fmtMoney($sum[1]["cobertura"]); ?></td></tr>
+            <tr><td>Desembolsos</td><td>- RD$ <?php echo fmtMoney($sum[1]["desembolso"]); ?></td></tr>
             <tr><td style="font-weight:900;">Total ingresos</td><td style="font-weight:900;">RD$ <?php echo fmtMoney($sum[1]["ing"]); ?></td></tr>
             <tr><td style="font-weight:900;">Neto</td><td style="font-weight:900;">RD$ <?php echo fmtMoney($sum[1]["net"]); ?></td></tr>
           </tbody>
         </table>
+
+        <div class="subnote">
+          Cobertura (detalle): mov RD$ <?php echo fmtMoney($sum[1]["cob_mov"]); ?> + facturas RD$ <?php echo fmtMoney($sum[1]["cob_inv"]); ?>
+        </div>
       </div>
 
       <div class="card">
@@ -202,15 +306,19 @@ $currentCajaNum = caja_get_current_caja_num();
         <table>
           <thead><tr><th>Concepto</th><th>Monto</th></tr></thead>
           <tbody>
-            <tr><td>Efectivo</td><td>RD$ <?php echo fmtMoney($sum[2]["r"]["efectivo"]); ?></td></tr>
-            <tr><td>Tarjeta</td><td>RD$ <?php echo fmtMoney($sum[2]["r"]["tarjeta"]); ?></td></tr>
-            <tr><td>Transferencia</td><td>RD$ <?php echo fmtMoney($sum[2]["r"]["transferencia"]); ?></td></tr>
-            <tr><td>Cobertura</td><td>RD$ <?php echo fmtMoney($sum[2]["r"]["cobertura"]); ?></td></tr>
-            <tr><td>Desembolsos</td><td>- RD$ <?php echo fmtMoney($sum[2]["r"]["desembolso"]); ?></td></tr>
+            <tr><td>Efectivo</td><td>RD$ <?php echo fmtMoney($sum[2]["efectivo"]); ?></td></tr>
+            <tr><td>Tarjeta</td><td>RD$ <?php echo fmtMoney($sum[2]["tarjeta"]); ?></td></tr>
+            <tr><td>Transferencia</td><td>RD$ <?php echo fmtMoney($sum[2]["transferencia"]); ?></td></tr>
+            <tr><td>Cobertura</td><td>RD$ <?php echo fmtMoney($sum[2]["cobertura"]); ?></td></tr>
+            <tr><td>Desembolsos</td><td>- RD$ <?php echo fmtMoney($sum[2]["desembolso"]); ?></td></tr>
             <tr><td style="font-weight:900;">Total ingresos</td><td style="font-weight:900;">RD$ <?php echo fmtMoney($sum[2]["ing"]); ?></td></tr>
             <tr><td style="font-weight:900;">Neto</td><td style="font-weight:900;">RD$ <?php echo fmtMoney($sum[2]["net"]); ?></td></tr>
           </tbody>
         </table>
+
+        <div class="subnote">
+          Cobertura (detalle): mov RD$ <?php echo fmtMoney($sum[2]["cob_mov"]); ?> + facturas RD$ <?php echo fmtMoney($sum[2]["cob_inv"]); ?>
+        </div>
       </div>
 
     </div>
