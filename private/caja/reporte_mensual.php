@@ -17,17 +17,6 @@ $month = $_GET["month"] ?? date("Y-m"); // YYYY-MM
 $start = $month . "-01";
 $end   = date("Y-m-t", strtotime($start)); // último día del mes
 
-// Nombre sucursal (si existe tabla branches)
-$branchName = "Sucursal #".$branchId;
-try {
-  $stB = $pdo->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
-  $stB->execute([$branchId]);
-  $bn = $stB->fetchColumn();
-  if ($bn) $branchName = (string)$bn;
-} catch (Throwable $e) { /* ignore */ }
-
-$printedAt = date("Y-m-d h:i A");
-
 // Totales globales del mes
 $st = $pdo->prepare("
   SELECT
@@ -88,11 +77,7 @@ foreach([1,2] as $c){
     @media(max-width:900px){ .grid{grid-template-columns:1fr;} }
     input[type="month"]{padding:10px 12px;border-radius:14px;border:1px solid #e6eef7;outline:none;}
 
-    .print-header{display:none;}
-    .print-header .title{font-weight:1000; font-size:18px; color:#052a7a;}
-    .print-header .sub{color:#334155; font-weight:800; margin-top:4px;}
-    .print-header .meta{color:#64748b; font-weight:800; margin-top:2px; font-size:12px;}
-
+    /* ✅ IMPRESIÓN */
     @media print{
       body{overflow:visible !important;}
       .navbar, .sidebar, .footer, .no-print{display:none !important;}
@@ -101,7 +86,6 @@ foreach([1,2] as $c){
       .card{box-shadow:none !important; border:1px solid #e5e7eb !important; border-radius:12px !important;}
       table{border:1px solid #e5e7eb !important;}
       th,td{font-size:12px !important;}
-      .print-header{display:block !important; margin:0 0 10px 0;}
     }
   </style>
 </head>
@@ -125,35 +109,27 @@ foreach([1,2] as $c){
       <a href="../facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
       <a class="active" href="index.php"><span class="ico">💳</span> Caja</a>
       <a href="../inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
-
+      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;"><span class="ico">⏳</span> Coming Soon</a>
     </nav>
   </aside>
 
   <section class="main">
 
-    <div class="print-header">
-      <div class="title">CEVIMEP — Reporte Mensual de Caja</div>
-      <div class="sub"><?php echo h($branchName); ?> | Mes: <?php echo h($month); ?> (<?php echo h($start); ?> a <?php echo h($end); ?>)</div>
-      <div class="meta">Impreso: <?php echo h($printedAt); ?></div>
-    </div>
-
     <div class="card">
-      <div class="row no-print">
+      <div class="row">
         <div>
           <h2 style="margin:0; color:var(--primary-2);">Reporte mensual</h2>
           <div class="muted">Totales del mes por caja y por método.</div>
           <div class="muted" style="margin-top:4px;">Rango: <?php echo h($start); ?> a <?php echo h($end); ?></div>
         </div>
 
-        <div class="row" style="justify-content:flex-end;">
+        <div class="row no-print" style="justify-content:flex-end;">
           <form method="get" class="row" style="margin:0;">
             <input type="month" name="month" value="<?php echo h($month); ?>">
             <button class="btn" type="submit">Ver</button>
           </form>
 
           <button class="btn" type="button" onclick="window.print()">Imprimir</button>
-
           <a class="btn" href="index.php">Volver</a>
         </div>
       </div>

@@ -78,7 +78,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $invoice_date = $_POST["invoice_date"] ?? $today;
     $payment_method = strtoupper(trim($_POST["payment_method"] ?? "EFECTIVO"));
     $cash_received = isset($_POST["cash_received"]) && $_POST["cash_received"] !== "" ? (float)$_POST["cash_received"] : null;
-    $discount_amount = isset($_POST["discount_amount"]) && $_POST["discount_amount"] !== "" ? (float)$_POST["discount_amount"] : 0.0;
+    // ✅ Cobertura (seguro): monto que cubre el seguro
+    $coverage_amount = isset($_POST["coverage_amount"]) && $_POST["coverage_amount"] !== "" ? (float)$_POST["coverage_amount"] : 0.0;
     $representative = trim((string)($_POST["representative"] ?? ""));
 
     $item_ids = $_POST["item_id"] ?? [];
@@ -147,12 +148,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $card_fee_amount = 0.00;
         $subtotal_with_fee = round($raw_subtotal, 2);
 
-        // ✅ Descuento (monto) se resta del subtotal
-        if ($discount_amount < 0) $discount_amount = 0;
-        if ($discount_amount > $subtotal_with_fee) $discount_amount = $subtotal_with_fee;
+        // ✅ Cobertura (monto) se resta del subtotal
+        if ($coverage_amount < 0) $coverage_amount = 0;
+        if ($coverage_amount > $subtotal_with_fee) $coverage_amount = $subtotal_with_fee;
 
         $subtotal = round($subtotal_with_fee, 2);
-        $total    = round($subtotal_with_fee - $discount_amount, 2); // 👈 TOTAL final
+        $total    = round($subtotal_with_fee - $coverage_amount, 2); // 👈 TOTAL a pagar (después de cobertura)
 
         $change_due = null;
         if ($payment_method === "EFECTIVO") {
@@ -176,9 +177,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           $subtotal, $total, $cash_received, $change_due, $created_by
         ];
 
+        // ✅ Guardamos la cobertura en discount_amount si existe (sin tocar base de datos)
         if (columnExists($conn, "invoices", "discount_amount")) {
           $cols[] = "discount_amount";
-          $vals[] = $discount_amount;
+          $vals[] = $coverage_amount;
         }
 
         if (columnExists($conn, "invoices", "card_fee_amount")) {
@@ -240,7 +242,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
           $note = "VENTA | FACTURA={$invoice_id} | PACIENTE={$patient_id}";
           if ($isCard) $note .= " | TARJETA";
-          if ($discount_amount > 0) $note .= " | DESCUENTO=" . number_format($discount_amount, 2);
+          if ($coverage_amount > 0) $note .= " | COBERTURA=" . number_format($coverage_amount, 2);
           $stMov->execute([(int)$iid, $branch_id, (int)$q, $note, $created_by]);
         }
 // ================================
@@ -251,9 +253,21 @@ caja_registrar_ingreso_factura(
   (int)$branch_id,
   (int)$created_by,
   (int)$invoice_id,
-  (float)$total,          // TOTAL FINAL
+  (float)$total,          // TOTAL A PAGAR
   (string)$payment_method // EFECTIVO | TARJETA | TRANSFERENCIA
 );
+
+// ✅ Si hay cobertura, registrarla también en caja como ingreso separado
+if ($coverage_amount > 0) {
+  caja_registrar_ingreso_factura(
+    $conn,
+    (int)$branch_id,
+    (int)$created_by,
+    (int)$invoice_id,
+    (float)$coverage_amount,
+    "COBERTURA"
+  );
+}
 
         $conn->commit();
 
@@ -276,12 +290,22 @@ caja_registrar_ingreso_factura(
   <title>CEVIMEP | Nueva Factura</title>
   <link rel="stylesheet" href="../../assets/css/styles.css">
   <style>
-    .formGrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px}
-    .rowAdd{display:grid;grid-template-columns:240px 1fr 170px auto;gap:12px;align-items:end;margin-top:12px}
-    .field label{display:block;font-weight:900;color:var(--primary-2);font-size:13px;margin:0 0 6px}
-    .input{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:14px;background:#fff;font-weight:700;outline:none;}
-    .input:focus{border-color:rgba(20,184,166,.45);box-shadow:0 0 0 3px rgba(20,184,166,.12)}
-    .qtyRight{text-align:right}
+    body{overflow:hidden;}
+    .app{display:flex; min-height:calc(100vh - 70px - 60px);}
+    .main{flex:1; padding:22px; overflow:auto;}
+    .card{background:#fff;border:1px solid #e6eef7;border-radius:22px;padding:18px;box-shadow:0 10px 30px rgba(2,6,23,.08);}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+    @media(max-width:980px){.grid2{grid-template-columns:1fr;}}
+    .input, select{width:100%;padding:10px 12px;border:1px solid #e6eef7;border-radius:14px;outline:none;}
+    label{font-weight:900;color:#0b3b9a;display:block;margin:0 0 6px;}
+    .btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:14px;border:1px solid #dbeafe;background:#e0f2fe;color:#052a7a;font-weight:900;text-decoration:none;cursor:pointer;}
+    .btn.secondary{background:#fff;border:1px solid #dbeafe;}
+    .muted{color:#6b7280;font-weight:700;}
+    .row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
+    .table{width:100%;border-collapse:collapse;border:1px solid #e6eef7;border-radius:16px;overflow:hidden;}
+    .table th,.table td{padding:10px;border-bottom:1px solid #eef2f7;font-size:13px;}
+    .table thead th{background:#f7fbff;color:#0b3b9a;font-weight:900;}
+    .qtyRight{text-align:right;}
   </style>
 </head>
 <body>
@@ -300,58 +324,56 @@ caja_registrar_ingreso_factura(
     <nav class="menu">
       <a href="../dashboard.php"><span class="ico">🏠</span> Panel</a>
       <a href="../patients/index.php"><span class="ico">🧑‍🤝‍🧑</span> Pacientes</a>
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;"><span class="ico">🗓️</span> Citas</a>
-      <a class="active" href="index.php"><span class="ico">🧾</span> Facturación</a>
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;"><span class="ico">💳</span> Caja</a>
+      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;"><span class="ico">📅</span> Citas</a>
+      <a class="active" href="../facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
+      <a href="../caja/index.php"><span class="ico">💳</span> Caja</a>
       <a href="../inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="../estadistica/reporte_diario.php"><span class="ico">📊</span> Estadística</a>
+      <a href="/private/estadistica/reporte_diario.php"><span class="ico">📊</span> Estadística</a>
     </nav>
   </aside>
 
   <section class="main">
-    <?php if ($flash_error): ?>
-      <div class="card" style="border-color:rgba(239,68,68,.35); background:rgba(239,68,68,.08);">
-        <p style="margin:0;font-weight:900;color:#b91c1c;"><?= htmlspecialchars($flash_error) ?></p>
-      </div>
-      <div style="height:12px;"></div>
-    <?php endif; ?>
-
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+      <div class="row">
         <div>
-          <h2 style="margin:0 0 6px;">Nueva factura</h2>
-          <p class="muted" style="margin:0;">Paciente: <strong><?= htmlspecialchars($patient["full_name"]) ?></strong></p>
+          <h2 style="margin:0; color:var(--primary-2);">Nueva factura</h2>
+          <div class="muted">Paciente: <b><?= htmlspecialchars($patient["full_name"]) ?></b></div>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <a class="btn" href="paciente.php?patient_id=<?= (int)$patient_id ?>" style="text-decoration:none;">Volver</a>
-        </div>
+        <a class="btn secondary" href="index.php">Volver</a>
       </div>
 
-      <form method="POST">
-        <input type="hidden" name="patient_id" value="<?= (int)$patient_id ?>">
+      <?php if($flash_error): ?>
+        <div style="margin-top:12px;padding:12px 14px;border-radius:14px;background:#fff1f2;border:1px solid #fecdd3;color:#991b1b;font-weight:900;">
+          <?= htmlspecialchars($flash_error) ?>
+        </div>
+      <?php endif; ?>
 
-        <div class="formGrid">
-          <div class="field">
+      <form method="post" id="frmInvoice" style="margin-top:14px;">
+        <input type="hidden" name="patient_id" value="<?= (int)$patient_id ?>">
+        <input type="hidden" name="grand_total" id="grandTotalInput" value="0">
+
+        <div class="grid2">
+          <div>
             <label>Área desde donde sale la venta (sucursal)</label>
-            <input class="input" type="text" value="<?= htmlspecialchars($branch_name) ?>" readonly>
+            <input class="input" type="text" value="<?= htmlspecialchars($branch_name) ?>" disabled>
           </div>
 
-          <div class="field">
+          <div>
             <label>Fecha</label>
             <input class="input" type="date" name="invoice_date" value="<?= htmlspecialchars($today) ?>">
           </div>
 
-          <div class="field">
+          <div>
             <label>Nombre del paciente</label>
-            <input class="input" type="text" value="<?= htmlspecialchars($patient["full_name"]) ?>" readonly>
+            <input class="input" type="text" value="<?= htmlspecialchars($patient["full_name"]) ?>" disabled>
           </div>
 
-          <div class="field">
+          <div>
             <label>Representante</label>
-            <input class="input" type="text" name="representative" placeholder="Nombre de quien realizó la factura" value="<?= htmlspecialchars($user["name"] ?? "") ?>">
+            <input class="input" type="text" name="representative" placeholder="Nombre de quien realizó la factura">
           </div>
 
-          <div class="field">
+          <div>
             <label>Método de pago</label>
             <select class="input" name="payment_method" id="payMethod">
               <option value="EFECTIVO">Efectivo</option>
@@ -360,58 +382,60 @@ caja_registrar_ingreso_factura(
             </select>
           </div>
 
-          <div class="field" id="cashBox">
+          <div id="cashBox">
             <label>Efectivo recibido</label>
-            <input class="input" type="number" step="0.01" name="cash_received" id="cashReceived" placeholder="Ej: 1000">
+            <input class="input" type="number" step="0.01" min="0" name="cash_received" id="cashReceived" placeholder="Ej: 1000">
           </div>
 
-          <div class="field">
+          <div>
             <label>Devuelta</label>
-            <input class="input" type="text" id="changeDue" value="0.00" readonly>
+            <input class="input" type="text" id="changeDue" value="0.00" disabled>
           </div>
 
-          <div class="field">
-            <label>Descuento</label>
-            <input class="input" type="number" step="0.01" min="0" name="discount_amount" id="discountAmount" value="0">
+          <div>
+            <label>Cobertura</label>
+            <input class="input" type="number" step="0.01" min="0" name="coverage_amount" id="coverageAmount" value="0">
           </div>
 
-          <div class="field">
+          <div>
             <label>Total</label>
-            <input class="input" type="text" id="grandTotalInput" value="0.00" readonly>
+            <input class="input" type="text" id="totalBox" value="0.00" disabled>
           </div>
         </div>
 
-        <hr style="margin:14px 0;opacity:.25;">
+        <hr style="margin:16px 0;border:none;border-top:1px solid #eef2f7;">
 
-        <div class="rowAdd">
-          <div class="field">
+        <div class="grid2" style="grid-template-columns:200px 1fr 140px 140px;">
+          <div>
             <label>Categoría</label>
             <select class="input" id="selCat">
               <option value="0">-- Todas --</option>
-              <?php foreach ($categories as $c): ?>
+              <?php foreach($categories as $c): ?>
                 <option value="<?= (int)$c["id"] ?>"><?= htmlspecialchars($c["name"]) ?></option>
               <?php endforeach; ?>
             </select>
           </div>
 
-          <div class="field">
+          <div>
             <label>Producto</label>
             <select class="input" id="selItem">
-              <option value="0" data-cat-id="0" data-price="0">-- Seleccionar --</option>
-              <?php foreach ($products as $p): ?>
-                <option value="<?= (int)$p["id"] ?>" data-cat-id="<?= (int)$p["category_id"] ?>" data-price="<?= htmlspecialchars($p["sale_price"]) ?>">
+              <option value="0">-- Seleccionar --</option>
+              <?php foreach($products as $p): ?>
+                <option value="<?= (int)$p["id"] ?>" data-price="<?= htmlspecialchars($p["sale_price"]) ?>" data-cat-id="<?= (int)$p["category_id"] ?>">
                   <?= htmlspecialchars($p["name"]) ?>
                 </option>
               <?php endforeach; ?>
             </select>
           </div>
 
-          <div class="field">
+          <div>
             <label>Cantidad</label>
-            <input class="input" type="number" id="qty" min="1" value="1">
+            <input class="input" id="qty" type="number" min="1" value="1">
           </div>
 
-          <button type="button" class="btn" id="btnAdd">Añadir</button>
+          <div style="display:flex;align-items:flex-end;">
+            <button class="btn" type="button" id="btnAdd">Añadir</button>
+          </div>
         </div>
 
         <table class="table" style="margin-top:12px;">
@@ -437,7 +461,7 @@ caja_registrar_ingreso_factura(
             <div style="font-weight:900;font-size:18px;" id="subTotal">0.00</div>
           </div>
           <div style="text-align:right;">
-            <div class="muted">Descuento</div>
+            <div class="muted">Cobertura</div>
             <div style="font-weight:900;font-size:18px;" id="discTotal">0.00</div>
           </div>
           <div style="text-align:right;">
@@ -472,12 +496,15 @@ caja_registrar_ingreso_factura(
   const cashReceived = document.getElementById('cashReceived');
   const changeDue = document.getElementById('changeDue');
 
-  const discountAmount = document.getElementById('discountAmount');
+  const coverageAmount = document.getElementById('coverageAmount');
 
   const subTotalEl = document.getElementById('subTotal');
   const discTotalEl = document.getElementById('discTotal');
   const grandTotalEl = document.getElementById('grandTotal');
   const grandTotalInput = document.getElementById('grandTotalInput');
+
+  // mantener sincronizado el campo "Total" de arriba
+  const totalBox = document.getElementById('totalBox');
 
   function filterProducts(){
     const catId = parseInt(selCat.value||"0",10);
@@ -508,7 +535,7 @@ caja_registrar_ingreso_factura(
     // ✅ Sin recargo por tarjeta
     const subtotalWithFee = Math.round(rawSubtotal * 100)/100;
 
-    let disc = parseFloat(discountAmount.value||"0");
+    let disc = parseFloat(coverageAmount.value||"0");
     if (isNaN(disc) || disc < 0) disc = 0;
     if (disc > subtotalWithFee) disc = subtotalWithFee;
 
@@ -518,6 +545,7 @@ caja_registrar_ingreso_factura(
     discTotalEl.textContent = money(disc);
     grandTotalEl.textContent = money(total);
     grandTotalInput.value = money(total);
+    totalBox.value = money(total);
 
     if (payMethod.value === "EFECTIVO") {
       const rec = parseFloat(cashReceived.value||"0");
@@ -534,7 +562,7 @@ caja_registrar_ingreso_factura(
     recalcTotals();
   });
   cashReceived.addEventListener('input', recalcTotals);
-  discountAmount.addEventListener('input', recalcTotals);
+  coverageAmount.addEventListener('input', recalcTotals);
 
   function addRow(id, name, q, price){
     ensureNoEmpty();
@@ -557,80 +585,60 @@ caja_registrar_ingreso_factura(
       return;
     }
 
+    const lineTotal = Math.round((price * q) * 100)/100;
+
     const tr = document.createElement('tr');
     tr.setAttribute('data-id', id);
     tr.setAttribute('data-price', price);
-    tr.setAttribute('data-line-total', Math.round(price*q*100)/100);
+    tr.setAttribute('data-line-total', lineTotal);
 
-    const tdN = document.createElement('td');
-    tdN.textContent = name;
+    tr.innerHTML = `
+      <td>
+        ${name}
+        <input type="hidden" name="item_id[]" value="${id}">
+      </td>
+      <td class="qtyRight">
+        <span class="jsQty">${q}</span>
+        <input type="hidden" name="qty[]" value="${q}">
+      </td>
+      <td class="qtyRight">RD$ ${money(price)}</td>
+      <td class="qtyRight">RD$ <span class="jsTotal">${money(lineTotal)}</span></td>
+      <td>
+        <button class="btn secondary jsDel" type="button">Quitar</button>
+      </td>
+    `;
 
-    const hidId = document.createElement('input');
-    hidId.type="hidden"; hidId.name="item_id[]"; hidId.value=id;
+    tbody.appendChild(tr);
 
-    const hidQty = document.createElement('input');
-    hidQty.type="hidden"; hidQty.name="qty[]"; hidQty.value=q;
-
-    tdN.appendChild(hidId);
-    tdN.appendChild(hidQty);
-
-    const tdQ = document.createElement('td');
-    tdQ.className = "qtyRight jsQty";
-    tdQ.style.fontWeight="900";
-    tdQ.textContent = q;
-
-    const tdP = document.createElement('td');
-    tdP.className = "qtyRight jsPrice";
-    tdP.style.fontWeight="900";
-    tdP.textContent = money(price);
-
-    const tdT = document.createElement('td');
-    tdT.className = "qtyRight jsTotal";
-    tdT.style.fontWeight="900";
-    tdT.textContent = money(price*q);
-
-    const tdA = document.createElement('td');
-    const del = document.createElement('button');
-    del.type="button";
-    del.className="btn";
-    del.style.padding="8px 10px";
-    del.textContent="Eliminar";
-    del.onclick = () => {
+    tr.querySelector('.jsDel').addEventListener('click', ()=>{
       tr.remove();
       if (!tbody.querySelector('tr[data-id]')) {
         const er = document.createElement('tr');
-        er.id="emptyRow";
-        er.innerHTML = '<td colspan="5" class="muted">No hay productos agregados.</td>';
+        er.id = "emptyRow";
+        er.innerHTML = `<td colspan="5" class="muted">No hay productos agregados.</td>`;
         tbody.appendChild(er);
       }
       recalcTotals();
-    };
-    tdA.appendChild(del);
+    });
 
-    tr.appendChild(tdN);
-    tr.appendChild(tdQ);
-    tr.appendChild(tdP);
-    tr.appendChild(tdT);
-    tr.appendChild(tdA);
-
-    tbody.appendChild(tr);
     recalcTotals();
   }
 
   btn.addEventListener('click', ()=>{
     const id = parseInt(selItem.value||"0",10);
-    const q  = parseInt(qty.value||"0",10);
-    const opt = selItem.options[selItem.selectedIndex];
-    const name = opt ? opt.text : "";
-    const price = parseFloat(opt ? (opt.getAttribute('data-price')||"0") : "0");
+    if (!id) return;
 
-    if (!id) { alert("Selecciona un producto"); return; }
-    if (!q || q <= 0) { alert("Cantidad inválida"); return; }
+    const opt = selItem.options[selItem.selectedIndex];
+    const name = opt.textContent.trim();
+    const price = parseFloat(opt.getAttribute('data-price')||"0");
+    const q = parseInt(qty.value||"1",10);
+
+    if (!q || q < 1) return;
 
     addRow(id, name, q, price);
   });
 
-  cashBox.style.display = "block";
+  // init
   recalcTotals();
 })();
 </script>

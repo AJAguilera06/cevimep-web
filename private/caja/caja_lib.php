@@ -78,7 +78,8 @@ function caja_get_or_open_current_session(PDO $pdo, int $branchId, int $userId):
 
 function caja_normalize_metodo_pago(string $mp): string {
   $mp = strtolower(trim($mp));
-  return in_array($mp, ["efectivo","tarjeta","transferencia"], true) ? $mp : "efectivo";
+  // ✅ Incluye COBERTURA (seguro) como método válido
+  return in_array($mp, ["efectivo","tarjeta","transferencia","cobertura"], true) ? $mp : "efectivo";
 }
 
 /**

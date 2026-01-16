@@ -1,38 +1,19 @@
 <?php
 session_start();
 require_once __DIR__ . "/../../config/db.php";
-require_once __DIR__ . "/caja_lib.php";
-
 if (!isset($_SESSION["user"])) { header("Location: ../../public/login.php"); exit; }
 
 $user = $_SESSION["user"];
 $year = date("Y");
-
 $isAdmin  = (($user["role"] ?? "") === "admin");
 $branchId = (int)($user["branch_id"] ?? 0);
-$userId   = (int)($user["id"] ?? 0);
-
 if (!$isAdmin && $branchId <= 0) { header("Location: ../../public/logout.php"); exit; }
 
 date_default_timezone_set("America/Santo_Domingo");
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function fmt($n){ return number_format((float)$n, 2, ".", ","); }
 
-// Auto cerrar vencidas (para que reportes reflejen cierres sin botones)
-caja_auto_close_expired($pdo, $branchId, $userId);
-
 $day = $_GET["day"] ?? date("Y-m-d");
-
-// nombre sucursal
-$branchName = "Sucursal #".$branchId;
-try {
-  $stB = $pdo->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
-  $stB->execute([$branchId]);
-  $bn = $stB->fetchColumn();
-  if ($bn) $branchName = (string)$bn;
-} catch(Throwable $e){}
-
-$printedAt = date("Y-m-d h:i A");
 
 $st = $pdo->prepare("
   SELECT s.id, s.caja_num, s.opened_at, s.closed_at
@@ -60,6 +41,7 @@ function totalsForSession(PDO $pdo, int $sid){
   return [$r,$ing,$net];
 }
 
+// Totales del día (sumando todas las cajas)
 $tot = ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0,"ingresos"=>0,"neto"=>0];
 $byCaja = [];
 
@@ -89,7 +71,7 @@ foreach($sessions as $s){
     .main{flex:1; min-width:0; overflow:auto; padding:22px;}
     .menu a.active{background:#fff4e6;color:#b45309;border:1px solid #fed7aa;}
     .card{background:#fff;border:1px solid #e6eef7;border-radius:22px;padding:18px;box-shadow:0 10px 30px rgba(2,6,23,.08);}
-    .muted{color:#6b7280; font-weight:700;}
+    .muted{color:#6b7280; font-weight:600;}
     .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between;}
     .btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:14px;border:1px solid #dbeafe;background:#fff;color:#052a7a;font-weight:900;text-decoration:none;cursor:pointer;}
     table{width:100%; border-collapse:collapse; margin-top:10px; border:1px solid #e6eef7; border-radius:16px; overflow:hidden;}
@@ -99,27 +81,15 @@ foreach($sessions as $s){
     @media(max-width:900px){ .grid{grid-template-columns:1fr;} }
     input[type="date"]{padding:10px 12px;border-radius:14px;border:1px solid #e6eef7;outline:none;}
 
-    .print-header{display:none;}
-    .print-header .title{font-weight:1000; font-size:18px; color:#052a7a;}
-    .print-header .sub{color:#334155; font-weight:800; margin-top:4px;}
-    .print-header .meta{color:#64748b; font-weight:800; margin-top:2px; font-size:12px;}
-
-    /* ✅ IMPRESIÓN: 1 HOJA */
+    /* ✅ IMPRESIÓN */
     @media print{
-      @page { size: A4 portrait; margin: 7mm; }
       body{overflow:visible !important;}
       .navbar, .sidebar, .footer, .no-print{display:none !important;}
       .app{display:block !important;}
       .main{padding:0 !important; overflow:visible !important;}
-      .print-header{display:block !important; margin:0 0 8px 0;}
-
-      .card{box-shadow:none !important; border:1px solid #e5e7eb !important; border-radius:12px !important; padding:10px !important;}
-      table{margin-top:6px !important;}
-      th,td{font-size:10px !important; padding:6px !important;}
-      .muted{font-size:10px !important;}
-
-      .grid{grid-template-columns:1fr 1fr !important; gap:8px !important; margin-top:8px !important;}
-      .avoid-break{page-break-inside:avoid !important;}
+      .card{box-shadow:none !important; border:1px solid #e5e7eb !important; border-radius:12px !important;}
+      table{border:1px solid #e5e7eb !important;}
+      th,td{font-size:12px !important;}
     }
   </style>
 </head>
@@ -143,27 +113,20 @@ foreach($sessions as $s){
       <a href="../facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
       <a class="active" href="index.php"><span class="ico">💳</span> Caja</a>
       <a href="../inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
-
+      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;"><span class="ico">⏳</span> Coming Soon</a>
     </nav>
   </aside>
 
   <section class="main">
 
-    <div class="print-header">
-      <div class="title">CEVIMEP — Reporte Diario de Caja</div>
-      <div class="sub"><?php echo h($branchName); ?> | Día: <?php echo h($day); ?></div>
-      <div class="meta">Impreso: <?php echo h($printedAt); ?></div>
-    </div>
-
-    <div class="card avoid-break">
-      <div class="row no-print">
+    <div class="card">
+      <div class="row">
         <div>
           <h2 style="margin:0; color:var(--primary-2);">Reporte diario</h2>
           <div class="muted">Detalle por caja y por método de pago.</div>
         </div>
 
-        <div class="row" style="justify-content:flex-end;">
+        <div class="row no-print" style="justify-content:flex-end;">
           <form method="get" class="row" style="margin:0;">
             <input type="date" name="day" value="<?php echo h($day); ?>">
             <button class="btn" type="submit">Ver</button>
@@ -192,11 +155,15 @@ foreach($sessions as $s){
     <div class="grid">
       <?php foreach([1,2] as $c): ?>
         <?php $data = $byCaja[$c] ?? null; ?>
-        <div class="card avoid-break">
+        <div class="card">
           <h3 style="margin:0; color:#052a7a;">Caja <?php echo $c; ?></h3>
           <?php if(!$data): ?>
-            <div class="muted" style="margin-top:6px;">No hay sesión registrada.</div>
+            <div class="muted" style="margin-top:8px;">No hay sesión registrada para esta caja en este día.</div>
           <?php else: ?>
+            <div class="muted" style="margin-top:6px;">
+              Abierta: <?php echo h($data["session"]["opened_at"]); ?> |
+              Cerrada: <?php echo h($data["session"]["closed_at"] ?: "—"); ?>
+            </div>
             <table>
               <thead><tr><th>Concepto</th><th>Monto</th></tr></thead>
               <tbody>
