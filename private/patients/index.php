@@ -212,12 +212,9 @@ $year = date('Y');
     <nav class="menu">
       <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
       <a class="active" href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
-      <a href="javascript:void(0)" 
-   class="menu-item disabled"
-   style="pointer-events: none; opacity: 0.5; cursor: not-allowed;">
-    <i class="icon-calendar"></i>
-    <span>Citas</span> 
-  </a>
+      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;">
+  <span class="ico">🗓️</span> Citas
+</a>
       <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
       <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
       <a href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>

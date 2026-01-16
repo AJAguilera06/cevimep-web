@@ -143,10 +143,7 @@ foreach($sessions as $s){
       <a href="../facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
       <a class="active" href="index.php"><span class="ico">💳</span> Caja</a>
       <a href="../inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="/private/estadistica/index.php" class="menu-item">
-    <i class="icon-bar-chart"></i>
-    <span>Estadísticas</span>
-</a>
+      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
 
     </nav>
   </aside>

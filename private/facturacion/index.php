@@ -65,20 +65,20 @@ if ($branch_id > 0) {
   <aside class="sidebar">
     <div class="title">Menú</div>
     <nav class="menu">
-      <a href="../dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a href="../patients/index.php"><span class="ico">🧑‍🤝‍🧑</span> Pacientes</a>
+      <a class="active" href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
+      <a href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
 
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;">
-        <span class="ico">🗓️</span> Citas
-      </a>
+      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;">
+  <span class="ico">🗓️</span> Citas
+</a>
 
-      <a class="active" href="index.php"><span class="ico">🧾</span> Facturación</a>
+      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
 
-      <a href="../caja/index.php"><span class="ico">💳</span> Caja</a>
+      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
 
-      <a href="../inventario/index.php"><span class="ico">📦</span> Inventario</a>
+      <a href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
 
-      <a href="../estadistica/index.php"><span class="ico">⏳</span> Estadística</a>
+      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
     </nav>
   </aside>
 
