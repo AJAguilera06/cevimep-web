@@ -125,7 +125,11 @@ foreach([1,2] as $c){
       <a href="../facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
       <a class="active" href="index.php"><span class="ico">💳</span> Caja</a>
       <a href="../inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;"><span class="ico">⏳</span> Coming Soon</a>
+      <a href="/private/estadistica/index.php" class="menu-item">
+    <i class="icon-bar-chart"></i>
+    <span>Estadísticas</span>
+</a>
+
     </nav>
   </aside>
 
