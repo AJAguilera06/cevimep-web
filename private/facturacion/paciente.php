@@ -95,8 +95,8 @@ if ($branch_id > 0) {
         <span class="ico">📦</span> Inventario
       </a>
 
-      <a href="../estadistica/index.php">
-        <span class="ico">⏳</span> Estadística
+      <a href="../estadistica/reporte_diario.php">
+        <span class="ico">📊</span> Estadística
       </a>
     </nav>
   </aside>

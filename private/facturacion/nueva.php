@@ -10,6 +10,7 @@ $conn = $pdo;
 $user = $_SESSION["user"];
 $year = date("Y");
 $today = date("Y-m-d");
+$now_dt = date("Y-m-d H:i:s");
 $branch_id = (int)($user["branch_id"] ?? 0);
 $created_by = (int)($user["id"] ?? 0);
 
@@ -78,6 +79,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $payment_method = strtoupper(trim($_POST["payment_method"] ?? "EFECTIVO"));
     $cash_received = isset($_POST["cash_received"]) && $_POST["cash_received"] !== "" ? (float)$_POST["cash_received"] : null;
     $discount_amount = isset($_POST["discount_amount"]) && $_POST["discount_amount"] !== "" ? (float)$_POST["discount_amount"] : 0.0;
+    $representative = trim((string)($_POST["representative"] ?? ""));
 
     $item_ids = $_POST["item_id"] ?? [];
     $qtys     = $_POST["qty"] ?? [];
@@ -101,7 +103,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       }
 
       $isCard = ($payment_method === "TARJETA");
-      $card_fee_pct = $isCard ? 5.00 : 0.00;
+      // ✅ Ya NO se agrega 5% por pago con tarjeta
+      $card_fee_pct = 0.00;
 
       try {
         $conn->beginTransaction();
@@ -140,15 +143,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           $raw_subtotal += ($price * $q);
         }
 
-        // ✅ Aplica 5% DIRECTO AL SUBTOTAL si es TARJETA
-        $card_fee_amount = $isCard ? round($raw_subtotal * 0.05, 2) : 0.00;
-        $subtotal_with_fee = round($raw_subtotal + $card_fee_amount, 2);
+        // ✅ Sin recargo por tarjeta
+        $card_fee_amount = 0.00;
+        $subtotal_with_fee = round($raw_subtotal, 2);
 
-        // ✅ Descuento (monto) se resta del subtotal ya con 5% incluido
+        // ✅ Descuento (monto) se resta del subtotal
         if ($discount_amount < 0) $discount_amount = 0;
         if ($discount_amount > $subtotal_with_fee) $discount_amount = $subtotal_with_fee;
 
-        $subtotal = round($subtotal_with_fee, 2);         // 👈 este SUBTOTAL ya incluye el 5% si tarjeta
+        $subtotal = round($subtotal_with_fee, 2);
         $total    = round($subtotal_with_fee - $discount_amount, 2); // 👈 TOTAL final
 
         $change_due = null;
@@ -163,33 +166,55 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           $change_due = null;
         }
 
-        $hasDiscount = columnExists($conn, "invoices", "discount_amount");
+        // ✅ Inserción flexible (sin tocar DB si no existe la columna)
+        $cols = [
+          "branch_id", "patient_id", "invoice_date", "payment_method",
+          "subtotal", "total", "cash_received", "change_due", "created_by"
+        ];
+        $vals = [
+          $branch_id, $patient_id, $invoice_date, $payment_method,
+          $subtotal, $total, $cash_received, $change_due, $created_by
+        ];
 
-        if ($hasDiscount) {
-          $stInv = $conn->prepare("
-            INSERT INTO invoices
-              (branch_id, patient_id, invoice_date, payment_method, subtotal, total, cash_received, change_due, created_by, discount_amount, card_fee_amount, card_fee_pct)
-            VALUES
-              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ");
-          $stInv->execute([
-            $branch_id, $patient_id, $invoice_date, $payment_method,
-            $subtotal, $total, $cash_received, $change_due, $created_by,
-            $discount_amount, $card_fee_amount, $card_fee_pct
-          ]);
-        } else {
-          $stInv = $conn->prepare("
-            INSERT INTO invoices
-              (branch_id, patient_id, invoice_date, payment_method, card_fee_pct, subtotal, card_fee_amount, total, cash_received, change_due, created_by)
-            VALUES
-              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ");
-          $stInv->execute([
-            $branch_id, $patient_id, $invoice_date, $payment_method,
-            $card_fee_pct, $subtotal, $card_fee_amount, $total,
-            $cash_received, $change_due, $created_by
-          ]);
+        if (columnExists($conn, "invoices", "discount_amount")) {
+          $cols[] = "discount_amount";
+          $vals[] = $discount_amount;
         }
+
+        if (columnExists($conn, "invoices", "card_fee_amount")) {
+          $cols[] = "card_fee_amount";
+          $vals[] = 0.00;
+        }
+
+        if (columnExists($conn, "invoices", "card_fee_pct")) {
+          $cols[] = "card_fee_pct";
+          $vals[] = 0.00;
+        }
+
+        // Representante (si existe la columna)
+        if ($representative !== "" && columnExists($conn, "invoices", "representative_name")) {
+          $cols[] = "representative_name";
+          $vals[] = $representative;
+        }
+        if ($representative !== "" && columnExists($conn, "invoices", "representative")) {
+          $cols[] = "representative";
+          $vals[] = $representative;
+        }
+
+        // Fecha+hora (si existe la columna)
+        if (columnExists($conn, "invoices", "created_at")) {
+          $cols[] = "created_at";
+          $vals[] = $now_dt;
+        }
+        if (columnExists($conn, "invoices", "created_on")) {
+          $cols[] = "created_on";
+          $vals[] = $now_dt;
+        }
+
+        $ph = implode(",", array_fill(0, count($cols), "?"));
+        $sql = "INSERT INTO invoices (" . implode(",", $cols) . ") VALUES ($ph)";
+        $stInv = $conn->prepare($sql);
+        $stInv->execute($vals);
 
         $invoice_id = (int)$conn->lastInsertId();
 
@@ -214,7 +239,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           $stU->execute([(int)$q, (int)$iid, $branch_id]);
 
           $note = "VENTA | FACTURA={$invoice_id} | PACIENTE={$patient_id}";
-          if ($isCard) $note .= " | TARJETA(+5%)";
+          if ($isCard) $note .= " | TARJETA";
           if ($discount_amount > 0) $note .= " | DESCUENTO=" . number_format($discount_amount, 2);
           $stMov->execute([(int)$iid, $branch_id, (int)$q, $note, $created_by]);
         }
@@ -226,13 +251,13 @@ caja_registrar_ingreso_factura(
   (int)$branch_id,
   (int)$created_by,
   (int)$invoice_id,
-  (float)$total,          // TOTAL FINAL (ya incluye 5% y descuento)
+  (float)$total,          // TOTAL FINAL
   (string)$payment_method // EFECTIVO | TARJETA | TRANSFERENCIA
 );
 
         $conn->commit();
 
-        header("Location: print.php?id=".$invoice_id."&discount=".urlencode((string)$discount_amount));
+        header("Location: print.php?id=".$invoice_id."&rep=".urlencode($representative));
         exit;
 
       } catch (Exception $e) {
@@ -279,7 +304,7 @@ caja_registrar_ingreso_factura(
       <a class="active" href="index.php"><span class="ico">🧾</span> Facturación</a>
       <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;"><span class="ico">💳</span> Caja</a>
       <a href="../inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;"><span class="ico">⏳</span> Coming Soon</a>
+      <a href="../estadistica/reporte_diario.php"><span class="ico">📊</span> Estadística</a>
     </nav>
   </aside>
 
@@ -319,6 +344,11 @@ caja_registrar_ingreso_factura(
           <div class="field">
             <label>Nombre del paciente</label>
             <input class="input" type="text" value="<?= htmlspecialchars($patient["full_name"]) ?>" readonly>
+          </div>
+
+          <div class="field">
+            <label>Representante</label>
+            <input class="input" type="text" name="representative" placeholder="Nombre de quien realizó la factura" value="<?= htmlspecialchars($user["name"] ?? "") ?>">
           </div>
 
           <div class="field">
@@ -396,7 +426,7 @@ caja_registrar_ingreso_factura(
           </thead>
           <tbody id="tbodyItems">
             <tr id="emptyRow">
-              <td colspan="4" class="muted">No hay productos agregados.</td>
+              <td colspan="5" class="muted">No hay productos agregados.</td>
             </tr>
           </tbody>
         </table>
@@ -475,10 +505,8 @@ caja_registrar_ingreso_factura(
       rawSubtotal += parseFloat(tr.getAttribute('data-line-total')||"0");
     });
 
-    // ✅ si es TARJETA, se suma 5% al SUBTOTAL
-    const isCard = (payMethod.value === "TARJETA");
-    const fee = isCard ? Math.round(rawSubtotal * 0.05 * 100)/100 : 0;
-    const subtotalWithFee = Math.round((rawSubtotal + fee) * 100)/100;
+    // ✅ Sin recargo por tarjeta
+    const subtotalWithFee = Math.round(rawSubtotal * 100)/100;
 
     let disc = parseFloat(discountAmount.value||"0");
     if (isNaN(disc) || disc < 0) disc = 0;
@@ -486,7 +514,7 @@ caja_registrar_ingreso_factura(
 
     const total = Math.round((subtotalWithFee - disc) * 100)/100;
 
-    subTotalEl.textContent = money(subtotalWithFee); // 👈 subtotal ya incluye 5% si tarjeta
+    subTotalEl.textContent = money(subtotalWithFee);
     discTotalEl.textContent = money(disc);
     grandTotalEl.textContent = money(total);
     grandTotalInput.value = money(total);
@@ -523,7 +551,7 @@ caja_registrar_ingreso_factura(
       ex.setAttribute('data-line-total', newLine);
 
       ex.querySelector('.jsQty').textContent = next;
-      ex.querySelector('.jsLine').textContent = money(newLine);
+      ex.querySelector('.jsTotal').textContent = money(newLine);
 
       recalcTotals();
       return;
@@ -550,11 +578,16 @@ caja_registrar_ingreso_factura(
     tdQ.className = "qtyRight jsQty";
     tdQ.style.fontWeight="900";
     tdQ.textContent = q;
-  
-    const tdL = document.createElement('td');
-    tdL.className = "qtyRight jsLine";
-    tdL.style.fontWeight="900";
-    tdL.textContent = money(price*q);
+
+    const tdP = document.createElement('td');
+    tdP.className = "qtyRight jsPrice";
+    tdP.style.fontWeight="900";
+    tdP.textContent = money(price);
+
+    const tdT = document.createElement('td');
+    tdT.className = "qtyRight jsTotal";
+    tdT.style.fontWeight="900";
+    tdT.textContent = money(price*q);
 
     const tdA = document.createElement('td');
     const del = document.createElement('button');
@@ -567,17 +600,18 @@ caja_registrar_ingreso_factura(
       if (!tbody.querySelector('tr[data-id]')) {
         const er = document.createElement('tr');
         er.id="emptyRow";
-        er.innerHTML = '<td colspan="4" class="muted">No hay productos agregados.</td>';
+        er.innerHTML = '<td colspan="5" class="muted">No hay productos agregados.</td>';
         tbody.appendChild(er);
       }
       recalcTotals();
     };
     tdA.appendChild(del);
 
-  tr.appendChild(tdN);
-tr.appendChild(tdQ);
-tr.appendChild(tdL);
-tr.appendChild(tdA);
+    tr.appendChild(tdN);
+    tr.appendChild(tdQ);
+    tr.appendChild(tdP);
+    tr.appendChild(tdT);
+    tr.appendChild(tdA);
 
     tbody.appendChild(tr);
     recalcTotals();

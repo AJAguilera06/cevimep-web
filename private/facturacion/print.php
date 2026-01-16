@@ -11,7 +11,7 @@ $branch_id = (int)($user["branch_id"] ?? 0);
 $id = (int)($_GET["id"] ?? 0);
 if ($id <= 0) { echo "Factura inválida"; exit; }
 
-$discount_qs = isset($_GET["discount"]) ? (float)$_GET["discount"] : 0.0;
+$rep_qs = trim((string)($_GET["rep"] ?? ""));
 
 $st = $conn->prepare("
   SELECT i.*,
@@ -28,7 +28,7 @@ $inv = $st->fetch(PDO::FETCH_ASSOC);
 if (!$inv) { echo "No encontrada"; exit; }
 
 $stL = $conn->prepare("
-  SELECT ii.qty, ii.unit_price, ii.line_total, it.name AS product
+  SELECT ii.qty, it.name AS product
   FROM invoice_items ii
   JOIN inventory_items it ON it.id=ii.item_id
   WHERE ii.invoice_id=?
@@ -37,17 +37,22 @@ $stL = $conn->prepare("
 $stL->execute([$id]);
 $lines = $stL->fetchAll(PDO::FETCH_ASSOC);
 
-/* ✅ Subtotal que se imprime = subtotal guardado (ya incluye 5% si fue tarjeta) */
-$printedSubtotal = (float)$inv["subtotal"];
+// Representante: primero DB, luego querystring
+$representative = "";
+if (isset($inv["representative_name"])) $representative = trim((string)$inv["representative_name"]);
+if ($representative === "" && isset($inv["representative"])) $representative = trim((string)$inv["representative"]);
+if ($representative === "") $representative = $rep_qs;
 
-/* Descuento */
-$discount = 0.0;
-if (isset($inv["discount_amount"])) {
-  $discount = (float)$inv["discount_amount"];
-} elseif ($discount_qs > 0) {
-  $discount = $discount_qs;
-} else {
-  $discount = max(0.0, round($printedSubtotal - (float)$inv["total"], 2));
+// Fecha + hora (si existe created_at/created_on, usamos eso; si no, usamos hora actual)
+$dateToPrint = (string)($inv["invoice_date"] ?? date("Y-m-d"));
+$timeToPrint = date("H:i");
+if (!empty($inv["created_at"])) {
+  $ts = strtotime((string)$inv["created_at"]);
+  if ($ts) $timeToPrint = date("H:i", $ts);
+}
+if (!empty($inv["created_on"])) {
+  $ts = strtotime((string)$inv["created_on"]);
+  if ($ts) $timeToPrint = date("H:i", $ts);
 }
 
 $logoPath = "../../assets/img/CEVIMEP.png";
@@ -84,8 +89,11 @@ $logoPath = "../../assets/img/CEVIMEP.png";
 
     <div class="small">
       <div><span class="h">Factura:</span> #<?= (int)$inv["id"] ?></div>
-      <div><span class="h">Fecha:</span> <?= htmlspecialchars($inv["invoice_date"]) ?></div>
+      <div><span class="h">Fecha:</span> <?= htmlspecialchars($dateToPrint) ?> <?= htmlspecialchars($timeToPrint) ?></div>
       <div><span class="h">Paciente:</span> <?= htmlspecialchars($inv["patient_name"] ?: "-") ?></div>
+      <?php if ($representative !== ""): ?>
+        <div><span class="h">Representante:</span> <?= htmlspecialchars($representative) ?></div>
+      <?php endif; ?>
       <div><span class="h">Pago:</span> <?= htmlspecialchars($inv["payment_method"]) ?></div>
     </div>
 
@@ -99,7 +107,7 @@ $logoPath = "../../assets/img/CEVIMEP.png";
             <?= htmlspecialchars($l["product"]) ?><br>
             <span class="small">Cantidad: <?= (int)$l["qty"] ?></span>
           </td>
-          <td class="r"></td> <!-- vacío para que NO salga 1,500.00 -->
+          <td class="r"></td>
         </tr>
       <?php endforeach; ?>
     </table>
@@ -107,20 +115,11 @@ $logoPath = "../../assets/img/CEVIMEP.png";
     <hr>
 
     <table>
-      <tr><td>Subtotal</td><td class="r"><?= number_format($printedSubtotal,2) ?></td></tr>
-      <?php if ($discount > 0): ?>
-        <tr><td>Descuento</td><td class="r">-<?= number_format($discount,2) ?></td></tr>
-      <?php endif; ?>
-      <tr><td class="tot">TOTAL</td><td class="r tot"><?= number_format((float)$inv["total"],2) ?></td></tr>
-
-      <?php if ($inv["payment_method"] === "EFECTIVO"): ?>
-        <tr><td>Efectivo recibido</td><td class="r"><?= number_format((float)$inv["cash_received"],2) ?></td></tr>
-        <tr><td class="h">Devuelta</td><td class="r h"><?= number_format((float)$inv["change_due"],2) ?></td></tr>
-      <?php endif; ?>
+      <tr><td class="tot">TOTAL A PAGAR</td><td class="r tot"><?= number_format((float)$inv["total"],2) ?></td></tr>
     </table>
 
     <hr>
-    <div class="center small">© 2025 CEVIMEP. Todos los derechos reservados.</div>
+    <div class="center small">© <?= date("Y") ?> CEVIMEP. Todos los derechos reservados.</div>
   </div>
 </body>
 </html>
