@@ -219,6 +219,33 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $stInv->execute($vals);
 
         $invoice_id = (int)$conn->lastInsertId();
+// ===============================
+// COBERTURA – guardar ajuste
+// ===============================
+$cobertura = (float)($_POST['cobertura'] ?? 0);
+
+if ($cobertura > 0) {
+
+    // sesión de caja activa
+    $session_id = caja_get_or_open_current_session(
+        $pdo,
+        (int)$branch_id,
+        (int)$created_by
+    );
+
+    $stmtAdj = $pdo->prepare("
+        INSERT INTO invoice_adjustments
+            (invoice_id, session_id, branch_id, tipo, monto, created_at)
+        VALUES (?, ?, ?, 'cobertura', ?, CURDATE())
+    ");
+
+    $stmtAdj->execute([
+        (int)$invoice_id,
+        (int)$session_id,
+        (int)$branch_id,
+        (float)$cobertura
+    ]);
+}
 
         $stItem = $conn->prepare("
           INSERT INTO invoice_items (invoice_id, item_id, category_id, qty, unit_price, line_total)
@@ -258,15 +285,23 @@ caja_registrar_ingreso_factura(
 );
 
 // ✅ Si hay cobertura, registrarla también en caja como ingreso separado
+// ✅ Guardar cobertura en invoice_adjustments
 if ($coverage_amount > 0) {
-  caja_registrar_ingreso_factura(
-    $conn,
-    (int)$branch_id,
-    (int)$created_by,
+  $stAdj = $conn->prepare("
+    INSERT INTO invoice_adjustments
+      (invoice_id, session_id, branch_id, tipo, monto, created_at)
+    VALUES (?, ?, ?, 'cobertura', ?, CURDATE())
+  ");
+
+  // sesión de caja activa
+  $session_id = caja_get_or_open_current_session($conn, $branch_id, $created_by);
+
+  $stAdj->execute([
     (int)$invoice_id,
-    (float)$coverage_amount,
-    "COBERTURA"
-  );
+    (int)$session_id,
+    (int)$branch_id,
+    (float)$coverage_amount
+  ]);
 }
 
         $conn->commit();

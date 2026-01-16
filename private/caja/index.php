@@ -45,12 +45,14 @@ function getTotals(PDO $pdo, int $sessionId){
       COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='efectivo' THEN amount END),0) AS efectivo,
       COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='tarjeta' THEN amount END),0) AS tarjeta,
       COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='transferencia' THEN amount END),0) AS transferencia,
+      -- Cobertura / Seguro (por si el método de pago se guarda como 'cobertura' o 'seguro')
+      COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago IN ('cobertura','seguro') THEN amount END),0) AS cobertura,
       COALESCE(SUM(CASE WHEN type='desembolso' THEN amount END),0) AS desembolso
     FROM cash_movements
     WHERE session_id=?");
   $st->execute([$sessionId]);
-  $r = $st->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0];
-  $ing = (float)$r["efectivo"]+(float)$r["tarjeta"]+(float)$r["transferencia"];
+  $r = $st->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0];
+  $ing = (float)$r["efectivo"]+(float)$r["tarjeta"]+(float)$r["transferencia"]+(float)$r["cobertura"];
   $net = $ing-(float)$r["desembolso"];
   return [$r,$ing,$net];
 }
@@ -62,8 +64,8 @@ $caja1 = getSession($pdo, $branchId, 1, $today, $s1Start, $s1End);
 $caja2 = getSession($pdo, $branchId, 2, $today, $s2Start, $s2End);
 
 $sum = [
-  1 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
-  2 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
+  1 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
+  2 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
 ];
 
 if ($caja1) { [$r,$ing,$net] = getTotals($pdo, (int)$caja1["id"]); $sum[1]=["r"=>$r,"ing"=>$ing,"net"=>$net]; }
@@ -105,6 +107,9 @@ $currentCajaNum = caja_get_current_caja_num();
     .pill{display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; background:#f3f7ff; border:1px solid #dbeafe; color:#052a7a; font-weight:900; font-size:12px;}
     .actions{display:flex; gap:10px; flex-wrap:wrap;}
     .btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:14px;border:1px solid #dbeafe;background:#fff;color:#052a7a;font-weight:900;text-decoration:none;cursor:pointer;}
+
+    /* Asegura el footer centrado aunque el CSS global no cargue */
+    footer.footer .inner{width:100%; text-align:center;}
   </style>
 </head>
 <body>
@@ -176,6 +181,7 @@ $currentCajaNum = caja_get_current_caja_num();
             <tr><td>Efectivo</td><td>RD$ <?php echo fmtMoney($sum[1]["r"]["efectivo"]); ?></td></tr>
             <tr><td>Tarjeta</td><td>RD$ <?php echo fmtMoney($sum[1]["r"]["tarjeta"]); ?></td></tr>
             <tr><td>Transferencia</td><td>RD$ <?php echo fmtMoney($sum[1]["r"]["transferencia"]); ?></td></tr>
+            <tr><td>Cobertura</td><td>RD$ <?php echo fmtMoney($sum[1]["r"]["cobertura"]); ?></td></tr>
             <tr><td>Desembolsos</td><td>- RD$ <?php echo fmtMoney($sum[1]["r"]["desembolso"]); ?></td></tr>
             <tr><td style="font-weight:900;">Total ingresos</td><td style="font-weight:900;">RD$ <?php echo fmtMoney($sum[1]["ing"]); ?></td></tr>
             <tr><td style="font-weight:900;">Neto</td><td style="font-weight:900;">RD$ <?php echo fmtMoney($sum[1]["net"]); ?></td></tr>
@@ -199,6 +205,7 @@ $currentCajaNum = caja_get_current_caja_num();
             <tr><td>Efectivo</td><td>RD$ <?php echo fmtMoney($sum[2]["r"]["efectivo"]); ?></td></tr>
             <tr><td>Tarjeta</td><td>RD$ <?php echo fmtMoney($sum[2]["r"]["tarjeta"]); ?></td></tr>
             <tr><td>Transferencia</td><td>RD$ <?php echo fmtMoney($sum[2]["r"]["transferencia"]); ?></td></tr>
+            <tr><td>Cobertura</td><td>RD$ <?php echo fmtMoney($sum[2]["r"]["cobertura"]); ?></td></tr>
             <tr><td>Desembolsos</td><td>- RD$ <?php echo fmtMoney($sum[2]["r"]["desembolso"]); ?></td></tr>
             <tr><td style="font-weight:900;">Total ingresos</td><td style="font-weight:900;">RD$ <?php echo fmtMoney($sum[2]["ing"]); ?></td></tr>
             <tr><td style="font-weight:900;">Neto</td><td style="font-weight:900;">RD$ <?php echo fmtMoney($sum[2]["net"]); ?></td></tr>
