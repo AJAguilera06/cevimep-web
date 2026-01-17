@@ -40,107 +40,148 @@ if ($branch_id > 0) {
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CEVIMEP | Facturación</title>
-  <link rel="stylesheet" href="../../assets/css/styles.css">
+
+  <!-- ✅ MISMO CSS QUE DASHBOARD (ruta absoluta) -->
+  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
 
   <style>
-    /* ✅ LAYOUT ESTABLE (MISMO QUE CAJA / INVENTARIO) */
+    /* ✅ Asegura layout estable como los otros módulos */
     html,body{height:100%;}
-    body{margin:0;display:flex;flex-direction:column;min-height:100vh;overflow:hidden !important;}
-    .app{flex:1;display:flex;min-height:0;}
-    .main{flex:1;min-width:0;overflow:auto;padding:22px;}
+    body{margin:0; overflow:hidden !important;}
 
-    .btnSmall{
-      padding:8px 12px;
-      border-radius:999px;
-      font-weight:900;
-      border:1px solid rgba(2,21,44,.12);
-      background:#eef6ff;
-      cursor:pointer;
-      text-decoration:none;
+    /* ✅ Pequeños refinamientos visuales (sin romper tu CSS global) */
+    .page-card{padding:18px;}
+    .header-row{display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; justify-content:space-between;}
+    .subtitle{margin:4px 0 0; font-weight:700; opacity:.8;}
+    .search-wrap{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:14px;}
+    .search-label{font-weight:900; color:#052a7a;}
+    .search-input{
+      width:min(520px, 100%);
+      padding:10px 12px;
+      border-radius:14px;
+      border:1px solid rgba(2,21,44,.14);
+      outline:none;
+      background:#fff;
+    }
+    .search-input:focus{border-color:#93c5fd; box-shadow:0 0 0 4px rgba(59,130,246,.15);}
+
+    .status-pill{
       display:inline-flex;
       align-items:center;
-      justify-content:center
-    }
-    .pill{
-      padding:6px 12px;
+      justify-content:center;
+      padding:8px 14px;
       border-radius:999px;
       font-weight:900;
       font-size:12px;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center
+      text-decoration:none;
+      border:1px solid transparent;
+      min-width:120px;
+      transition:transform .05s ease, box-shadow .15s ease, opacity .15s ease;
     }
-    .pill.ok{background:#e8fff1;color:#067647;border:1px solid #abefc6}
-    .pill.no{background:#fff0f0;color:#b42318;border:1px solid #fecdca}
+    .status-pill:hover{transform:translateY(-1px); box-shadow:0 6px 18px rgba(2,6,23,.10);}
+    .status-ok{background:#e8fff1; color:#067647; border-color:#abefc6;}
+    .status-no{background:#fff0f0; color:#b42318; border-color:#fecdca;}
+
+    .name-link{
+      font-weight:900;
+      color:#052a7a;
+      text-decoration:none;
+    }
+    .name-link:hover{text-decoration:underline;}
+
+    /* alinear columna estado a la derecha como en tu captura */
+    th.state-col, td.state-col{text-align:right;}
+
+    /* hace que la fila sea más “clicable” sin cambiar tu tabla base */
+    tr.data-row:hover{background:rgba(2,21,44,.03);}
   </style>
 </head>
+
 <body>
 
 <header class="navbar">
   <div class="inner">
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
-    <div class="nav-right"><a href="../../public/logout.php">Salir</a></div>
+    <div class="nav-right">
+      <a class="btn-pill" href="/logout.php">Salir</a>
+    </div>
   </div>
 </header>
 
-<main class="app">
+<!-- ✅ MISMA ESTRUCTURA QUE DASHBOARD -->
+<div class="layout">
 
-  <!-- SIDEBAR -->
   <aside class="sidebar">
-    <div class="title">Menú</div>
-    <nav class="menu">
-      <a href="../dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a href="../patients/index.php"><span class="ico">🧑‍🤝‍🧑</span> Pacientes</a>
+    <div class="menu-title">Menú</div>
 
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;">
-        <span class="ico">📅</span> Citas
+    <nav class="menu">
+      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
+      <a href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
+      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;">
+        <span class="ico">🗓️</span> Citas
       </a>
 
-      <!-- ✅ ACTIVO CORRECTO -->
-      <a class="active" href="index.php"><span class="ico">🧾</span> Facturación</a>
-      <a href="../caja/index.php"><span class="ico">💳</span> Caja</a>
-      <a href="../inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="../estadistica/reporte_diario.php"><span class="ico">📊</span> Estadística</a>
+      <!-- ✅ ACTIVO -->
+      <a class="active" href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
+
+      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
+      <a href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
+      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
     </nav>
   </aside>
 
-  <!-- CONTENIDO -->
-  <section class="main">
-    <div class="card">
+  <main class="content">
 
-      <h2 style="margin:0;">Facturación</h2>
-      <p class="muted" style="margin:4px 0 12px;">
-        Sucursal actual: <strong><?= htmlspecialchars($branch_name) ?></strong>
-      </p>
-
-      <div style="max-width:420px;margin-bottom:12px;">
-        <input type="text" id="searchInput" placeholder="Buscar paciente..." class="input">
+    <div class="card page-card">
+      <div class="header-row">
+        <div>
+          <h2 style="margin:0;">Facturación</h2>
+          <div class="subtitle">
+            Sucursal actual: <strong><?= htmlspecialchars($branch_name) ?></strong>
+          </div>
+        </div>
       </div>
+
+      <div class="search-wrap">
+        <div class="search-label">Buscar paciente:</div>
+        <input type="text" id="searchInput" class="search-input" placeholder="Escribe el nombre..." />
+      </div>
+
+      <div style="height:12px;"></div>
 
       <table class="table">
         <thead>
           <tr>
             <th>Nombre</th>
-            <th style="width:200px;">Estado (por sucursal)</th>
+            <th class="state-col" style="width:220px;">Estado (por sucursal)</th>
           </tr>
         </thead>
+
         <tbody id="patientsTable">
           <?php if (empty($patients)): ?>
             <tr><td colspan="2" class="muted">No hay pacientes registrados.</td></tr>
           <?php else: ?>
             <?php foreach ($patients as $p): ?>
-              <tr>
-                <td><?= htmlspecialchars($p["full_name"]) ?></td>
+              <?php $pid = (int)$p["id"]; ?>
+              <?php $hasInv = ((int)$p["invoices_count"] > 0); ?>
+              <tr class="data-row">
                 <td>
-                  <?php if ((int)$p["invoices_count"] > 0): ?>
-                    <a class="pill ok" href="paciente.php?patient_id=<?= (int)$p["id"] ?>">Con factura</a>
-                  <?php else: ?>
-                    <span class="pill no">Sin factura</span>
-                  <?php endif; ?>
+                  <!-- ✅ nombre clicable -->
+                  <a class="name-link" href="paciente.php?patient_id=<?= $pid ?>">
+                    <?= htmlspecialchars($p["full_name"]) ?>
+                  </a>
+                </td>
+
+                <td class="state-col">
+                  <!-- ✅ “Sin factura” ahora FUNCIONA: te lleva a paciente.php -->
+                  <a class="status-pill <?= $hasInv ? "status-ok" : "status-no" ?>"
+                     href="paciente.php?patient_id=<?= $pid ?>">
+                    <?= $hasInv ? "Con factura" : "Sin factura" ?>
+                  </a>
                 </td>
               </tr>
             <?php endforeach; ?>
@@ -149,20 +190,26 @@ if ($branch_id > 0) {
       </table>
 
     </div>
-  </section>
-</main>
+
+  </main>
+</div>
 
 <footer class="footer">
-  <div class="inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
+  <div class="footer-inner">© <?= (int)$year ?> CEVIMEP. Todos los derechos reservados.</div>
 </footer>
 
 <script>
-document.getElementById("searchInput").addEventListener("keyup", function () {
-  const filter = this.value.toLowerCase();
-  document.querySelectorAll("#patientsTable tr").forEach(tr => {
-    tr.style.display = tr.textContent.toLowerCase().includes(filter) ? "" : "none";
+(function(){
+  const input = document.getElementById("searchInput");
+  const rows = () => document.querySelectorAll("#patientsTable tr.data-row");
+
+  input.addEventListener("input", function () {
+    const filter = this.value.toLowerCase().trim();
+    rows().forEach(tr => {
+      tr.style.display = tr.textContent.toLowerCase().includes(filter) ? "" : "none";
+    });
   });
-});
+})();
 </script>
 
 </body>
