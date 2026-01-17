@@ -1,264 +1,176 @@
 <?php
 session_start();
+
+if (!isset($_SESSION["user"])) {
+  header("Location: ../../public/login.php");
+  exit;
+}
+
 require_once __DIR__ . "/../../config/db.php";
 require_once __DIR__ . "/caja_lib.php";
-
-if (!isset($_SESSION["user"])) { header("Location: ../../public/login.php"); exit; }
 
 $user = $_SESSION["user"];
 $year = date("Y");
 
-$isAdmin  = (($user["role"] ?? "") === "admin");
-$branchId = (int)($user["branch_id"] ?? 0);
-$userId   = (int)($user["id"] ?? 0);
-
-if (!$isAdmin && $branchId <= 0) { header("Location: ../../public/logout.php"); exit; }
+$branch_id = (int)($user["branch_id"] ?? 0);
+$user_id   = (int)($user["id"] ?? 0);
 
 date_default_timezone_set("America/Santo_Domingo");
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
-function fmtMoney($n){ return number_format((float)$n, 2, ".", ","); }
-
 $today = date("Y-m-d");
 
-// ✅ BASE URL para que el menú funcione igual que en dashboard.php
-// /private/caja/index.php  =>  /private
-$PRIVATE_BASE = rtrim(dirname(dirname($_SERVER["SCRIPT_NAME"] ?? "/private/caja/index.php")), "/");
-if ($PRIVATE_BASE === "") $PRIVATE_BASE = "/private";
-
-// ✅ URLs ABSOLUTAS (para que no las afecte el <base href>)
-$URL_LOGOUT   = "/public/logout.php";
-$URL_DESEM    = $PRIVATE_BASE . "/caja/desembolso.php";
-$URL_DIARIO   = $PRIVATE_BASE . "/estadistica/reporte_diario.php";
-$URL_MENSUAL  = $PRIVATE_BASE . "/estadistica/reporte_mensual.php";
-
-// ✅ Auto cerrar vencidas y abrir sesión actual (sin botones)
-$activeSessionId = caja_get_or_open_current_session($pdo, $branchId, $userId);
-
-// Nombre sucursal (si existe branches)
-$branchName = "Sucursal #".$branchId;
-try {
-  $stB = $pdo->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
-  $stB->execute([$branchId]);
-  $bn = $stB->fetchColumn();
-  if ($bn) $branchName = (string)$bn;
-} catch (Throwable $e) {}
-
-function getSession(PDO $pdo, int $branchId, int $cajaNum, string $date, string $shiftStart, string $shiftEnd){
-  $st = $pdo->prepare("SELECT * FROM cash_sessions
-                       WHERE branch_id=? AND date_open=? AND caja_num=? AND shift_start=? AND shift_end=?
-                       ORDER BY id DESC LIMIT 1");
-  $st->execute([$branchId, $date, $cajaNum, $shiftStart, $shiftEnd]);
-  return $st->fetch(PDO::FETCH_ASSOC) ?: null;
+function money($n) {
+  return number_format((float)$n, 2, ".", ",");
 }
 
-// ✅ Cobertura real (ARS/Seguro) desde invoice_adjustments + invoices
-function getCoverageFromInvoicesRange(PDO $pdo, int $branchId, string $startDT, string $endDT): float {
-  try {
-    $sql = "
-      SELECT COALESCE(SUM(ia.amount),0) AS total
-      FROM invoice_adjustments ia
-      INNER JOIN invoices i ON i.id = ia.invoice_id
-      WHERE i.branch_id = ?
-        AND i.created_at >= ?
-        AND i.created_at <= ?
-        AND ia.type IN ('coverage','insurance','cobertura')
-    ";
-    $st = $pdo->prepare($sql);
-    $st->execute([$branchId, $startDT, $endDT]);
-    return (float)$st->fetchColumn();
-  } catch (Throwable $e) {
-    return 0.0;
-  }
+/* ===========================
+   CAJA ACTIVA AUTOMÁTICA
+=========================== */
+$active_session_id = caja_get_or_open_current_session($pdo, $branch_id, $user_id);
+$current_caja = caja_get_current_caja_num();
+
+/* ===========================
+   HORARIOS
+=========================== */
+$s1 = ["08:00:00", "13:00:00"];
+$s2 = ["13:00:00", "18:00:00"];
+
+function getCaja(PDO $pdo, $branch_id, $num, $date, $start, $end) {
+  $st = $pdo->prepare("
+    SELECT * FROM cash_sessions
+    WHERE branch_id=? AND caja_num=? AND date_open=? 
+    AND shift_start=? AND shift_end=?
+    ORDER BY id DESC LIMIT 1
+  ");
+  $st->execute([$branch_id, $num, $date, $start, $end]);
+  return $st->fetch(PDO::FETCH_ASSOC);
 }
 
-function sessionRange(array $session, string $fallbackDate, string $fallbackStart): array {
-  $start = $session['opened_at'] ?? null;
-  $end   = $session['closed_at'] ?? null;
-  if (!$start) $start = $fallbackDate . ' ' . $fallbackStart;
-  if (!$end)   $end   = date('Y-m-d H:i:s');
-  return [$start, $end];
-}
+$caja1 = getCaja($pdo, $branch_id, 1, $today, $s1[0], $s1[1]);
+$caja2 = getCaja($pdo, $branch_id, 2, $today, $s2[0], $s2[1]);
 
-function getTotals(PDO $pdo, int $sessionId, int $branchId, string $rangeStart, string $rangeEnd){
-  $st = $pdo->prepare("SELECT
-      COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='efectivo' THEN amount END),0) AS efectivo,
-      COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='tarjeta' THEN amount END),0) AS tarjeta,
-      COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='transferencia' THEN amount END),0) AS transferencia,
-      COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago IN ('cobertura','seguro') THEN amount END),0) AS cobertura_mov,
-      COALESCE(SUM(CASE WHEN type='desembolso' THEN amount END),0) AS desembolso
+function totals(PDO $pdo, $session_id) {
+  if (!$session_id) return [
+    "efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0,"ing"=>0,"neto"=>0
+  ];
+
+  $st = $pdo->prepare("
+    SELECT
+      SUM(CASE WHEN type='ingreso' AND metodo_pago='efectivo' THEN amount ELSE 0 END) efectivo,
+      SUM(CASE WHEN type='ingreso' AND metodo_pago='tarjeta' THEN amount ELSE 0 END) tarjeta,
+      SUM(CASE WHEN type='ingreso' AND metodo_pago='transferencia' THEN amount ELSE 0 END) transferencia,
+      SUM(CASE WHEN type='ingreso' AND metodo_pago IN ('cobertura','seguro') THEN amount ELSE 0 END) cobertura,
+      SUM(CASE WHEN type='desembolso' THEN amount ELSE 0 END) desembolso
     FROM cash_movements
-    WHERE session_id=?");
-  $st->execute([$sessionId]);
-  $r = $st->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura_mov"=>0,"desembolso"=>0];
+    WHERE session_id=?
+  ");
+  $st->execute([$session_id]);
+  $r = $st->fetch(PDO::FETCH_ASSOC);
 
-  // ✅ Cobertura desde facturas (invoice_adjustments) en el rango real de la sesión
-  $cobInv = getCoverageFromInvoicesRange($pdo, $branchId, $rangeStart, $rangeEnd);
-  $cobMov = (float)$r["cobertura_mov"];
-  $cobertura = $cobInv + $cobMov;
+  $ing = $r["efectivo"] + $r["tarjeta"] + $r["transferencia"] + $r["cobertura"];
+  $net = $ing - $r["desembolso"];
 
-  $ing = (float)$r["efectivo"]+(float)$r["tarjeta"]+(float)$r["transferencia"] + $cobertura;
-  $net = $ing-(float)$r["desembolso"];
-  $r["cobertura"] = $cobertura;
-  return [$r,$ing,$net];
+  return [
+    "efectivo"=>$r["efectivo"],
+    "tarjeta"=>$r["tarjeta"],
+    "transferencia"=>$r["transferencia"],
+    "cobertura"=>$r["cobertura"],
+    "desembolso"=>$r["desembolso"],
+    "ing"=>$ing,
+    "neto"=>$net
+  ];
 }
 
-[$s1Start,$s1End] = ["08:00:00","13:00:00"];
-[$s2Start,$s2End] = ["13:00:00","18:00:00"];
-
-$caja1 = getSession($pdo, $branchId, 1, $today, $s1Start, $s1End);
-$caja2 = getSession($pdo, $branchId, 2, $today, $s2Start, $s2End);
-
-$sum = [
-  1 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
-  2 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
-];
-
-if ($caja1) {
-  [$rs,$re] = sessionRange($caja1, $today, $s1Start);
-  [$r,$ing,$net] = getTotals($pdo, (int)$caja1["id"], $branchId, $rs, $re);
-  $sum[1]=["r"=>$r,"ing"=>$ing,"net"=>$net];
-}
-if ($caja2) {
-  [$rs,$re] = sessionRange($caja2, $today, $s2Start);
-  [$r,$ing,$net] = getTotals($pdo, (int)$caja2["id"], $branchId, $rs, $re);
-  $sum[2]=["r"=>$r,"ing"=>$ing,"net"=>$net];
-}
-
-$currentCajaNum = caja_get_current_caja_num();
+$t1 = $caja1 ? totals($pdo, $caja1["id"]) : totals($pdo, null);
+$t2 = $caja2 ? totals($pdo, $caja2["id"]) : totals($pdo, null);
 ?>
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
   <title>CEVIMEP | Caja</title>
-
-  <!-- ✅ CLAVE: hace que los links relativos del sidebar funcionen desde /private/ -->
-  <base href="<?php echo h($PRIVATE_BASE . "/"); ?>">
-
-  <!-- ✅ ESTÁNDAR -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- MISMO CSS QUE DASHBOARD -->
   <link rel="stylesheet" href="/assets/css/styles.css?v=11">
-
-  <style>
-    /* Solo estilos del contenido (sin romper layout global) */
-    .gridBox{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px;}
-    @media(max-width:900px){ .gridBox{grid-template-columns:1fr;} }
-
-    .cardBox{
-      background:#fff;
-      border:1px solid #e6eef7;
-      border-radius:22px;
-      padding:18px;
-      box-shadow:0 10px 30px rgba(2,6,23,.08);
-    }
-
-    table{width:100%; border-collapse:collapse; margin-top:10px; border:1px solid #e6eef7; border-radius:16px; overflow:hidden;}
-    th,td{padding:10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px;}
-    thead th{background:#f7fbff; color:#0b3b9a; font-weight:900;}
-    .muted{color:#6b7280; font-weight:700;}
-    .actions{display:flex; gap:10px; flex-wrap:wrap;}
-    .btnLocal{
-      display:inline-flex;align-items:center;justify-content:center;
-      padding:10px 14px;border-radius:14px;
-      border:1px solid #dbeafe;background:#fff;color:#052a7a;
-      font-weight:900;text-decoration:none;cursor:pointer;
-    }
-  </style>
 </head>
+
 <body>
 
+<!-- ================= HEADER ================= -->
 <header class="navbar">
   <div class="inner">
     <div></div>
-    <div class="brand"><span class="dot"></span> CEVIMEP</div>
+    <div class="brand">
+      <span class="dot"></span> CEVIMEP
+    </div>
     <div class="nav-right">
-      <a class="btn-pill" href="<?php echo h($URL_LOGOUT); ?>">Salir</a>
+      <a class="btn-pill" href="/public/logout.php">Salir</a>
     </div>
   </div>
 </header>
 
 <div class="layout">
+
+  <!-- ================= SIDEBAR (IGUAL A DASHBOARD) ================= -->
   <aside class="sidebar">
     <?php include __DIR__ . "/../partials/sidebar.php"; ?>
   </aside>
 
+  <!-- ================= CONTENT ================= -->
   <main class="content">
 
     <section class="hero">
       <h1>Caja</h1>
-      <p><?php echo h($branchName); ?> · Hoy: <?php echo h($today); ?></p>
+      <p>Moca · Hoy: <?= $today ?></p>
     </section>
 
     <section class="card">
-      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
+      <div class="card-header between">
         <div>
-          <h2 style="margin:0; color:var(--primary-2);">Resumen</h2>
-          <div class="muted" style="margin-top:6px;">
-            Caja activa ahora: <b><?php echo (int)$currentCajaNum; ?></b> · Sesión activa ID: <b><?php echo (int)$activeSessionId; ?></b>
-          </div>
-          <div class="muted" style="margin-top:10px;">
-            * Las cajas se abren y cierran automáticamente por horario (sin botones).
-          </div>
+          <h2>Resumen</h2>
+          <p class="muted">
+            Caja activa ahora: <b><?= $current_caja ?></b> · Sesión activa ID: <b><?= $active_session_id ?></b><br>
+            <small>* Las cajas se abren y cierran automáticamente por horario</small>
+          </p>
         </div>
 
+        <!-- BOTONES CORREGIDOS -->
         <div class="actions">
-          <!-- ✅ Rutas ABSOLUTAS para que funcionen aunque exista <base href> -->
-          <a class="btnLocal" href="<?php echo h($URL_DESEM); ?>">Desembolso</a>
-          <a class="btnLocal" href="<?php echo h($URL_DIARIO); ?>">Reporte diario</a>
-          <a class="btnLocal" href="<?php echo h($URL_MENSUAL); ?>">Reporte mensual</a>
+          <a class="btn-outline" href="/private/caja/desembolso.php">Desembolso</a>
+          <a class="btn-outline" href="/private/estadistica/reporte_diario.php">Reporte diario</a>
+          <a class="btn-outline" href="/private/estadistica/reporte_mensual.php">Reporte mensual</a>
         </div>
       </div>
     </section>
 
-    <div style="height:14px;"></div>
+    <div class="grid-2">
 
-    <div class="gridBox">
-
-      <section class="cardBox">
-        <h3 style="margin:0; color:#052a7a;">Caja 1 (08:00 AM - 01:00 PM)</h3>
-        <div class="muted" style="margin-top:6px;">
-          <?php if(!$caja1): ?>
-            Sin sesión registrada hoy.
-          <?php else: ?>
-            Abierta: <?php echo h($caja1["opened_at"] ?? "—"); ?> · Cerrada: <?php echo h($caja1["closed_at"] ?? "—"); ?>
-          <?php endif; ?>
-        </div>
-
-        <table>
-          <thead><tr><th>Concepto</th><th>Monto</th></tr></thead>
-          <tbody>
-            <tr><td>Efectivo</td><td>RD$ <?php echo fmtMoney($sum[1]["r"]["efectivo"]); ?></td></tr>
-            <tr><td>Tarjeta</td><td>RD$ <?php echo fmtMoney($sum[1]["r"]["tarjeta"]); ?></td></tr>
-            <tr><td>Transferencia</td><td>RD$ <?php echo fmtMoney($sum[1]["r"]["transferencia"]); ?></td></tr>
-            <tr><td>Cobertura</td><td>RD$ <?php echo fmtMoney($sum[1]["r"]["cobertura"]); ?></td></tr>
-            <tr><td>Desembolsos</td><td>- RD$ <?php echo fmtMoney($sum[1]["r"]["desembolso"]); ?></td></tr>
-            <tr><td style="font-weight:900;">Total ingresos</td><td style="font-weight:900;">RD$ <?php echo fmtMoney($sum[1]["ing"]); ?></td></tr>
-            <tr><td style="font-weight:900;">Neto</td><td style="font-weight:900;">RD$ <?php echo fmtMoney($sum[1]["net"]); ?></td></tr>
-          </tbody>
+      <!-- CAJA 1 -->
+      <section class="card">
+        <h3>Caja 1 (08:00 AM - 01:00 PM)</h3>
+        <p class="muted"><?= $caja1 ? "Sesión activa" : "Sin sesión registrada hoy" ?></p>
+        <table class="table">
+          <tr><td>Efectivo</td><td>RD$ <?= money($t1["efectivo"]) ?></td></tr>
+          <tr><td>Tarjeta</td><td>RD$ <?= money($t1["tarjeta"]) ?></td></tr>
+          <tr><td>Transferencia</td><td>RD$ <?= money($t1["transferencia"]) ?></td></tr>
+          <tr><td>Cobertura</td><td>RD$ <?= money($t1["cobertura"]) ?></td></tr>
+          <tr><td>Desembolsos</td><td>- RD$ <?= money($t1["desembolso"]) ?></td></tr>
+          <tr class="total"><td>Total ingresos</td><td>RD$ <?= money($t1["ing"]) ?></td></tr>
+          <tr class="total"><td>Neto</td><td>RD$ <?= money($t1["neto"]) ?></td></tr>
         </table>
       </section>
 
-      <section class="cardBox">
-        <h3 style="margin:0; color:#052a7a;">Caja 2 (01:00 PM - 06:00 PM)</h3>
-        <div class="muted" style="margin-top:6px;">
-          <?php if(!$caja2): ?>
-            Sin sesión registrada hoy.
-          <?php else: ?>
-            Abierta: <?php echo h($caja2["opened_at"] ?? "—"); ?> · Cerrada: <?php echo h($caja2["closed_at"] ?? "—"); ?>
-          <?php endif; ?>
-        </div>
-
-        <table>
-          <thead><tr><th>Concepto</th><th>Monto</th></tr></thead>
-          <tbody>
-            <tr><td>Efectivo</td><td>RD$ <?php echo fmtMoney($sum[2]["r"]["efectivo"]); ?></td></tr>
-            <tr><td>Tarjeta</td><td>RD$ <?php echo fmtMoney($sum[2]["r"]["tarjeta"]); ?></td></tr>
-            <tr><td>Transferencia</td><td>RD$ <?php echo fmtMoney($sum[2]["r"]["transferencia"]); ?></td></tr>
-            <tr><td>Cobertura</td><td>RD$ <?php echo fmtMoney($sum[2]["r"]["cobertura"]); ?></td></tr>
-            <tr><td>Desembolsos</td><td>- RD$ <?php echo fmtMoney($sum[2]["r"]["desembolso"]); ?></td></tr>
-            <tr><td style="font-weight:900;">Total ingresos</td><td style="font-weight:900;">RD$ <?php echo fmtMoney($sum[2]["ing"]); ?></td></tr>
-            <tr><td style="font-weight:900;">Neto</td><td style="font-weight:900;">RD$ <?php echo fmtMoney($sum[2]["net"]); ?></td></tr>
-          </tbody>
+      <!-- CAJA 2 -->
+      <section class="card">
+        <h3>Caja 2 (01:00 PM - 06:00 PM)</h3>
+        <p class="muted"><?= $caja2 ? "Sesión activa" : "Sin sesión registrada hoy" ?></p>
+        <table class="table">
+          <tr><td>Efectivo</td><td>RD$ <?= money($t2["efectivo"]) ?></td></tr>
+          <tr><td>Tarjeta</td><td>RD$ <?= money($t2["tarjeta"]) ?></td></tr>
+          <tr><td>Transferencia</td><td>RD$ <?= money($t2["transferencia"]) ?></td></tr>
+          <tr><td>Cobertura</td><td>RD$ <?= money($t2["cobertura"]) ?></td></tr>
+          <tr><td>Desembolsos</td><td>- RD$ <?= money($t2["desembolso"]) ?></td></tr>
+          <tr class="total"><td>Total ingresos</td><td>RD$ <?= money($t2["ing"]) ?></td></tr>
+          <tr class="total"><td>Neto</td><td>RD$ <?= money($t2["neto"]) ?></td></tr>
         </table>
       </section>
 
@@ -268,7 +180,7 @@ $currentCajaNum = caja_get_current_caja_num();
 </div>
 
 <footer class="footer">
-  <div class="footer-inner">© <?php echo (int)$year; ?> CEVIMEP. Todos los derechos reservados.</div>
+  © <?= $year ?> CEVIMEP. Todos los derechos reservados.
 </footer>
 
 </body>
