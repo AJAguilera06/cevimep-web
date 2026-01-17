@@ -2,21 +2,22 @@
 session_start();
 
 if (!isset($_SESSION["user"])) {
-  header("Location: ../../public/login.php");
+  header("Location: /login.php");
   exit;
 }
 
 require_once __DIR__ . "/../../config/db.php";
 $conn = $pdo;
 
-$user = $_SESSION["user"];
-$year = date("Y");
+date_default_timezone_set("America/Santo_Domingo");
+
+$user  = $_SESSION["user"];
+$year  = date("Y");
 $today = date("Y-m-d");
 
 $branch_id = (int)($user["branch_id"] ?? 0);
 $flash_error = "";
-$print_mode = false;
-$print_data = [];
+$branch_warning = "";
 
 /* ===== Nombre sede actual ===== */
 $branch_name = "";
@@ -29,14 +30,18 @@ if ($branch_id > 0) {
 }
 if ($branch_name === "") $branch_name = ($branch_id > 0) ? "Sede #".$branch_id : "CEVIMEP";
 
-/* ===== Categorías (para filtro) ===== */
+if ($branch_id <= 0) {
+  $branch_warning = "⚠️ Este usuario no tiene sede asignada. No se puede registrar salida.";
+}
+
+/* ===== Categorías ===== */
 $categories = [];
 try {
   $stC = $conn->query("SELECT id, name FROM inventory_categories ORDER BY name ASC");
   $categories = $stC->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-/* ===== Productos (alfabético) con categoría ===== */
+/* ===== Productos activos ===== */
 $products = [];
 try {
   $st = $conn->query("
@@ -51,7 +56,7 @@ try {
   $flash_error = "Error cargando productos.";
 }
 
-/* ===== Historial de SALIDAS (sede actual) ===== */
+/* ===== Historial OUT (sede actual) ===== */
 $history_out = [];
 if ($branch_id > 0) {
   try {
@@ -73,7 +78,7 @@ if ($branch_id > 0) {
 }
 
 /* ===========================
-   IMPRIMIR DETALLE (FACTURA)
+   IMPRIMIR DETALLE
    ?print=1&id=XX
 =========================== */
 if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
@@ -92,7 +97,7 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
 
   if (!$one) { echo "No encontrado"; exit; }
 
-  // agrupar por “comprobante”: misma nota + created_by + created_at
+  // Comprobante: mismo note + created_by + created_at
   $stAll = $conn->prepare("
     SELECT m.qty, m.note, m.created_at, m.created_by,
            i.name AS product, COALESCE(c.name,'') AS category
@@ -109,7 +114,7 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
   $stAll->execute([$branch_id, $one["note"], $one["created_by"], $one["created_at"]]);
   $lines = $stAll->fetchAll(PDO::FETCH_ASSOC);
 
-  // Parsear meta del note
+  // Parse meta desde note
   $note = (string)$one["note"];
   $meta = [
     "FECHA" => "",
@@ -126,7 +131,7 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
     }
   }
 
-  $logoPath = "../../assets/img/CEVIMEP.png";
+  $logoPath = "/assets/img/CEVIMEP.png";
   ?>
   <!doctype html>
   <html lang="es">
@@ -159,12 +164,12 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
       <div class="content">
         <div class="row">
           <div><strong>Fecha:</strong> <?= htmlspecialchars($meta["FECHA"] ?: substr((string)$one["created_at"],0,10)) ?></div>
-          <div><strong>Hecho por:</strong> <?= htmlspecialchars($meta["HECHO_POR"] ?: "-") ?></div>
+          <div><strong>Área de salida:</strong> <?= htmlspecialchars($meta["SALIDA"] ?: $branch_name) ?></div>
         </div>
 
         <div class="row">
-          <div><strong>Área de salida:</strong> <?= htmlspecialchars($meta["SALIDA"] ?: "-") ?></div>
           <div><strong>Área de destino:</strong> <?= htmlspecialchars($meta["DESTINO"] ?: "-") ?></div>
+          <div><strong>Hecho por:</strong> <?= htmlspecialchars($meta["HECHO_POR"] ?: "-") ?></div>
         </div>
 
         <div class="row">
@@ -174,7 +179,6 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
         <table>
           <thead>
             <tr>
-              <th>Categoría</th>
               <th>Producto</th>
               <th class="qty">Cantidad</th>
             </tr>
@@ -182,7 +186,6 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
           <tbody>
             <?php foreach ($lines as $l): ?>
               <tr>
-                <td><?= htmlspecialchars($l["category"] ?? "") ?></td>
                 <td><?= htmlspecialchars($l["product"] ?? "") ?></td>
                 <td class="qty"><?= (int)$l["qty"] ?></td>
               </tr>
@@ -191,7 +194,7 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
         </table>
       </div>
 
-      <div class="footer">© 2025 CEVIMEP. Todos los derechos reservados.</div>
+      <div class="footer">© <?= (int)date("Y") ?> CEVIMEP. Todos los derechos reservados.</div>
     </div>
   </body>
   </html>
@@ -200,27 +203,33 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
 }
 
 /* =========================================================
-   POST: Guardar + imprimir (tu lógica igual)
+   POST: Guardar + imprimir
 ========================================================= */
+$print_mode = false;
+$print_data = [];
+
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
   if ($branch_id <= 0) {
-    $flash_error = "Este usuario no tiene sede asignada.";
+    $flash_error = "No tienes sede asignada.";
   } else {
 
-    $fecha       = $_POST["fecha"] ?? $today;
-    $area_salida = trim($_POST["area_salida"] ?? $branch_name);
-    $area_dest   = trim($_POST["area_destino"] ?? "");
-    $hecho_por   = trim($_POST["hecho_por"] ?? "");
-    $nota        = trim($_POST["nota"] ?? "");
+    $fecha        = $_POST["fecha"] ?? $today;
+    $area_salida  = trim($_POST["area_salida"] ?? $branch_name);
+    $area_destino = trim($_POST["area_destino"] ?? "");
+    $hecho_por    = trim($_POST["hecho_por"] ?? "");
+    $nota         = trim($_POST["nota"] ?? "");
 
     $item_ids = $_POST["item_id"] ?? [];
     $qtys     = $_POST["qty"] ?? [];
 
-    if ($area_dest === "") {
+    if ($area_destino === "") {
       $flash_error = "Completa el área de destino.";
+    } elseif ($hecho_por === "") {
+      $flash_error = "Completa el campo 'Hecho por'.";
     } else {
 
+      // Consolidar líneas por item_id
       $lines = [];
       for ($i=0; $i<count($item_ids); $i++) {
         $iid = (int)($item_ids[$i] ?? 0);
@@ -241,10 +250,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           $ids = array_keys($lines);
           $ph  = implode(",", array_fill(0, count($ids), "?"));
 
+          // Info de productos
           $stInfo = $conn->prepare("
-            SELECT i.id, i.name, COALESCE(c.name,'') AS category
+            SELECT i.id, i.name
             FROM inventory_items i
-            LEFT JOIN inventory_categories c ON c.id=i.category_id
             WHERE i.id IN ($ph) AND i.is_active=1
           ");
           $stInfo->execute($ids);
@@ -253,57 +262,62 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           $infoMap = [];
           foreach ($infoRows as $r) $infoMap[(int)$r["id"]] = $r;
 
-          // Validar existencia
+          // Stock actual por item en esta sede
+          $stStockGet = $conn->prepare("
+            SELECT item_id, quantity
+            FROM inventory_stock
+            WHERE branch_id=? AND item_id IN ($ph)
+          ");
+          $stStockGet->execute(array_merge([$branch_id], $ids));
+          $stockRows = $stStockGet->fetchAll(PDO::FETCH_ASSOC);
+
+          $stockMap = [];
+          foreach ($stockRows as $r) $stockMap[(int)$r["item_id"]] = (int)$r["quantity"];
+
+          // Validar stock suficiente
           foreach ($lines as $iid => $q) {
-            if (!isset($infoMap[(int)$iid])) throw new Exception("Producto inválido o inactivo (ID $iid).");
-
-            $stS = $conn->prepare("
-              SELECT quantity FROM inventory_stock
-              WHERE item_id=? AND branch_id=? FOR UPDATE
-            ");
-            $stS->execute([(int)$iid, $branch_id]);
-            $cur = (int)($stS->fetchColumn() ?? 0);
-
-            if ($cur < $q) {
-              $name = $infoMap[(int)$iid]["name"] ?? ("ID ".$iid);
-              throw new Exception("No hay existencia suficiente para: $name. Disponible: $cur, solicitado: $q.");
+            if (!isset($infoMap[(int)$iid])) {
+              throw new Exception("Producto inválido o inactivo (ID $iid).");
+            }
+            $available = (int)($stockMap[(int)$iid] ?? 0);
+            if ($q > $available) {
+              $pname = $infoMap[(int)$iid]["name"] ?? ("ID ".$iid);
+              throw new Exception("Stock insuficiente para '$pname'. Disponible: $available, solicitado: $q.");
             }
           }
 
-          // Descontar stock
-          $stU = $conn->prepare("
+          // Descontar stock (si queda 0 puede quedarse en 0)
+          $stStockUpd = $conn->prepare("
             UPDATE inventory_stock
             SET quantity = quantity - ?
-            WHERE item_id=? AND branch_id=?
+            WHERE branch_id=? AND item_id=?
           ");
-          foreach ($lines as $iid => $q) {
-            $stU->execute([(int)$q, (int)$iid, $branch_id]);
-          }
 
-          // Registrar movimientos OUT (historial)
+          // Registrar movimiento OUT
           $stMov = $conn->prepare("
             INSERT INTO inventory_movements (item_id, branch_id, movement_type, qty, note, created_by)
             VALUES (?, ?, 'OUT', ?, ?, ?)
           ");
+
           $created_by = (int)($user["id"] ?? 0);
 
-          $metaNote = "FECHA={$fecha} | SALIDA={$area_salida} | DESTINO={$area_dest} | HECHO_POR={$hecho_por}";
+          $metaNote = "FECHA={$fecha} | SALIDA={$area_salida} | DESTINO={$area_destino} | HECHO_POR={$hecho_por}";
           if ($nota !== "") $metaNote .= " | NOTA={$nota}";
 
           foreach ($lines as $iid => $q) {
+            $stStockUpd->execute([(int)$q, $branch_id, (int)$iid]);
             $stMov->execute([(int)$iid, $branch_id, (int)$q, $metaNote, $created_by]);
           }
 
           $conn->commit();
 
-          // data para impresión inmediata
+          // Data para imprimir
           $print_lines = [];
           foreach ($lines as $iid => $q) {
-            $row = $infoMap[(int)$iid] ?? ["category"=>"", "name"=>"ID ".$iid];
+            $row = $infoMap[(int)$iid];
             $print_lines[] = [
-              "category" => $row["category"] ?? "",
-              "product"  => $row["name"] ?? "",
-              "qty"      => (int)$q
+              "product" => $row["name"] ?? "",
+              "qty" => (int)$q
             ];
           }
 
@@ -311,7 +325,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           $print_data = [
             "fecha" => $fecha,
             "area_salida" => $area_salida,
-            "area_destino" => $area_dest,
+            "area_destino" => $area_destino,
             "hecho_por" => $hecho_por,
             "nota" => $nota,
             "lines" => $print_lines
@@ -327,10 +341,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 }
 
 /* =========================================================
-   IMPRESIÓN inmediata (si guardó)
+   IMPRESIÓN INMEDIATA
 ========================================================= */
 if ($print_mode):
-  $logoPath = "../../assets/img/CEVIMEP.png";
+  $logoPath = "/assets/img/CEVIMEP.png";
 ?>
 <!doctype html>
 <html lang="es">
@@ -338,8 +352,8 @@ if ($print_mode):
 <meta charset="utf-8">
 <title>CEVIMEP | Comprobante de Salida</title>
 <style>
-  @page{ size: A4; margin: 15mm; }
-  body{ margin:0; font-family: Arial, sans-serif; background:#fff; }
+  @page{ size:A4; margin:15mm; }
+  body{ margin:0; font-family:Arial, sans-serif; background:#fff; }
   .page{ height: calc(297mm - 30mm); display:flex; flex-direction:column; }
   .header{ text-align:center; margin-bottom:12px; }
   .header img{ max-width:260px; height:auto; }
@@ -347,7 +361,7 @@ if ($print_mode):
   .content{ flex:1; font-size:14px; }
   .row{ display:flex; justify-content:space-between; margin-bottom:6px; gap:10px; flex-wrap:wrap; }
   table{ width:100%; border-collapse:collapse; margin-top:10px; }
-  th, td{ border:1px solid #ccc; padding:6px; font-size:13px; }
+  th,td{ border:1px solid #ccc; padding:6px; font-size:13px; }
   th{ background:#f2f2f2; font-weight:bold; }
   .qty{ text-align:right; font-weight:bold; }
   .footer{ text-align:center; font-size:12px; font-weight:bold; margin-top:10px; }
@@ -363,12 +377,12 @@ if ($print_mode):
   <div class="content">
     <div class="row">
       <div><strong>Fecha:</strong> <?= htmlspecialchars($print_data["fecha"]) ?></div>
-      <div><strong>Hecho por:</strong> <?= htmlspecialchars($print_data["hecho_por"]) ?></div>
+      <div><strong>Área de salida:</strong> <?= htmlspecialchars($print_data["area_salida"]) ?></div>
     </div>
 
     <div class="row">
-      <div><strong>Área de salida:</strong> <?= htmlspecialchars($print_data["area_salida"]) ?></div>
       <div><strong>Área de destino:</strong> <?= htmlspecialchars($print_data["area_destino"]) ?></div>
+      <div><strong>Hecho por:</strong> <?= htmlspecialchars($print_data["hecho_por"]) ?></div>
     </div>
 
     <div class="row">
@@ -377,25 +391,20 @@ if ($print_mode):
 
     <table>
       <thead>
-        <tr>
-          <th>Categoría</th>
-          <th>Producto</th>
-          <th class="qty">Cantidad</th>
-        </tr>
+        <tr><th>Producto</th><th class="qty">Cantidad</th></tr>
       </thead>
       <tbody>
         <?php foreach ($print_data["lines"] as $l): ?>
-        <tr>
-          <td><?= htmlspecialchars($l["category"]) ?></td>
-          <td><?= htmlspecialchars($l["product"]) ?></td>
-          <td class="qty"><?= (int)$l["qty"] ?></td>
-        </tr>
+          <tr>
+            <td><?= htmlspecialchars($l["product"]) ?></td>
+            <td class="qty"><?= (int)$l["qty"] ?></td>
+          </tr>
         <?php endforeach; ?>
       </tbody>
     </table>
   </div>
 
-  <div class="footer">© 2025 CEVIMEP. Todos los derechos reservados.</div>
+  <div class="footer">© <?= (int)date("Y") ?> CEVIMEP. Todos los derechos reservados.</div>
 </div>
 </body>
 </html>
@@ -408,8 +417,9 @@ endif;
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CEVIMEP | Salida</title>
-  <link rel="stylesheet" href="../../assets/css/styles.css">
+  <title>CEVIMEP | Inventario - Salida</title>
+  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+
   <style>
     .formGrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px}
     .rowAdd{display:grid;grid-template-columns:240px 1fr 170px auto;gap:12px;align-items:end;margin-top:12px}
@@ -421,31 +431,55 @@ endif;
     .miniHelp{margin-top:6px}
     .histWrap{display:none;margin-top:12px}
     .btnSmall{padding:8px 12px;border-radius:999px;font-weight:900;border:1px solid rgba(2,21,44,.12);background:#eef6ff;cursor:pointer}
+
+    @media(max-width:900px){
+      .formGrid{grid-template-columns:1fr}
+      .rowAdd{grid-template-columns:1fr}
+    }
   </style>
 </head>
+
 <body>
 
 <header class="navbar">
   <div class="inner">
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
-    <div class="nav-right"><a href="../../public/logout.php">Salir</a></div>
+    <div class="nav-right">
+      <a class="btn-pill" href="/logout.php">Salir</a>
+    </div>
   </div>
 </header>
 
-<main class="app">
+<div class="layout">
 
+  <!-- Sidebar global igual dashboard -->
   <aside class="sidebar">
-    <div class="title">Menú</div>
+    <div class="menu-title">Menú</div>
     <nav class="menu">
-      <a href="../dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a href="items.php"><span class="ico">📦</span> Inventario</a>
-      <a href="entrada.php"><span class="ico">➕</span> Entrada</a>
-      <a class="active" href="salida.php"><span class="ico">➖</span> Salida</a>
+      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
+      <a href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
+      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;"><span class="ico">🗓️</span> Citas</a>
+      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
+      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
+      <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
+      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
     </nav>
   </aside>
 
-  <section class="main">
+  <main class="content">
+
+    <section class="hero">
+      <h1>Inventario</h1>
+      <p><?= htmlspecialchars($branch_name) ?> · Salida</p>
+    </section>
+
+    <?php if ($branch_warning): ?>
+      <div class="card" style="border-color:rgba(239,68,68,.35); background:rgba(239,68,68,.08);">
+        <p style="margin:0;font-weight:900;color:#b91c1c;"><?=htmlspecialchars($branch_warning)?></p>
+      </div>
+      <div style="height:12px;"></div>
+    <?php endif; ?>
 
     <?php if ($flash_error): ?>
       <div class="card" style="border-color:rgba(239,68,68,.35); background:rgba(239,68,68,.08);">
@@ -482,7 +516,7 @@ endif;
 
           <div class="field">
             <label>Hecho por</label>
-            <input class="input" type="text" name="hecho_por" value="">
+            <input class="input" type="text" name="hecho_por" placeholder="Nombre de quien realiza la salida">
           </div>
 
           <div class="field">
@@ -493,7 +527,6 @@ endif;
 
         <hr style="margin:14px 0;opacity:.25;">
 
-        <!-- FILTRO POR CATEGORÍA + PRODUCTO + CANTIDAD -->
         <div class="rowAdd">
           <div class="field">
             <label>Categoría</label>
@@ -508,13 +541,9 @@ endif;
           <div class="field">
             <label>Producto</label>
             <select class="input" id="selItem">
-              <option value="0" data-cat-id="0" data-cat-name="">-- Seleccionar --</option>
+              <option value="0" data-cat-id="0">-- Seleccionar --</option>
               <?php foreach ($products as $p): ?>
-                <option
-                  value="<?= (int)$p["id"] ?>"
-                  data-cat-id="<?= (int)$p["category_id"] ?>"
-                  data-cat-name="<?= htmlspecialchars($p["category"]) ?>"
-                >
+                <option value="<?= (int)$p["id"] ?>" data-cat-id="<?= (int)$p["category_id"] ?>">
                   <?= htmlspecialchars($p["name"]) ?>
                 </option>
               <?php endforeach; ?>
@@ -552,7 +581,6 @@ endif;
       </form>
     </div>
 
-    <!-- HISTORIAL SALIDAS (BOTÓN) -->
     <div style="height:14px;"></div>
 
     <div class="card">
@@ -587,7 +615,7 @@ endif;
                   <td class="qtyRight" style="font-weight:900;"><?= (int)$h["qty"] ?></td>
                   <td>
                     <a class="btn" style="padding:8px 10px;text-decoration:none;" target="_blank"
-                       href="salida.php?print=1&id=<?= (int)$h["id"] ?>">
+                       href="/private/inventario/salida.php?print=1&id=<?= (int)$h["id"] ?>">
                       Detalle
                     </a>
                   </td>
@@ -599,11 +627,11 @@ endif;
       </div>
     </div>
 
-  </section>
-</main>
+  </main>
+</div>
 
 <footer class="footer">
-  <div class="inner">© <?=$year?> CEVIMEP. Todos los derechos reservados.</div>
+  <div class="footer-inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
 </footer>
 
 <script>
@@ -672,6 +700,7 @@ endif;
 
     const tdQ = document.createElement('td');
     tdQ.className = "qtyRight jsQty";
+    tdQ.style.fontWeight = "900";
     tdQ.textContent = q;
 
     const tdA = document.createElement('td');
