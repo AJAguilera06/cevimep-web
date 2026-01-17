@@ -1,8 +1,24 @@
 <?php
+declare(strict_types=1);
+
+/**
+ * CEVIMEP - Inventario (Items)
+ * - Layout/estilos igual al dashboard.php
+ * - Menú lateral estándar
+ * - Footer centrado estándar
+ */
+
+session_set_cookie_params([
+  'lifetime' => 0,
+  'path' => '/',
+  'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+  'httponly' => true,
+  'samesite' => 'Lax',
+]);
 session_start();
 
-if (!isset($_SESSION["user"])) {
-  header("Location: ../../public/login.php");
+if (empty($_SESSION['user'])) {
+  header('Location: /login.php');
   exit;
 }
 
@@ -10,7 +26,7 @@ require_once __DIR__ . "/../../config/db.php";
 $conn = $pdo;
 
 $user = $_SESSION["user"];
-$year = date("Y");
+$year = (int)date("Y");
 
 /* ===== SEDE (branch_id) DEL USUARIO LOGUEADO ===== */
 $branch_id = (int)($user["branch_id"] ?? 0);
@@ -76,11 +92,12 @@ if ($branch_id > 0) {
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CEVIMEP | Inventario</title>
 
-  <link rel="stylesheet" href="../../assets/css/styles.css">
+  <!-- IMPORTANTE: mismo CSS y misma versión que los demás módulos -->
+  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
 
   <style>
     .btn.small{
@@ -145,57 +162,44 @@ if ($branch_id > 0) {
 <header class="navbar">
   <div class="inner">
     <div></div>
-
-    <div class="brand">
-      <span class="dot"></span>
-      CEVIMEP
-    </div>
-
+    <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
-      <a href="../../public/logout.php">Salir</a>
+      <a class="btn-pill" href="/logout.php">Salir</a>
     </div>
   </div>
 </header>
 
-<main class="app">
+<div class="layout">
 
   <aside class="sidebar">
-    <div class="title">Menú</div>
+    <div class="menu-title">Menú</div>
 
     <nav class="menu">
-      <a href="../dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a href="../patients/index.php"><span class="ico">🧑‍🤝‍🧑</span> Pacientes</a>
-
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;">
-        <span class="ico">📅</span> Citas
-      </a>
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;">
-        <span class="ico">🧾</span> Facturación
-      </a>
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;">
-        <span class="ico">💳</span> Caja
-      </a>
-
-      <a href="index.php"><span class="ico">📦</span> Inventario</a>
-
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;">
-        <span class="ico">⏳</span> Coming Soon
-      </a>
+      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
+      <a href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
+      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;"><span class="ico">🗓️</span> Citas</a>
+      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
+      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
+      <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
+      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
     </nav>
   </aside>
 
-  <section class="main">
+  <main class="content">
 
-    <div class="card">
+    <section class="hero">
+      <h1>Inventario</h1>
+      <p>Stock por sucursal (entradas - salidas)</p>
+    </section>
+
+    <section class="card">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
         <div>
-          <h2 style="margin:0 0 6px;">Inventario</h2>
-          <p class="muted" style="margin:0;">Stock por sucursal (entradas - salidas)</p>
+          <h2 style="margin:0 0 6px;">Listado de productos</h2>
+          <p class="muted" style="margin:0;">Gestiona precios, categorías y existencia</p>
         </div>
 
-        <a class="btn" href="guardar_producto.php" style="text-decoration:none;">
-          Registrar nuevo producto
-        </a>
+        <a class="btn" href="guardar_producto.php" style="text-decoration:none;">Registrar nuevo producto</a>
       </div>
 
       <?php if ($flash_success): ?>
@@ -205,9 +209,6 @@ if ($branch_id > 0) {
       <?php if ($branch_warning): ?>
         <div class="alert-warn"><?php echo htmlspecialchars($branch_warning); ?></div>
       <?php endif; ?>
-
-      <!-- (tu tabla y el resto del diseño sigue igual, abajo no lo toqué) -->
-      <!-- OJO: aquí continúa tu HTML original tal cual lo tienes -->
 
       <div style="margin-top:18px; overflow:auto;">
         <table class="table">
@@ -267,19 +268,15 @@ if ($branch_id > 0) {
               <?php endforeach; ?>
             <?php endif; ?>
           </tbody>
-
         </table>
       </div>
-    </div>
+    </section>
 
-  </section>
-
-</main>
+  </main>
+</div>
 
 <footer class="footer">
-  <div class="inner">
-    © <?php echo $year; ?> CEVIMEP. Todos los derechos reservados.
-  </div>
+  <div class="footer-inner">© <?php echo $year; ?> CEVIMEP. Todos los derechos reservados.</div>
 </footer>
 
 <script>

@@ -253,6 +253,11 @@ $monthName = $start->format("F");
 
 <div class="appwrap">
   <aside class="sidebar">
+    <?php
+$active = "estadistica";   // 🔥 esto marca el menú activo
+$base   = "../";           // 🔥 rutas correctas
+?>
+
     <?php include "../partials/sidebar.php"; ?>
   </aside>
 
