@@ -1,64 +1,109 @@
 <?php
+declare(strict_types=1);
 session_start();
-require_once __DIR__ . "/../../config/db.php";
-if (!isset($_SESSION["user"])) { header("Location: ../../public/login.php"); exit; }
 
-$user = $_SESSION["user"];
-$year = date("Y");
-$isAdmin  = (($user["role"] ?? "") === "admin");
-$branchId = (int)($user["branch_id"] ?? 0);
-if (!$isAdmin && $branchId <= 0) { header("Location: /logout.php"); exit; }
+if (empty($_SESSION["user"])) {
+  header("Location: /login.php");
+  exit;
+}
+
+require_once __DIR__ . "/../../config/db.php";
 
 date_default_timezone_set("America/Santo_Domingo");
+
+$user = $_SESSION["user"];
+$year = (int)date("Y");
+
+$isAdmin  = (($user["role"] ?? "") === "admin");
+$branchId = (int)($user["branch_id"] ?? 0);
+
+if (!$isAdmin && $branchId <= 0) {
+  header("Location: /logout.php");
+  exit;
+}
+
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
-function fmt($n){ return number_format((float)$n, 2, ".", ","); }
+function money($n){ return number_format((float)$n, 2, ".", ","); }
 
+// mes actual por defecto
 $month = $_GET["month"] ?? date("Y-m");
+if (!preg_match('/^\d{4}-\d{2}$/', $month)) $month = date("Y-m");
 
-/* ==== TU QUERY ORIGINAL (NO TOCO LA LÓGICA) ==== */
-$st = $pdo->prepare("
-  SELECT s.id, s.caja_num, s.opened_at, s.closed_at
-  FROM cash_sessions s
-  WHERE DATE_FORMAT(s.opened_at, '%Y-%m')=?
-    AND (?=1 OR s.branch_id=?)
-  ORDER BY s.caja_num ASC, s.opened_at ASC
-");
-$st->execute([$month, $isAdmin ? 1 : 0, $branchId]);
-$sessions = $st->fetchAll(PDO::FETCH_ASSOC);
+$start = $month . "-01";
+$end   = date("Y-m-t", strtotime($start));
 
-$totalsBySession = [];
-foreach ($sessions as $sess) {
-  $sid = (int)$sess["id"];
+// Nombre sucursal
+$branchName = $user["branch_name"] ?? $user["branch"] ?? ("Sucursal #".$branchId);
+try {
+  $stB = $pdo->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
+  $stB->execute([$branchId]);
+  $bn = $stB->fetchColumn();
+  if ($bn) $branchName = (string)$bn;
+} catch (Throwable $e) {}
 
-  $stMov = $pdo->prepare("
+$error = "";
+
+// Totales del mes (sumando movimientos por sesiones del rango)
+$tot = ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0,"ing"=>0,"net"=>0];
+$byDay = []; // resumen por día
+
+try {
+  // 1) Buscar sesiones del mes
+  $stS = $pdo->prepare("
+    SELECT id, date_open, caja_num
+    FROM cash_sessions
+    WHERE branch_id=? AND date_open BETWEEN ? AND ?
+    ORDER BY date_open ASC, caja_num ASC, id ASC
+  ");
+  $stS->execute([$branchId, $start, $end]);
+  $sessions = $stS->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+  // 2) Para cada sesión, sumar movimientos
+  $stT = $pdo->prepare("
     SELECT
-      SUM(CASE WHEN payment_method='Efectivo' THEN amount ELSE 0 END) AS efectivo,
-      SUM(CASE WHEN payment_method='Tarjeta' THEN amount ELSE 0 END) AS tarjeta,
-      SUM(CASE WHEN payment_method='Transferencia' THEN amount ELSE 0 END) AS transferencia,
-      SUM(CASE WHEN payment_method='Cobertura' THEN amount ELSE 0 END) AS cobertura
+      COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='efectivo' THEN amount END),0) AS efectivo,
+      COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='tarjeta' THEN amount END),0) AS tarjeta,
+      COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='transferencia' THEN amount END),0) AS transferencia,
+      COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago IN ('cobertura','seguro') THEN amount END),0) AS cobertura,
+      COALESCE(SUM(CASE WHEN type='desembolso' THEN amount END),0) AS desembolso
     FROM cash_movements
     WHERE session_id=?
   ");
-  $stMov->execute([$sid]);
-  $mov = $stMov->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0];
 
-  $stOut = $pdo->prepare("SELECT SUM(amount) AS desembolsos FROM cash_movements WHERE session_id=? AND type='Desembolso'");
-  $stOut->execute([$sid]);
-  $out = $stOut->fetch(PDO::FETCH_ASSOC) ?: ["desembolsos"=>0];
+  foreach ($sessions as $s) {
+    $sid = (int)$s["id"];
+    $day = (string)$s["date_open"];
 
-  $ef  = (float)($mov["efectivo"] ?? 0);
-  $ta  = (float)($mov["tarjeta"] ?? 0);
-  $tr  = (float)($mov["transferencia"] ?? 0);
-  $co  = (float)($mov["cobertura"] ?? 0);
-  $des = (float)($out["desembolsos"] ?? 0);
+    $stT->execute([$sid]);
+    $r = $stT->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0];
 
-  $ing = $ef + $ta + $tr + $co;
-  $net = $ing - $des;
+    $ef = (float)$r["efectivo"];
+    $ta = (float)$r["tarjeta"];
+    $tr = (float)$r["transferencia"];
+    $co = (float)$r["cobertura"];
+    $de = (float)$r["desembolso"];
+    $ing = $ef + $ta + $tr + $co;
+    $net = $ing - $de;
 
-  $totalsBySession[$sid] = [
-    "efectivo"=>$ef, "tarjeta"=>$ta, "transferencia"=>$tr, "cobertura"=>$co,
-    "desembolsos"=>$des, "ingresos"=>$ing, "neto"=>$net
-  ];
+    $tot["efectivo"] += $ef;
+    $tot["tarjeta"] += $ta;
+    $tot["transferencia"] += $tr;
+    $tot["cobertura"] += $co;
+    $tot["desembolso"] += $de;
+
+    if (!isset($byDay[$day])) {
+      $byDay[$day] = ["ing"=>0,"des"=>0,"net"=>0];
+    }
+    $byDay[$day]["ing"] += $ing;
+    $byDay[$day]["des"] += $de;
+    $byDay[$day]["net"] += $net;
+  }
+
+  $tot["ing"] = $tot["efectivo"] + $tot["tarjeta"] + $tot["transferencia"] + $tot["cobertura"];
+  $tot["net"] = $tot["ing"] - $tot["desembolso"];
+
+} catch (Throwable $e) {
+  $error = "Error interno generando el reporte mensual. Verifica tablas/columnas (cash_sessions, cash_movements).";
 }
 ?>
 <!doctype html>
@@ -66,34 +111,36 @@ foreach ($sessions as $sess) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CEVIMEP | Reporte mensual</title>
-
+  <title>CEVIMEP | Reporte Mensual Caja</title>
   <link rel="stylesheet" href="/assets/css/styles.css?v=11">
 
   <style>
-    .card{background:#fff;border:1px solid #e6eef7;border-radius:22px;padding:18px;box-shadow:0 10px 30px rgba(2,6,23,.08);}
-    .muted{color:#6b7280; font-weight:700;}
-    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between;}
-    .btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:14px;border:1px solid #dbeafe;background:#fff;color:#052a7a;font-weight:900;text-decoration:none;cursor:pointer;}
+    .actions{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+    .btnLocal{
+      display:inline-flex;align-items:center;justify-content:center;
+      padding:10px 14px;border-radius:14px;
+      border:1px solid #dbeafe;background:#fff;color:#052a7a;
+      font-weight:900;text-decoration:none;cursor:pointer;
+    }
+    .btnLocal:hover{box-shadow:0 10px 25px rgba(2,6,23,.10);}
+    .cardBox{
+      background:#fff;border:1px solid #e6eef7;border-radius:22px;padding:18px;
+      box-shadow:0 10px 30px rgba(2,6,23,.08);
+    }
     table{width:100%; border-collapse:collapse; margin-top:10px; border:1px solid #e6eef7; border-radius:16px; overflow:hidden;}
     th,td{padding:10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px;}
     thead th{background:#f7fbff; color:#0b3b9a; font-weight:900;}
-    input[type="month"]{padding:10px 12px;border-radius:14px;border:1px solid #e6eef7;outline:none;}
-
-    @media print{
-      body{overflow:visible !important;}
-      .navbar, .sidebar, .footer, .no-print{display:none !important;}
-      .layout{display:block !important;}
-      .content{padding:0 !important;}
-      .card{box-shadow:none !important; border:1px solid #e5e7eb !important; border-radius:12px !important;}
-      table{border:1px solid #e5e7eb !important;}
-      th,td{font-size:12px !important;}
-    }
+    .muted{color:#6b7280; font-weight:700;}
+    .pill{padding:8px 12px;border-radius:14px;border:1px solid #e6eef7;background:#fff;}
+    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+    .right{margin-left:auto;}
+    .danger{background:#fff5f5;border:1px solid #fed7d7;color:#b91c1c;border-radius:14px;padding:10px 12px;font-weight:800;}
+    .grid2{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+    @media(max-width:900px){ .grid2{grid-template-columns:1fr;} }
   </style>
 </head>
 
 <body>
-
 <header class="navbar">
   <div class="inner">
     <div></div>
@@ -119,67 +166,76 @@ foreach ($sessions as $sess) {
   </aside>
 
   <main class="content">
-    <div class="card">
+    <section class="hero">
+      <h1>Reporte Mensual</h1>
+      <p><?= h($branchName) ?> · Mes: <?= h($month) ?> (<?= h($start) ?> a <?= h($end) ?>)</p>
+    </section>
+
+    <section class="card">
       <div class="row">
-        <div>
-          <h2 style="margin:0; color:var(--primary-2);">Reporte mensual</h2>
-          <div class="muted">Detalle por caja y por método de pago.</div>
-        </div>
+        <form class="row" method="GET" action="/private/caja/reporte_mensual.php">
+          <div class="pill">
+            <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Mes</label>
+            <input type="month" name="month" value="<?= h($month) ?>" style="border:0;outline:none;font-weight:800;">
+          </div>
+          <button class="btnLocal" type="submit">Ver</button>
+        </form>
 
-        <div class="row no-print" style="justify-content:flex-end;">
-          <form method="get" class="row" style="margin:0;">
-            <input type="month" name="month" value="<?php echo h($month); ?>">
-            <button class="btn" type="submit">Ver</button>
-          </form>
-
-          <button class="btn" type="button" onclick="window.print()">Imprimir</button>
-          <a class="btn" href="/private/caja/index.php">Volver</a>
+        <div class="right actions">
+          <a class="btnLocal" href="/private/caja/index.php">Volver a Caja</a>
+          <a class="btnLocal" href="javascript:void(0)" onclick="window.print()">Imprimir</a>
         </div>
       </div>
 
-      <table>
-        <thead>
-          <tr>
-            <th>Caja</th>
-            <th>Apertura</th>
-            <th>Cierre</th>
-            <th>Efectivo</th>
-            <th>Tarjeta</th>
-            <th>Transferencia</th>
-            <th>Cobertura</th>
-            <th>Desembolsos</th>
-            <th>Total ingresos</th>
-            <th>Neto</th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php if (empty($sessions)): ?>
-            <tr><td colspan="10" class="muted">No hay sesiones para este mes.</td></tr>
-          <?php else: ?>
-            <?php foreach ($sessions as $s): $sid=(int)$s["id"]; $t=$totalsBySession[$sid] ?? []; ?>
+      <?php if($error): ?>
+        <div style="margin-top:12px;" class="danger"><?= h($error) ?></div>
+      <?php endif; ?>
+    </section>
+
+    <div style="height:14px;"></div>
+
+    <div class="grid2">
+      <section class="cardBox">
+        <h3 style="margin:0; color:#052a7a;">Totales del mes</h3>
+        <table>
+          <thead><tr><th>Concepto</th><th>Monto</th></tr></thead>
+          <tbody>
+            <tr><td>Efectivo</td><td>RD$ <?= money($tot["efectivo"]) ?></td></tr>
+            <tr><td>Tarjeta</td><td>RD$ <?= money($tot["tarjeta"]) ?></td></tr>
+            <tr><td>Transferencia</td><td>RD$ <?= money($tot["transferencia"]) ?></td></tr>
+            <tr><td>Cobertura</td><td>RD$ <?= money($tot["cobertura"]) ?></td></tr>
+            <tr><td>Desembolsos</td><td>- RD$ <?= money($tot["desembolso"]) ?></td></tr>
+            <tr><td style="font-weight:900;">Total ingresos</td><td style="font-weight:900;">RD$ <?= money($tot["ing"]) ?></td></tr>
+            <tr><td style="font-weight:900;">Neto</td><td style="font-weight:900;">RD$ <?= money($tot["net"]) ?></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="cardBox">
+        <h3 style="margin:0; color:#052a7a;">Resumen por día</h3>
+        <table>
+          <thead><tr><th>Fecha</th><th>Ingresos</th><th>Desembolsos</th><th>Neto</th></tr></thead>
+          <tbody>
+            <?php if (!$byDay): ?>
+              <tr><td colspan="4" class="muted">No hay sesiones/movimientos en este mes.</td></tr>
+            <?php else:
+              foreach ($byDay as $d => $r): ?>
               <tr>
-                <td><strong><?php echo (int)$s["caja_num"]; ?></strong></td>
-                <td><?php echo h($s["opened_at"]); ?></td>
-                <td><?php echo h($s["closed_at"] ?: "—"); ?></td>
-                <td>RD$ <?php echo fmt($t["efectivo"] ?? 0); ?></td>
-                <td>RD$ <?php echo fmt($t["tarjeta"] ?? 0); ?></td>
-                <td>RD$ <?php echo fmt($t["transferencia"] ?? 0); ?></td>
-                <td>RD$ <?php echo fmt($t["cobertura"] ?? 0); ?></td>
-                <td>- RD$ <?php echo fmt($t["desembolsos"] ?? 0); ?></td>
-                <td><strong>RD$ <?php echo fmt($t["ingresos"] ?? 0); ?></strong></td>
-                <td><strong>RD$ <?php echo fmt($t["neto"] ?? 0); ?></strong></td>
+                <td><?= h($d) ?></td>
+                <td>RD$ <?= money($r["ing"]) ?></td>
+                <td>- RD$ <?= money($r["des"]) ?></td>
+                <td>RD$ <?= money($r["net"]) ?></td>
               </tr>
-            <?php endforeach; ?>
-          <?php endif; ?>
-        </tbody>
-      </table>
+            <?php endforeach; endif; ?>
+          </tbody>
+        </table>
+      </section>
     </div>
   </main>
 </div>
 
 <footer class="footer">
-  <div class="footer-inner">© <?php echo (int)$year; ?> CEVIMEP. Todos los derechos reservados.</div>
+  <div class="footer-inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
 </footer>
-
 </body>
 </html>
