@@ -19,7 +19,6 @@ date_default_timezone_set("America/Santo_Domingo");
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function fmtMoney($n){ return number_format((float)$n, 2, ".", ","); }
 
-// ✅ helpers BD (robustos)
 function tableExists(PDO $pdo, string $table): bool {
   try {
     $st = $pdo->prepare("SHOW TABLES LIKE ?");
@@ -27,7 +26,6 @@ function tableExists(PDO $pdo, string $table): bool {
     return (bool)$st->fetchColumn();
   } catch(Throwable $e){ return false; }
 }
-
 function columnExists(PDO $pdo, string $table, string $column): bool {
   try {
     $st = $pdo->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
@@ -35,7 +33,6 @@ function columnExists(PDO $pdo, string $table, string $column): bool {
     return (bool)$st->fetchColumn();
   } catch(Throwable $e){ return false; }
 }
-
 function firstExistingColumn(PDO $pdo, string $table, array $candidates): ?string {
   foreach($candidates as $c){
     if (columnExists($pdo, $table, $c)) return $c;
@@ -45,7 +42,7 @@ function firstExistingColumn(PDO $pdo, string $table, array $candidates): ?strin
 
 $today = date("Y-m-d");
 
-// ✅ Auto cerrar vencidas y abrir sesión actual (sin botones)
+// ✅ Auto cerrar vencidas y abrir sesión actual
 $activeSessionId = caja_get_or_open_current_session($pdo, $branchId, $userId);
 
 // Nombre sucursal
@@ -66,32 +63,28 @@ function getSession(PDO $pdo, int $branchId, int $cajaNum, string $date, string 
 }
 
 /**
- * ✅ Cobertura desde facturas:
- * - Busca tabla: facturas / invoices / billing_invoices (por si cambia)
- * - Busca columna monto: cobertura / coverage / descuento / discount
- * - Filtra por sucursal y rango de tiempo (created_at / fecha / created_on)
+ * ✅ Cobertura desde facturas en el rango REAL de la sesión (opened_at/closed_at)
+ * - Detecta tabla facturas / invoices / billing_invoices
+ * - Detecta columna cobertura / descuento / etc.
+ * - Detecta columna sucursal y fecha
  */
-function getCoverageFromInvoices(PDO $pdo, int $branchId, string $startDT, string $endDT): float {
-  $tables = ["facturas", "invoices", "billing_invoices"];
+function getCoverageFromInvoices(PDO $pdo, int $branchId, string $startDT, string $endDT): array {
+  $tables = ["facturas", "invoices", "billing_invoices", "facturacion_facturas"];
   $table = null;
   foreach($tables as $t){
     if (tableExists($pdo, $t)) { $table = $t; break; }
   }
-  if (!$table) return 0.0;
+  if (!$table) return ["total"=>0.0, "table"=>null, "amountCol"=>null, "dateCol"=>null, "branchCol"=>null];
 
-  // columna monto cobertura (en tu caso antes era "descuento")
-  $amountCol = firstExistingColumn($pdo, $table, ["cobertura", "coverage", "descuento", "discount", "monto_cobertura"]);
-  if (!$amountCol) return 0.0;
+  // OJO: en tu sistema "descuento" ahora es "cobertura"
+  $amountCol = firstExistingColumn($pdo, $table, ["cobertura","monto_cobertura","coverage","descuento","discount","seguro_monto","monto_seguro"]);
+  $branchCol = firstExistingColumn($pdo, $table, ["branch_id","sucursal_id","id_sucursal"]);
+  $dateCol   = firstExistingColumn($pdo, $table, ["created_at","fecha_hora","fecha","date_created","created_on","updated_at"]);
 
-  // columna sucursal
-  $branchCol = firstExistingColumn($pdo, $table, ["branch_id", "sucursal_id", "id_sucursal"]);
-  if (!$branchCol) return 0.0;
+  if (!$amountCol || !$branchCol || !$dateCol) {
+    return ["total"=>0.0, "table"=>$table, "amountCol"=>$amountCol, "dateCol"=>$dateCol, "branchCol"=>$branchCol];
+  }
 
-  // columna fecha/hora creación
-  $dateCol = firstExistingColumn($pdo, $table, ["created_at", "fecha", "created_on", "date_created", "timestamp"]);
-  if (!$dateCol) return 0.0;
-
-  // suma cobertura en ese rango
   try{
     $sql = "SELECT COALESCE(SUM(CASE WHEN `$amountCol` > 0 THEN `$amountCol` ELSE 0 END),0) AS total
             FROM `$table`
@@ -100,14 +93,14 @@ function getCoverageFromInvoices(PDO $pdo, int $branchId, string $startDT, strin
               AND `$dateCol` <= ?";
     $st = $pdo->prepare($sql);
     $st->execute([$branchId, $startDT, $endDT]);
-    return (float)$st->fetchColumn();
+    return ["total"=>(float)$st->fetchColumn(), "table"=>$table, "amountCol"=>$amountCol, "dateCol"=>$dateCol, "branchCol"=>$branchCol];
   } catch(Throwable $e){
-    return 0.0;
+    return ["total"=>0.0, "table"=>$table, "amountCol"=>$amountCol, "dateCol"=>$dateCol, "branchCol"=>$branchCol];
   }
 }
 
 function getTotals(PDO $pdo, int $sessionId, int $branchId, string $rangeStart, string $rangeEnd){
-  // 1) Movimientos de caja
+  // Movimientos caja
   $st = $pdo->prepare("SELECT
       COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='efectivo' THEN amount END),0) AS efectivo,
       COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='tarjeta' THEN amount END),0) AS tarjeta,
@@ -119,8 +112,9 @@ function getTotals(PDO $pdo, int $sessionId, int $branchId, string $rangeStart, 
   $st->execute([$sessionId]);
   $r = $st->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura_mov"=>0,"desembolso"=>0];
 
-  // 2) ✅ Cobertura desde facturas (si ahí es donde realmente se guarda)
-  $cobInv = getCoverageFromInvoices($pdo, $branchId, $rangeStart, $rangeEnd);
+  // ✅ Cobertura desde facturas EN EL RANGO REAL
+  $cov = getCoverageFromInvoices($pdo, $branchId, $rangeStart, $rangeEnd);
+  $cobInv = (float)$cov["total"];
 
   $ef  = (float)$r["efectivo"];
   $ta  = (float)$r["tarjeta"];
@@ -129,7 +123,6 @@ function getTotals(PDO $pdo, int $sessionId, int $branchId, string $rangeStart, 
   $des = (float)$r["desembolso"];
 
   $cobertura = $coM + $cobInv;
-
   $ing = $ef + $ta + $tr + $cobertura;
   $net = $ing - $des;
 
@@ -138,38 +131,52 @@ function getTotals(PDO $pdo, int $sessionId, int $branchId, string $rangeStart, 
     "tarjeta"=>$ta,
     "transferencia"=>$tr,
     "cobertura"=>$cobertura,
-    "cob_mov"=>$coM,
-    "cob_inv"=>$cobInv,
     "desembolso"=>$des,
     "ing"=>$ing,
-    "net"=>$net
+    "net"=>$net,
+    "cob_mov"=>$coM,
+    "cob_inv"=>$cobInv,
+    "cov_table"=>$cov["table"],
+    "cov_amount"=>$cov["amountCol"],
+    "cov_date"=>$cov["dateCol"],
+    "cov_branch"=>$cov["branchCol"],
+    "rangeStart"=>$rangeStart,
+    "rangeEnd"=>$rangeEnd
   ];
 }
 
+// Turnos (solo para localizar sesión, NO para sumar por hora fija)
 [$s1Start,$s1End] = ["08:00:00","13:00:00"];
 [$s2Start,$s2End] = ["13:00:00","18:00:00"];
 
 $caja1 = getSession($pdo, $branchId, 1, $today, $s1Start, $s1End);
 $caja2 = getSession($pdo, $branchId, 2, $today, $s2Start, $s2End);
 
-// rangos por caja
 $now = date("Y-m-d H:i:s");
-$caja1StartDT = $today." ".$s1Start;
-$caja1EndDT   = $today." ".$s1End;
-$caja2StartDT = $today." ".$s2Start;
-$caja2EndDT   = $today." ".$s2End;
 
-// si está en curso, el end real es "ahora"
-if ($now < $caja1EndDT) $caja1EndDT = $now;
-if ($now < $caja2EndDT) $caja2EndDT = $now;
+function sessionRange(array $session, string $fallbackDate, string $fallbackStart, string $fallbackEnd): array {
+  $start = $session["opened_at"] ?? null;
+  $end   = $session["closed_at"] ?? null;
+
+  if (!$start) $start = $fallbackDate." ".$fallbackStart;
+  if (!$end)   $end   = date("Y-m-d H:i:s");
+
+  return [$start, $end];
+}
 
 $sum = [
   1 => ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0,"ing"=>0,"net"=>0,"cob_mov"=>0,"cob_inv"=>0],
   2 => ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0,"ing"=>0,"net"=>0,"cob_mov"=>0,"cob_inv"=>0],
 ];
 
-if ($caja1) { $sum[1] = getTotals($pdo, (int)$caja1["id"], $branchId, $caja1StartDT, $caja1EndDT); }
-if ($caja2) { $sum[2] = getTotals($pdo, (int)$caja2["id"], $branchId, $caja2StartDT, $caja2EndDT); }
+if ($caja1) {
+  [$rs,$re] = sessionRange($caja1, $today, $s1Start, $s1End);
+  $sum[1] = getTotals($pdo, (int)$caja1["id"], $branchId, $rs, $re);
+}
+if ($caja2) {
+  [$rs,$re] = sessionRange($caja2, $today, $s2Start, $s2End);
+  $sum[2] = getTotals($pdo, (int)$caja2["id"], $branchId, $rs, $re);
+}
 
 $currentCajaNum = caja_get_current_caja_num();
 ?>
@@ -180,26 +187,15 @@ $currentCajaNum = caja_get_current_caja_num();
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CEVIMEP | Caja</title>
   <link rel="stylesheet" href="../../assets/css/styles.css">
-
   <style>
     html,body{height:100%;}
     body{margin:0; display:flex; flex-direction:column; min-height:100vh; overflow:hidden !important;}
     .app{flex:1; display:flex; min-height:0;}
     .main{flex:1; min-width:0; overflow:auto; padding:22px;}
-
     .menu a.active{background:#fff4e6;color:#b45309;border:1px solid #fed7aa;}
-
     .grid{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px;}
     @media(max-width:900px){ .grid{grid-template-columns:1fr;} }
-
-    .card{
-      background:#fff;
-      border:1px solid #e6eef7;
-      border-radius:22px;
-      padding:18px;
-      box-shadow:0 10px 30px rgba(2,6,23,.08);
-    }
-
+    .card{background:#fff;border:1px solid #e6eef7;border-radius:22px;padding:18px;box-shadow:0 10px 30px rgba(2,6,23,.08);}
     table{width:100%; border-collapse:collapse; margin-top:10px; border:1px solid #e6eef7; border-radius:16px; overflow:hidden;}
     th,td{padding:10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px;}
     thead th{background:#f7fbff; color:#0b3b9a; font-weight:900;}
@@ -207,7 +203,6 @@ $currentCajaNum = caja_get_current_caja_num();
     .pill{display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; background:#f3f7ff; border:1px solid #dbeafe; color:#052a7a; font-weight:900; font-size:12px;}
     .actions{display:flex; gap:10px; flex-wrap:wrap;}
     .btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:14px;border:1px solid #dbeafe;background:#fff;color:#052a7a;font-weight:900;text-decoration:none;cursor:pointer;}
-
     footer.footer .inner{width:100%; text-align:center;}
     .subnote{font-size:12px; color:#6b7280; margin-top:6px;}
   </style>
@@ -289,7 +284,9 @@ $currentCajaNum = caja_get_current_caja_num();
         </table>
 
         <div class="subnote">
-          Cobertura (detalle): mov RD$ <?php echo fmtMoney($sum[1]["cob_mov"]); ?> + facturas RD$ <?php echo fmtMoney($sum[1]["cob_inv"]); ?>
+          Cobertura (detalle): mov RD$ <?php echo fmtMoney($sum[1]["cob_mov"]); ?>
+          + facturas RD$ <?php echo fmtMoney($sum[1]["cob_inv"]); ?>
+          · rango: <?php echo h($sum[1]["rangeStart"] ?? ""); ?> → <?php echo h($sum[1]["rangeEnd"] ?? ""); ?>
         </div>
       </div>
 
@@ -317,7 +314,9 @@ $currentCajaNum = caja_get_current_caja_num();
         </table>
 
         <div class="subnote">
-          Cobertura (detalle): mov RD$ <?php echo fmtMoney($sum[2]["cob_mov"]); ?> + facturas RD$ <?php echo fmtMoney($sum[2]["cob_inv"]); ?>
+          Cobertura (detalle): mov RD$ <?php echo fmtMoney($sum[2]["cob_mov"]); ?>
+          + facturas RD$ <?php echo fmtMoney($sum[2]["cob_inv"]); ?>
+          · rango: <?php echo h($sum[2]["rangeStart"] ?? ""); ?> → <?php echo h($sum[2]["rangeEnd"] ?? ""); ?>
         </div>
       </div>
 
