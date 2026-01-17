@@ -2,7 +2,7 @@
 session_start();
 
 if (!isset($_SESSION["user"])) {
-  header("Location: ../../public/login.php");
+  header("Location: /login.php");
   exit;
 }
 
@@ -130,7 +130,7 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
     }
   }
 
-  $logoPath = "../../assets/img/CEVIMEP.png";
+  $logoPath = "/assets/img/CEVIMEP.png";
   ?>
   <!doctype html>
   <html lang="es">
@@ -191,7 +191,7 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
         </table>
       </div>
 
-      <div class="footer">© 2025 CEVIMEP. Todos los derechos reservados.</div>
+      <div class="footer">© <?= (int)date("Y") ?> CEVIMEP. Todos los derechos reservados.</div>
     </div>
   </body>
   </html>
@@ -313,7 +313,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
    IMPRESIÓN (inmediata)
 ========================================================= */
 if ($print_mode):
-  $logoPath = "../../assets/img/CEVIMEP.png";
+  $logoPath = "/assets/img/CEVIMEP.png";
 ?>
 <!doctype html>
 <html lang="es">
@@ -374,7 +374,7 @@ if ($print_mode):
     </table>
   </div>
 
-  <div class="footer">© 2025 CEVIMEP. Todos los derechos reservados.</div>
+  <div class="footer">© <?= (int)date("Y") ?> CEVIMEP. Todos los derechos reservados.</div>
 </div>
 </body>
 </html>
@@ -387,8 +387,11 @@ endif;
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CEVIMEP | Entrada</title>
-  <link rel="stylesheet" href="../../assets/css/styles.css">
+  <title>CEVIMEP | Inventario - Entrada</title>
+
+  <!-- ✅ Igual que dashboard -->
+  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+
   <style>
     .formGrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px}
     .rowAdd{display:grid;grid-template-columns:240px 1fr 170px auto;gap:12px;align-items:end;margin-top:12px}
@@ -398,35 +401,66 @@ endif;
     .actions{display:flex;justify-content:flex-end;margin-top:14px}
     .qtyRight{text-align:right}
     .miniHelp{margin-top:6px}
-    .toggleBtn{margin-top:12px}
     .histWrap{display:none;margin-top:12px}
     .btnSmall{padding:8px 12px;border-radius:999px;font-weight:900;border:1px solid rgba(2,21,44,.12);background:#eef6ff;cursor:pointer}
+
+    /* Submenu de inventario (bonito, sin tocar sidebar global) */
+    .subnav{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+    .subnav a{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:10px 14px;border-radius:999px;
+      border:1px solid rgba(2,21,44,.12);
+      background:#fff;text-decoration:none;font-weight:900;color:var(--primary-2);
+    }
+    .subnav a.active{background:rgba(20,184,166,.12);border-color:rgba(20,184,166,.35)}
+    @media(max-width:900px){
+      .formGrid{grid-template-columns:1fr}
+      .rowAdd{grid-template-columns:1fr}
+    }
   </style>
 </head>
+
 <body>
 
 <header class="navbar">
   <div class="inner">
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
-    <div class="nav-right"><a href="../../public/logout.php">Salir</a></div>
+    <div class="nav-right">
+      <a class="btn-pill" href="/logout.php">Salir</a>
+    </div>
   </div>
 </header>
 
-<main class="app">
+<div class="layout">
 
-  <!-- SIDEBAR (NO TOCAR) -->
+  <!-- ✅ Sidebar global igual al dashboard -->
   <aside class="sidebar">
-    <div class="title">Menú</div>
+    <div class="menu-title">Menú</div>
     <nav class="menu">
-      <a href="../dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a href="items.php"><span class="ico">📦</span> Inventario</a>
-      <a class="active" href="entrada.php"><span class="ico">➕</span> Entrada</a>
-      <a href="salida.php"><span class="ico">➖</span> Salida</a>
+      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
+      <a href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
+      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;"><span class="ico">🗓️</span> Citas</a>
+      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
+      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
+      <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
+      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
     </nav>
   </aside>
 
-  <section class="main">
+  <main class="content">
+
+    <section class="hero">
+      <h1>Inventario</h1>
+      <p><?= htmlspecialchars($branch_name) ?> · Entrada</p>
+
+      <!-- ✅ Submenu del módulo Inventario -->
+      <div class="subnav">
+        <a href="/private/inventario/index.php">📦 Inventario</a>
+        <a class="active" href="/private/inventario/entrada.php">➕ Entrada</a>
+        <a href="/private/inventario/salida.php">➖ Salida</a>
+      </div>
+    </section>
 
     <?php if ($branch_warning): ?>
       <div class="card" style="border-color:rgba(239,68,68,.35); background:rgba(239,68,68,.08);">
@@ -566,7 +600,7 @@ endif;
                   <td class="qtyRight" style="font-weight:900;"><?= (int)$h["qty"] ?></td>
                   <td>
                     <a class="btn" style="padding:8px 10px;text-decoration:none;" target="_blank"
-                       href="entrada.php?print=1&id=<?= (int)$h["id"] ?>">
+                       href="/private/inventario/entrada.php?print=1&id=<?= (int)$h["id"] ?>">
                       Detalle
                     </a>
                   </td>
@@ -578,11 +612,11 @@ endif;
       </div>
     </div>
 
-  </section>
-</main>
+  </main>
+</div>
 
 <footer class="footer">
-  <div class="inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
+  <div class="footer-inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
 </footer>
 
 <script>
@@ -609,7 +643,6 @@ endif;
       if (opt.value === "0") { opt.hidden = false; continue; }
       opt.hidden = (catId !== 0 && oc !== catId);
     }
-    // si lo seleccionado quedó oculto, volver a 0
     const cur = selItem.options[selItem.selectedIndex];
     if (cur && cur.hidden) selItem.value = "0";
   }
