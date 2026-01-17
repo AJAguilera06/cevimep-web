@@ -13,6 +13,26 @@ date_default_timezone_set("America/Santo_Domingo");
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function fmt($n){ return number_format((float)$n, 2, ".", ","); }
 
+// ✅ Cobertura real (ARS/Seguro) desde invoice_adjustments + invoices
+function getCoverageFromInvoicesRange(PDO $pdo, int $branchId, string $startDT, string $endDT): float {
+  try {
+    $sql = "
+      SELECT COALESCE(SUM(ia.amount),0) AS total
+      FROM invoice_adjustments ia
+      INNER JOIN invoices i ON i.id = ia.invoice_id
+      WHERE i.branch_id = ?
+        AND i.created_at >= ?
+        AND i.created_at <= ?
+        AND ia.type IN ('coverage','insurance','cobertura')
+    ";
+    $st = $pdo->prepare($sql);
+    $st->execute([$branchId, $startDT, $endDT]);
+    return (float)$st->fetchColumn();
+  } catch (Throwable $e) {
+    return 0.0;
+  }
+}
+
 $day = $_GET["day"] ?? date("Y-m-d");
 
 $st = $pdo->prepare("
@@ -24,34 +44,43 @@ $st = $pdo->prepare("
 $st->execute(["b"=>$branchId, "d"=>$day]);
 $sessions = $st->fetchAll(PDO::FETCH_ASSOC);
 
-function totalsForSession(PDO $pdo, int $sid){
+function totalsForSession(PDO $pdo, int $sid, int $branchId, string $rangeStart, string $rangeEnd){
   $st = $pdo->prepare("
     SELECT
       COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='efectivo' THEN amount END),0) AS efectivo,
       COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='tarjeta' THEN amount END),0) AS tarjeta,
       COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='transferencia' THEN amount END),0) AS transferencia,
+      COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago IN ('cobertura','seguro') THEN amount END),0) AS cobertura_mov,
       COALESCE(SUM(CASE WHEN type='desembolso' THEN amount END),0) AS desembolso
     FROM cash_movements
     WHERE session_id=:sid
   ");
   $st->execute(["sid"=>$sid]);
-  $r = $st->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0];
-  $ing = (float)$r["efectivo"]+(float)$r["tarjeta"]+(float)$r["transferencia"];
+  $r = $st->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura_mov"=>0,"desembolso"=>0];
+
+  $cobInv = getCoverageFromInvoicesRange($pdo, $branchId, $rangeStart, $rangeEnd);
+  $cobMov = (float)$r["cobertura_mov"];
+  $r["cobertura"] = $cobInv + $cobMov;
+
+  $ing = (float)$r["efectivo"]+(float)$r["tarjeta"]+(float)$r["transferencia"]+(float)$r["cobertura"];
   $net = $ing-(float)$r["desembolso"];
   return [$r,$ing,$net];
 }
 
 // Totales del día (sumando todas las cajas)
-$tot = ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0,"ingresos"=>0,"neto"=>0];
+$tot = ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0,"ingresos"=>0,"neto"=>0];
 $byCaja = [];
 
 foreach($sessions as $s){
-  [$r,$ing,$net] = totalsForSession($pdo, (int)$s["id"]);
+  $rangeStart = $s["opened_at"] ?: ($day . " 00:00:00");
+  $rangeEnd   = $s["closed_at"] ?: date("Y-m-d H:i:s");
+  [$r,$ing,$net] = totalsForSession($pdo, (int)$s["id"], $branchId, $rangeStart, $rangeEnd);
   $byCaja[(int)$s["caja_num"]] = ["session"=>$s, "r"=>$r, "ing"=>$ing, "net"=>$net];
 
   $tot["efectivo"] += (float)$r["efectivo"];
   $tot["tarjeta"] += (float)$r["tarjeta"];
   $tot["transferencia"] += (float)$r["transferencia"];
+  $tot["cobertura"] += (float)($r["cobertura"] ?? 0);
   $tot["desembolso"] += (float)$r["desembolso"];
   $tot["ingresos"] += (float)$ing;
   $tot["neto"] += (float)$net;
@@ -145,6 +174,7 @@ foreach($sessions as $s){
           <tr><td>Efectivo</td><td>RD$ <?php echo fmt($tot["efectivo"]); ?></td></tr>
           <tr><td>Tarjeta</td><td>RD$ <?php echo fmt($tot["tarjeta"]); ?></td></tr>
           <tr><td>Transferencia</td><td>RD$ <?php echo fmt($tot["transferencia"]); ?></td></tr>
+          <tr><td>Cobertura</td><td>RD$ <?php echo fmt($tot["cobertura"]); ?></td></tr>
           <tr><td>Desembolsos</td><td>- RD$ <?php echo fmt($tot["desembolso"]); ?></td></tr>
           <tr><td style="font-weight:900;">Total ingresos</td><td style="font-weight:900;">RD$ <?php echo fmt($tot["ingresos"]); ?></td></tr>
           <tr><td style="font-weight:900;">Neto</td><td style="font-weight:900;">RD$ <?php echo fmt($tot["neto"]); ?></td></tr>
@@ -170,6 +200,7 @@ foreach($sessions as $s){
                 <tr><td>Efectivo</td><td>RD$ <?php echo fmt($data["r"]["efectivo"]); ?></td></tr>
                 <tr><td>Tarjeta</td><td>RD$ <?php echo fmt($data["r"]["tarjeta"]); ?></td></tr>
                 <tr><td>Transferencia</td><td>RD$ <?php echo fmt($data["r"]["transferencia"]); ?></td></tr>
+                <tr><td>Cobertura</td><td>RD$ <?php echo fmt($data["r"]["cobertura"]); ?></td></tr>
                 <tr><td>Desembolsos</td><td>- RD$ <?php echo fmt($data["r"]["desembolso"]); ?></td></tr>
                 <tr><td style="font-weight:900;">Total ingresos</td><td style="font-weight:900;">RD$ <?php echo fmt($data["ing"]); ?></td></tr>
                 <tr><td style="font-weight:900;">Neto</td><td style="font-weight:900;">RD$ <?php echo fmt($data["net"]); ?></td></tr>

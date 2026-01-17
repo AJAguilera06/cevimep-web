@@ -13,6 +13,50 @@ date_default_timezone_set("America/Santo_Domingo");
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function fmt($n){ return number_format((float)$n, 2, ".", ","); }
 
+// ✅ Cobertura real (ARS/Seguro) desde invoice_adjustments + invoices
+function getCoverageInvoicesMonth(PDO $pdo, int $branchId, string $startDate, string $endDate): float {
+  try {
+    $sql = "
+      SELECT COALESCE(SUM(ia.amount),0) AS total
+      FROM invoice_adjustments ia
+      INNER JOIN invoices i ON i.id = ia.invoice_id
+      WHERE i.branch_id = ?
+        AND DATE(i.created_at) BETWEEN ? AND ?
+        AND ia.type IN ('coverage','insurance','cobertura')
+    ";
+    $st = $pdo->prepare($sql);
+    $st->execute([$branchId, $startDate, $endDate]);
+    return (float)$st->fetchColumn();
+  } catch (Throwable $e) {
+    return 0.0;
+  }
+}
+
+// ✅ Cobertura por caja (sumando coberturas de facturas en el rango real de cada sesión de esa caja)
+function getCoverageByCaja(PDO $pdo, int $branchId, int $cajaNum, string $startDate, string $endDate): float {
+  try {
+    $sql = "
+      SELECT COALESCE(SUM(ia.amount),0) AS total
+      FROM cash_sessions s
+      INNER JOIN invoices i
+        ON i.branch_id = s.branch_id
+       AND i.created_at >= s.opened_at
+       AND i.created_at <= COALESCE(s.closed_at, NOW())
+      INNER JOIN invoice_adjustments ia
+        ON ia.invoice_id = i.id
+       AND ia.type IN ('coverage','insurance','cobertura')
+      WHERE s.branch_id = ?
+        AND s.caja_num = ?
+        AND s.date_open BETWEEN ? AND ?
+    ";
+    $st = $pdo->prepare($sql);
+    $st->execute([$branchId, $cajaNum, $startDate, $endDate]);
+    return (float)$st->fetchColumn();
+  } catch (Throwable $e) {
+    return 0.0;
+  }
+}
+
 $month = $_GET["month"] ?? date("Y-m"); // YYYY-MM
 $start = $month . "-01";
 $end   = date("Y-m-t", strtotime($start)); // último día del mes
@@ -30,7 +74,11 @@ $st = $pdo->prepare("
 ");
 $st->execute(["b"=>$branchId, "s"=>$start, "e"=>$end]);
 $tot = $st->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0];
-$ing = (float)$tot["efectivo"]+(float)$tot["tarjeta"]+(float)$tot["transferencia"];
+
+// Cobertura del mes desde facturas (invoice_adjustments)
+$cobMes = getCoverageInvoicesMonth($pdo, $branchId, $start, $end);
+
+$ing = (float)$tot["efectivo"]+(float)$tot["tarjeta"]+(float)$tot["transferencia"] + (float)$cobMes;
 $net = $ing-(float)$tot["desembolso"];
 
 // Totales por caja
@@ -48,7 +96,9 @@ foreach([1,2] as $c){
   ");
   $st2->execute(["b"=>$branchId, "c"=>$c, "s"=>$start, "e"=>$end]);
   $r = $st2->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0];
-  $i = (float)$r["efectivo"]+(float)$r["tarjeta"]+(float)$r["transferencia"];
+  $cobCaja = getCoverageByCaja($pdo, $branchId, $c, $start, $end);
+  $r["cobertura"] = $cobCaja;
+  $i = (float)$r["efectivo"]+(float)$r["tarjeta"]+(float)$r["transferencia"] + (float)$cobCaja;
   $n = $i-(float)$r["desembolso"];
   $byCaja[$c] = ["r"=>$r,"ing"=>$i,"net"=>$n];
 }
@@ -140,6 +190,7 @@ foreach([1,2] as $c){
           <tr><td>Efectivo</td><td>RD$ <?php echo fmt($tot["efectivo"]); ?></td></tr>
           <tr><td>Tarjeta</td><td>RD$ <?php echo fmt($tot["tarjeta"]); ?></td></tr>
           <tr><td>Transferencia</td><td>RD$ <?php echo fmt($tot["transferencia"]); ?></td></tr>
+          <tr><td>Cobertura</td><td>RD$ <?php echo fmt($cobMes); ?></td></tr>
           <tr><td>Desembolsos</td><td>- RD$ <?php echo fmt($tot["desembolso"]); ?></td></tr>
           <tr><td style="font-weight:900;">Total ingresos</td><td style="font-weight:900;">RD$ <?php echo fmt($ing); ?></td></tr>
           <tr><td style="font-weight:900;">Neto</td><td style="font-weight:900;">RD$ <?php echo fmt($net); ?></td></tr>
@@ -157,6 +208,7 @@ foreach([1,2] as $c){
               <tr><td>Efectivo</td><td>RD$ <?php echo fmt($byCaja[$c]["r"]["efectivo"]); ?></td></tr>
               <tr><td>Tarjeta</td><td>RD$ <?php echo fmt($byCaja[$c]["r"]["tarjeta"]); ?></td></tr>
               <tr><td>Transferencia</td><td>RD$ <?php echo fmt($byCaja[$c]["r"]["transferencia"]); ?></td></tr>
+              <tr><td>Cobertura</td><td>RD$ <?php echo fmt($byCaja[$c]["r"]["cobertura"]); ?></td></tr>
               <tr><td>Desembolsos</td><td>- RD$ <?php echo fmt($byCaja[$c]["r"]["desembolso"]); ?></td></tr>
               <tr><td style="font-weight:900;">Total ingresos</td><td style="font-weight:900;">RD$ <?php echo fmt($byCaja[$c]["ing"]); ?></td></tr>
               <tr><td style="font-weight:900;">Neto</td><td style="font-weight:900;">RD$ <?php echo fmt($byCaja[$c]["net"]); ?></td></tr>
