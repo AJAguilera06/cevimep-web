@@ -53,6 +53,12 @@ if ($branch_id > 0) {
   <title>CEVIMEP | Facturación - Paciente</title>
   <link rel="stylesheet" href="../../assets/css/styles.css">
   <style>
+    /* ✅ Mantener el mismo layout estable (evita el espacio gigante arriba) */
+    html,body{height:100%;}
+    body{margin:0;display:flex;flex-direction:column;min-height:100vh;overflow:hidden !important;}
+    .app{flex:1;display:flex;min-height:0;}
+    .main{flex:1;min-width:0;overflow:auto;padding:22px;}
+
     .btnSmall{padding:8px 12px;border-radius:999px;font-weight:900;border:1px solid rgba(2,21,44,.12);background:#eef6ff;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
   </style>
 </head>
@@ -72,32 +78,17 @@ if ($branch_id > 0) {
     <div class="title">Menú</div>
 
     <nav class="menu">
-      <a href="../dashboard.php">
-        <span class="ico">🏠</span> Panel
-      </a>
-
-      <a href="../patients/index.php">
-        <span class="ico">🧑‍🤝‍🧑</span> Pacientes
-      </a>
+      <a href="../dashboard.php"><span class="ico">🏠</span> Panel</a>
+      <a href="../patients/index.php"><span class="ico">🧑‍🤝‍🧑</span> Pacientes</a>
 
       <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;">
         <span class="ico">🗓️</span> Citas
       </a>
 
-      <a class="active" href="index.php">
-        <span class="ico">🧾</span> Facturación
-      </a>
-
-      <a href="../caja/index.php" ><span class="ico">💳</span> Caja
-      </a>
-
-      <a href="../inventario/index.php">
-        <span class="ico">📦</span> Inventario
-      </a>
-
-      <a href="../estadistica/reporte_diario.php">
-        <span class="ico">📊</span> Estadística
-      </a>
+      <a class="active" href="index.php"><span class="ico">🧾</span> Facturación</a>
+      <a href="../caja/index.php"><span class="ico">💳</span> Caja</a>
+      <a href="../inventario/index.php"><span class="ico">📦</span> Inventario</a>
+      <a href="../estadistica/reporte_diario.php"><span class="ico">📊</span> Estadística</a>
     </nav>
   </aside>
 
