@@ -20,6 +20,17 @@ function fmtMoney($n){ return number_format((float)$n, 2, ".", ","); }
 
 $today = date("Y-m-d");
 
+// ✅ BASE URL para que el menú funcione igual que en dashboard.php
+// /private/caja/index.php  =>  /private
+$PRIVATE_BASE = rtrim(dirname(dirname($_SERVER["SCRIPT_NAME"] ?? "/private/caja/index.php")), "/");
+if ($PRIVATE_BASE === "") $PRIVATE_BASE = "/private";
+
+// ✅ URLs ABSOLUTAS (para que no las afecte el <base href>)
+$URL_LOGOUT   = "/public/logout.php";
+$URL_DESEM    = $PRIVATE_BASE . "/caja/desembolso.php";
+$URL_DIARIO   = $PRIVATE_BASE . "/estadistica/reporte_diario.php";
+$URL_MENSUAL  = $PRIVATE_BASE . "/estadistica/reporte_mensual.php";
+
 // ✅ Auto cerrar vencidas y abrir sesión actual (sin botones)
 $activeSessionId = caja_get_or_open_current_session($pdo, $branchId, $userId);
 
@@ -41,7 +52,6 @@ function getSession(PDO $pdo, int $branchId, int $cajaNum, string $date, string 
 }
 
 // ✅ Cobertura real (ARS/Seguro) desde invoice_adjustments + invoices
-// Nota: esto NO es un método de pago; es un ajuste de la factura.
 function getCoverageFromInvoicesRange(PDO $pdo, int $branchId, string $startDT, string $endDT): float {
   try {
     $sql = "
@@ -123,6 +133,9 @@ $currentCajaNum = caja_get_current_caja_num();
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CEVIMEP | Caja</title>
 
+  <!-- ✅ CLAVE: hace que los links relativos del sidebar funcionen desde /private/ -->
+  <base href="<?php echo h($PRIVATE_BASE . "/"); ?>">
+
   <!-- ✅ ESTÁNDAR -->
   <link rel="stylesheet" href="/assets/css/styles.css?v=11">
 
@@ -143,12 +156,6 @@ $currentCajaNum = caja_get_current_caja_num();
     th,td{padding:10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px;}
     thead th{background:#f7fbff; color:#0b3b9a; font-weight:900;}
     .muted{color:#6b7280; font-weight:700;}
-    .pill{
-      display:inline-flex; align-items:center; gap:8px;
-      padding:6px 10px; border-radius:999px;
-      background:#f3f7ff; border:1px solid #dbeafe;
-      color:#052a7a; font-weight:900; font-size:12px;
-    }
     .actions{display:flex; gap:10px; flex-wrap:wrap;}
     .btnLocal{
       display:inline-flex;align-items:center;justify-content:center;
@@ -165,7 +172,7 @@ $currentCajaNum = caja_get_current_caja_num();
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
+      <a class="btn-pill" href="<?php echo h($URL_LOGOUT); ?>">Salir</a>
     </div>
   </div>
 </header>
@@ -195,9 +202,10 @@ $currentCajaNum = caja_get_current_caja_num();
         </div>
 
         <div class="actions">
-          <a class="btnLocal" href="desembolso.php">Desembolso</a>
-          <a class="btnLocal" href="reporte_diario.php">Reporte diario</a>
-          <a class="btnLocal" href="reporte_mensual.php">Reporte mensual</a>
+          <!-- ✅ Rutas ABSOLUTAS para que funcionen aunque exista <base href> -->
+          <a class="btnLocal" href="<?php echo h($URL_DESEM); ?>">Desembolso</a>
+          <a class="btnLocal" href="<?php echo h($URL_DIARIO); ?>">Reporte diario</a>
+          <a class="btnLocal" href="<?php echo h($URL_MENSUAL); ?>">Reporte mensual</a>
         </div>
       </div>
     </section>
