@@ -115,10 +115,6 @@ if ($caja2) {
 }
 
 $currentCajaNum = caja_get_current_caja_num();
-
-// ✅ sidebar shared
-$active = "caja";
-$base = "../";
 ?>
 <!doctype html>
 <html lang="es">
@@ -126,18 +122,16 @@ $base = "../";
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CEVIMEP | Caja</title>
+
+  <!-- ✅ ESTÁNDAR -->
   <link rel="stylesheet" href="/assets/css/styles.css?v=11">
 
   <style>
-    html,body{height:100%;}
-    body{margin:0; overflow:hidden !important;}
+    /* Solo estilos del contenido (sin romper layout global) */
+    .gridBox{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px;}
+    @media(max-width:900px){ .gridBox{grid-template-columns:1fr;} }
 
-    .main{overflow:auto; padding:22px;}
-
-    .grid{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px;}
-    @media(max-width:900px){ .grid{grid-template-columns:1fr;} }
-
-    .card{
+    .cardBox{
       background:#fff;
       border:1px solid #e6eef7;
       border-radius:22px;
@@ -149,9 +143,19 @@ $base = "../";
     th,td{padding:10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px;}
     thead th{background:#f7fbff; color:#0b3b9a; font-weight:900;}
     .muted{color:#6b7280; font-weight:700;}
-    .pill{display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; background:#f3f7ff; border:1px solid #dbeafe; color:#052a7a; font-weight:900; font-size:12px;}
+    .pill{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:6px 10px; border-radius:999px;
+      background:#f3f7ff; border:1px solid #dbeafe;
+      color:#052a7a; font-weight:900; font-size:12px;
+    }
     .actions{display:flex; gap:10px; flex-wrap:wrap;}
-    .btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:14px;border:1px solid #dbeafe;background:#fff;color:#052a7a;font-weight:900;text-decoration:none;cursor:pointer;}
+    .btnLocal{
+      display:inline-flex;align-items:center;justify-content:center;
+      padding:10px 14px;border-radius:14px;
+      border:1px solid #dbeafe;background:#fff;color:#052a7a;
+      font-weight:900;text-decoration:none;cursor:pointer;
+    }
   </style>
 </head>
 <body>
@@ -171,36 +175,38 @@ $base = "../";
     <?php include __DIR__ . "/../partials/sidebar.php"; ?>
   </aside>
 
-  <main class="content main">
+  <main class="content">
 
-    <div class="card" style="margin-bottom:14px;">
+    <section class="hero">
+      <h1>Caja</h1>
+      <p><?php echo h($branchName); ?> · Hoy: <?php echo h($today); ?></p>
+    </section>
+
+    <section class="card">
       <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
         <div>
-          <h2 style="margin:0; color:var(--primary-2);">Caja</h2>
+          <h2 style="margin:0; color:var(--primary-2);">Resumen</h2>
           <div class="muted" style="margin-top:6px;">
-            <?php echo h($branchName); ?> · Hoy: <?php echo h($today); ?>
+            Caja activa ahora: <b><?php echo (int)$currentCajaNum; ?></b> · Sesión activa ID: <b><?php echo (int)$activeSessionId; ?></b>
           </div>
-          <div style="margin-top:10px;">
-            <span class="pill">Caja activa ahora: <?php echo (int)$currentCajaNum; ?></span>
-            <span class="pill">Sesión activa ID: <?php echo (int)$activeSessionId; ?></span>
+          <div class="muted" style="margin-top:10px;">
+            * Las cajas se abren y cierran automáticamente por horario (sin botones).
           </div>
         </div>
 
         <div class="actions">
-          <a class="btn" href="desembolso.php">Desembolso</a>
-          <a class="btn" href="reporte_diario.php">Reporte diario</a>
-          <a class="btn" href="reporte_mensual.php">Reporte mensual</a>
+          <a class="btnLocal" href="desembolso.php">Desembolso</a>
+          <a class="btnLocal" href="reporte_diario.php">Reporte diario</a>
+          <a class="btnLocal" href="reporte_mensual.php">Reporte mensual</a>
         </div>
       </div>
+    </section>
 
-      <div class="muted" style="margin-top:10px;">
-        * Las cajas se abren y cierran automáticamente por horario (sin botones).
-      </div>
-    </div>
+    <div style="height:14px;"></div>
 
-    <div class="grid">
+    <div class="gridBox">
 
-      <div class="card">
+      <section class="cardBox">
         <h3 style="margin:0; color:#052a7a;">Caja 1 (08:00 AM - 01:00 PM)</h3>
         <div class="muted" style="margin-top:6px;">
           <?php if(!$caja1): ?>
@@ -222,9 +228,9 @@ $base = "../";
             <tr><td style="font-weight:900;">Neto</td><td style="font-weight:900;">RD$ <?php echo fmtMoney($sum[1]["net"]); ?></td></tr>
           </tbody>
         </table>
-      </div>
+      </section>
 
-      <div class="card">
+      <section class="cardBox">
         <h3 style="margin:0; color:#052a7a;">Caja 2 (01:00 PM - 06:00 PM)</h3>
         <div class="muted" style="margin-top:6px;">
           <?php if(!$caja2): ?>
@@ -246,7 +252,7 @@ $base = "../";
             <tr><td style="font-weight:900;">Neto</td><td style="font-weight:900;">RD$ <?php echo fmtMoney($sum[2]["net"]); ?></td></tr>
           </tbody>
         </table>
-      </div>
+      </section>
 
     </div>
 
