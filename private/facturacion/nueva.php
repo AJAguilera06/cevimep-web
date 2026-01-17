@@ -219,33 +219,34 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $stInv->execute($vals);
 
         $invoice_id = (int)$conn->lastInsertId();
-// ===============================
-// COBERTURA – guardar ajuste
-// ===============================
-$cobertura = (float)($_POST['cobertura'] ?? 0);
 
-if ($cobertura > 0) {
+        // ===============================
+        // COBERTURA – guardar ajuste
+        // ===============================
+        $cobertura = (float)($_POST['cobertura'] ?? 0);
 
-    // sesión de caja activa
-    $session_id = caja_get_or_open_current_session(
-        $pdo,
-        (int)$branch_id,
-        (int)$created_by
-    );
+        if ($cobertura > 0) {
 
-    $stmtAdj = $pdo->prepare("
-        INSERT INTO invoice_adjustments
-            (invoice_id, session_id, branch_id, tipo, monto, created_at)
-        VALUES (?, ?, ?, 'cobertura', ?, CURDATE())
-    ");
+            // sesión de caja activa
+            $session_id = caja_get_or_open_current_session(
+                $pdo,
+                (int)$branch_id,
+                (int)$created_by
+            );
 
-    $stmtAdj->execute([
-        (int)$invoice_id,
-        (int)$session_id,
-        (int)$branch_id,
-        (float)$cobertura
-    ]);
-}
+            $stmtAdj = $pdo->prepare("
+                INSERT INTO invoice_adjustments
+                    (invoice_id, session_id, branch_id, tipo, monto, created_at)
+                VALUES (?, ?, ?, 'cobertura', ?, CURDATE())
+            ");
+
+            $stmtAdj->execute([
+                (int)$invoice_id,
+                (int)$session_id,
+                (int)$branch_id,
+                (float)$cobertura
+            ]);
+        }
 
         $stItem = $conn->prepare("
           INSERT INTO invoice_items (invoice_id, item_id, category_id, qty, unit_price, line_total)
@@ -272,37 +273,38 @@ if ($cobertura > 0) {
           if ($coverage_amount > 0) $note .= " | COBERTURA=" . number_format($coverage_amount, 2);
           $stMov->execute([(int)$iid, $branch_id, (int)$q, $note, $created_by]);
         }
-// ================================
-// ✅ CONECTAR FACTURACIÓN → CAJA
-// ================================
-caja_registrar_ingreso_factura(
-  $conn,
-  (int)$branch_id,
-  (int)$created_by,
-  (int)$invoice_id,
-  (float)$total,          // TOTAL A PAGAR
-  (string)$payment_method // EFECTIVO | TARJETA | TRANSFERENCIA
-);
 
-// ✅ Si hay cobertura, registrarla también en caja como ingreso separado
-// ✅ Guardar cobertura en invoice_adjustments
-if ($coverage_amount > 0) {
-  $stAdj = $conn->prepare("
-    INSERT INTO invoice_adjustments
-      (invoice_id, session_id, branch_id, tipo, monto, created_at)
-    VALUES (?, ?, ?, 'cobertura', ?, CURDATE())
-  ");
+        // ================================
+        // ✅ CONECTAR FACTURACIÓN → CAJA
+        // ================================
+        caja_registrar_ingreso_factura(
+          $conn,
+          (int)$branch_id,
+          (int)$created_by,
+          (int)$invoice_id,
+          (float)$total,          // TOTAL A PAGAR
+          (string)$payment_method // EFECTIVO | TARJETA | TRANSFERENCIA
+        );
 
-  // sesión de caja activa
-  $session_id = caja_get_or_open_current_session($conn, $branch_id, $created_by);
+        // ✅ Si hay cobertura, registrarla también en caja como ingreso separado
+        // ✅ Guardar cobertura en invoice_adjustments
+        if ($coverage_amount > 0) {
+          $stAdj = $conn->prepare("
+            INSERT INTO invoice_adjustments
+              (invoice_id, session_id, branch_id, tipo, monto, created_at)
+            VALUES (?, ?, ?, 'cobertura', ?, CURDATE())
+          ");
 
-  $stAdj->execute([
-    (int)$invoice_id,
-    (int)$session_id,
-    (int)$branch_id,
-    (float)$coverage_amount
-  ]);
-}
+          // sesión de caja activa
+          $session_id = caja_get_or_open_current_session($conn, $branch_id, $created_by);
+
+          $stAdj->execute([
+            (int)$invoice_id,
+            (int)$session_id,
+            (int)$branch_id,
+            (float)$coverage_amount
+          ]);
+        }
 
         $conn->commit();
 
@@ -323,12 +325,19 @@ if ($coverage_amount > 0) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Nueva Factura</title>
-  <link rel="stylesheet" href="../../assets/css/styles.css">
+
+  <!-- ✅ ESTÁNDAR -->
+  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+
   <style>
-    body{overflow:hidden;}
-    .app{display:flex; min-height:calc(100vh - 70px - 60px);}
-    .main{flex:1; padding:22px; overflow:auto;}
-    .card{background:#fff;border:1px solid #e6eef7;border-radius:22px;padding:18px;box-shadow:0 10px 30px rgba(2,6,23,.08);}
+    /* Solo estilos internos del formulario/tabla (sin tocar layout global) */
+    .card-box{
+      background:#fff;
+      border:1px solid #e6eef7;
+      border-radius:22px;
+      padding:18px;
+      box-shadow:0 10px 30px rgba(2,6,23,.08);
+    }
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
     @media(max-width:980px){.grid2{grid-template-columns:1fr;}}
     .input, select{width:100%;padding:10px 12px;border:1px solid #e6eef7;border-radius:14px;outline:none;}
@@ -349,26 +358,33 @@ if ($coverage_amount > 0) {
   <div class="inner">
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
-    <div class="nav-right"><a href="../../public/logout.php">Salir</a></div>
+    <div class="nav-right">
+      <a class="btn-pill" href="/logout.php">Salir</a>
+    </div>
   </div>
 </header>
 
-<main class="app">
+<div class="layout">
   <aside class="sidebar">
-    <div class="title">Menú</div>
+    <div class="menu-title">Menú</div>
     <nav class="menu">
-      <a href="../dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a href="../patients/index.php"><span class="ico">🧑‍🤝‍🧑</span> Pacientes</a>
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;"><span class="ico">📅</span> Citas</a>
-      <a class="active" href="../facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
-      <a href="../caja/index.php"><span class="ico">💳</span> Caja</a>
-      <a href="../inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="/private/estadistica/reporte_diario.php"><span class="ico">📊</span> Estadística</a>
+      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
+      <a href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
+      <a href="javascript:void(0)" style="opacity:.55; cursor:not-allowed;"><span class="ico">🗓️</span> Citas</a>
+      <a class="active" href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
+      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
+      <a href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
+      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
     </nav>
   </aside>
 
-  <section class="main">
-    <div class="card">
+  <main class="content">
+    <section class="hero">
+      <h1>Nueva factura</h1>
+      <p>Paciente: <strong><?= htmlspecialchars($patient["full_name"]) ?></strong></p>
+    </section>
+
+    <section class="card">
       <div class="row">
         <div>
           <h2 style="margin:0; color:var(--primary-2);">Nueva factura</h2>
@@ -510,12 +526,12 @@ if ($coverage_amount > 0) {
         </div>
 
       </form>
-    </div>
-  </section>
-</main>
+    </section>
+  </main>
+</div>
 
 <footer class="footer">
-  <div class="inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
+  <div class="footer-inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
 </footer>
 
 <script>
