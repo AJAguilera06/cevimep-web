@@ -115,6 +115,10 @@ if ($caja2) {
 }
 
 $currentCajaNum = caja_get_current_caja_num();
+
+// ✅ sidebar shared
+$active = "caja";
+$base = "../";
 ?>
 <!doctype html>
 <html lang="es">
@@ -122,15 +126,13 @@ $currentCajaNum = caja_get_current_caja_num();
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CEVIMEP | Caja</title>
-  <link rel="stylesheet" href="../../assets/css/styles.css">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
 
   <style>
     html,body{height:100%;}
-    body{margin:0; display:flex; flex-direction:column; min-height:100vh; overflow:hidden !important;}
-    .app{flex:1; display:flex; min-height:0;}
-    .main{flex:1; min-width:0; overflow:auto; padding:22px;}
+    body{margin:0; overflow:hidden !important;}
 
-    .menu a.active{background:#fff4e6;color:#b45309;border:1px solid #fed7aa;}
+    .main{overflow:auto; padding:22px;}
 
     .grid{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px;}
     @media(max-width:900px){ .grid{grid-template-columns:1fr;} }
@@ -158,25 +160,18 @@ $currentCajaNum = caja_get_current_caja_num();
   <div class="inner">
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
-    <div class="nav-right"><a href="../../public/logout.php">Salir</a></div>
+    <div class="nav-right">
+      <a class="btn-pill" href="/logout.php">Salir</a>
+    </div>
   </div>
 </header>
 
-<main class="app">
+<div class="layout">
   <aside class="sidebar">
-    <div class="title">Menú</div>
-    <nav class="menu">
-      <a href="../dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a href="../patients/index.php"><span class="ico">🧑‍🤝‍🧑</span> Pacientes</a>
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;"><span class="ico">📅</span> Citas</a>
-      <a href="../facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
-      <a class="active" href="index.php"><span class="ico">💳</span> Caja</a>
-      <a href="../inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="../estadistica/index.php"><span class="ico">⏳</span> Estadística</a>
-    </nav>
+    <?php include __DIR__ . "/../partials/sidebar.php"; ?>
   </aside>
 
-  <section class="main">
+  <main class="content main">
 
     <div class="card" style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
@@ -255,11 +250,11 @@ $currentCajaNum = caja_get_current_caja_num();
 
     </div>
 
-  </section>
-</main>
+  </main>
+</div>
 
 <footer class="footer">
-  <div class="inner">© <?php echo $year; ?> CEVIMEP. Todos los derechos reservados.</div>
+  <div class="footer-inner">© <?php echo (int)$year; ?> CEVIMEP. Todos los derechos reservados.</div>
 </footer>
 
 </body>

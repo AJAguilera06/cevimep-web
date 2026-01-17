@@ -2,6 +2,10 @@
 session_start();
 if (!isset($_SESSION["user"])) { header("Location: ../../public/login.php"); exit; }
 $year = date("Y");
+
+// ✅ sidebar shared
+$active = "inventario";
+$base = "../";
 ?>
 <!doctype html>
 <html lang="es">
@@ -9,12 +13,12 @@ $year = date("Y");
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Inventario</title>
-  <link rel="stylesheet" href="../../assets/css/styles.css">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
   <style>
     html,body{height:100%;}
-    body{display:flex;flex-direction:column;min-height:100vh;overflow:hidden;}
-    .app{flex:1;display:flex;min-height:0;}
-    .main{flex:1;overflow:auto;}
+    body{margin:0; overflow:hidden !important;}
+    .main{overflow:auto; padding:22px;}
+
     .grid{
       display:grid;
       grid-template-columns: repeat(2, minmax(260px, 420px));
@@ -22,6 +26,8 @@ $year = date("Y");
       justify-content:center;
       margin-top:26px;
     }
+    @media(max-width:900px){ .grid{grid-template-columns:1fr;} }
+
     .box{
       background:#fff;
       border:1px solid #e6eef7;
@@ -52,47 +58,20 @@ $year = date("Y");
   <div class="inner">
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
-    <div class="nav-right"><a href="../../public/logout.php">Salir</a></div>
+    <div class="nav-right">
+      <a class="btn-pill" href="/logout.php">Salir</a>
+    </div>
   </div>
 </header>
 
-<main class="app">
-
-  <!-- SIDEBAR (Inventario ACTIVO SOLO AQUÍ) -->
+<div class="layout">
   <aside class="sidebar">
-    <div class="title">Menú</div>
-
-    <nav class="menu">
-      <a href="../dashboard.php">
-        <span class="ico">🏠</span> Panel
-      </a>
-
-      <a href="../patients/index.php">
-        <span class="ico">🧑‍🤝‍🧑</span> Pacientes
-      </a>
-
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;">
-        <span class="ico">📅</span> Citas
-      </a>
-
-      <a href="../facturacion/index.php">
-        <span class="ico">🧾</span> Facturación
-      </a>
-
-     <a href="../caja/index.php"><span class="ico">💳</span> Caja</a>
-
-      <a class="active" href="index.php">
-        <span class="ico">📦</span> Inventario
-      </a>
-
-      <a href="../estadistica/index.php">
-        <span class="ico">⏳</span> Estadística
-      </a>
-    </nav>
+    <?php include __DIR__ . "/../partials/sidebar.php"; ?>
   </aside>
 
-  <section class="main">
-    <div class="card" style="margin:22px;">
+  <main class="content main">
+
+    <div class="card" style="margin:0 0 10px;">
       <h2 style="margin:0 0 6px;">Inventario</h2>
       <p class="muted" style="margin:0;">Elige una opción para administrar por sucursal.</p>
     </div>
@@ -130,12 +109,12 @@ $year = date("Y");
         </div>
       </a>
     </div>
-  </section>
 
-</main>
+  </main>
+</div>
 
 <footer class="footer">
-  <div class="inner">© <?php echo $year; ?> CEVIMEP. Todos los derechos reservados.</div>
+  <div class="footer-inner">© <?php echo (int)$year; ?> CEVIMEP. Todos los derechos reservados.</div>
 </footer>
 
 </body>
