@@ -1,13 +1,23 @@
 <?php
+declare(strict_types=1);
+
+session_set_cookie_params([
+  'lifetime' => 0,
+  'path' => '/',
+  'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+  'httponly' => true,
+  'samesite' => 'Lax',
+]);
 session_start();
+
 require_once __DIR__ . "/../../config/db.php";
 
-if (!isset($_SESSION["user"])) { header("Location: ../../public/login.php"); exit; }
+if (empty($_SESSION["user"])) { header("Location: /login.php"); exit; }
 
 $user = $_SESSION["user"];
 $isAdmin = (($user["role"] ?? "") === "admin");
 $userBranchId = (int)($user["branch_id"] ?? 0);
-$year = date("Y");
+$year = (int)date("Y");
 
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
@@ -90,29 +100,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Nuevo paciente</title>
 
-  <link rel="stylesheet" href="../../assets/css/styles.css">
+  <!-- MISMO CSS Y MISMA VERSION QUE DASHBOARD -->
+  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
 
   <style>
-    html,body{height:100%;}
-    body{
-      margin:0;
-      display:flex;
-      flex-direction:column;
-      min-height:100vh;
-      overflow:hidden !important;
-    }
-    .app{flex:1; display:flex; min-height:0;}
-    .main{flex:1; min-width:0; overflow:auto; padding:26px 22px 32px;}
-
-    /* Activo del menú */
-    .menu a.active{
-      background:#fff4e6;
-      color:#b45309;
-      border:1px solid #fed7aa;
-    }
-
-    /* ====== RESTAURAR DISEÑO DEL FORM (sin depender de variables CSS) ====== */
-    .card{
+    /* Estilos del formulario (sin romper el layout global) */
+    .card-form{
       background:#fff;
       border:1px solid #e6eef7;
       border-radius:22px;
@@ -141,19 +134,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     }
 
     .rowActions{display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;}
-    .btn{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      padding:10px 14px;
-      border-radius:14px;
-      border:1px solid #dbeafe;
-      background:#fff;
-      color:#052a7a;
-      font-weight:900;
-      text-decoration:none;
-      cursor:pointer;
-    }
     .btn.primary{
       border:none;
       color:#fff;
@@ -180,6 +160,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       color:#052a7a;
       font-weight:900;
       font-size:12px;
+      white-space:nowrap;
     }
   </style>
 </head>
@@ -190,30 +171,36 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   <div class="inner">
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
-    <div class="nav-right"><a href="../../public/logout.php">Salir</a></div>
+    <div class="nav-right">
+      <a class="btn-pill" href="/logout.php">Salir</a>
+    </div>
   </div>
 </header>
 
-<main class="app">
+<div class="layout">
 
-  <!-- ✅ MENU (ORDEN FIJO COMO TU IMAGEN) -->
   <aside class="sidebar">
-    <div class="title">Menú</div>
+    <div class="menu-title">Menú</div>
+
     <nav class="menu">
-      <a href="../dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a class="active" href="index.php"><span class="ico">🧑‍🤝‍🧑</span> Pacientes</a>
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;"><span class="ico">📅</span> Citas</a>
-      <a href="../facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
-      <!-- Si ya tienes Caja creada en private/caja, cambia a: ../caja/index.php -->
-      <a href="../caja/index.php"><span class="ico">💳</span> Caja</a>
-      <a href="../inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="../estadistica/index.php"><span class="ico">⏳</span> Estadística</a>
+      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
+      <a class="active" href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
+      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;"><span class="ico">🗓️</span> Citas</a>
+      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
+      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
+      <a href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
+      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
     </nav>
   </aside>
 
-  <section class="main">
+  <main class="content">
 
-    <div class="card">
+    <section class="hero">
+      <h1>Nuevo paciente</h1>
+      <p>Completa los datos y guarda.</p>
+    </section>
+
+    <section class="card-form">
       <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
         <div>
           <h2 style="margin:0; color:#052a7a;">+ Nuevo paciente</h2>
@@ -222,11 +209,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         <div style="display:flex; gap:10px; align-items:center;">
           <span class="pill" id="agePill">Edad: —</span>
-          <a class="btn" href="index.php">Volver</a>
+          <a class="btn" href="index.php" style="text-decoration:none;">Volver</a>
         </div>
       </div>
 
-      <?php if($error): ?><div class="msg err"><?php echo h($error); ?></div><?php endif; ?>
+      <?php if($error): ?>
+        <div class="msg err"><?php echo h($error); ?></div>
+      <?php endif; ?>
 
       <form method="post" style="margin-top:12px;">
         <?php if($isAdmin): ?>
@@ -240,7 +229,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           </select>
         <?php endif; ?>
 
-        <!-- ✅ UNA SOLA GRID (quitado el duplicado) -->
         <div class="grid">
           <div>
             <label>Nombre</label>
@@ -297,17 +285,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         <div class="rowActions">
           <button class="btn primary" type="submit">Guardar</button>
-          <a class="btn" href="index.php">Cancelar</a>
+          <a class="btn" href="index.php" style="text-decoration:none;">Cancelar</a>
         </div>
       </form>
-    </div>
+    </section>
 
-  </section>
-
-</main>
+  </main>
+</div>
 
 <footer class="footer">
-  <div class="inner">© <?php echo $year; ?> CEVIMEP. Todos los derechos reservados.</div>
+  <div class="footer-inner">© <?php echo $year; ?> CEVIMEP. Todos los derechos reservados.</div>
 </footer>
 
 <script>
