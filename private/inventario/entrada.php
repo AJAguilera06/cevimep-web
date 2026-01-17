@@ -16,7 +16,6 @@ $today = date("Y-m-d");
 /* ===== SEDE ===== */
 $branch_id = (int)($user["branch_id"] ?? 0);
 $flash_error = "";
-$flash_ok = "";
 $branch_warning = "";
 
 /* ===== Nombre sede actual ===== */
@@ -34,14 +33,14 @@ if ($branch_id <= 0) {
   $branch_warning = "⚠️ Este usuario no tiene sede asignada. No se puede registrar entrada.";
 }
 
-/* ===== Categorías (para filtro) ===== */
+/* ===== Categorías ===== */
 $categories = [];
 try {
   $stC = $conn->query("SELECT id, name FROM inventory_categories ORDER BY name ASC");
   $categories = $stC->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-/* ===== Productos (alfabético) con categoría ===== */
+/* ===== Productos ===== */
 $products = [];
 try {
   $st = $conn->query("
@@ -56,7 +55,7 @@ try {
   $flash_error = "Error cargando productos.";
 }
 
-/* ===== Historial de ENTRADAS (sede actual) ===== */
+/* ===== Historial IN ===== */
 $history_in = [];
 if ($branch_id > 0) {
   try {
@@ -78,7 +77,7 @@ if ($branch_id > 0) {
 }
 
 /* ===========================
-   IMPRIMIR DETALLE (FACTURA)
+   IMPRIMIR DETALLE
    ?print=1&id=XX
 =========================== */
 if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
@@ -97,7 +96,6 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
 
   if (!$one) { echo "No encontrado"; exit; }
 
-  // agrupar por “comprobante”: misma nota + created_by + created_at
   $stAll = $conn->prepare("
     SELECT m.qty, m.note, m.created_at, m.created_by,
            i.name AS product, COALESCE(c.name,'') AS category
@@ -114,14 +112,8 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
   $stAll->execute([$branch_id, $one["note"], $one["created_by"], $one["created_at"]]);
   $lines = $stAll->fetchAll(PDO::FETCH_ASSOC);
 
-  // Parsear meta del note
   $note = (string)$one["note"];
-  $meta = [
-    "FECHA" => "",
-    "SUPLIDOR" => "",
-    "DESTINO" => "",
-    "NOTA" => ""
-  ];
+  $meta = ["FECHA"=>"","SUPLIDOR"=>"","DESTINO"=>"","NOTA"=>""];
   foreach (explode("|", $note) as $part) {
     $part = trim($part);
     if (strpos($part, "=") !== false) {
@@ -165,7 +157,6 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
           <div><strong>Fecha:</strong> <?= htmlspecialchars($meta["FECHA"] ?: substr((string)$one["created_at"],0,10)) ?></div>
           <div><strong>Suplidor:</strong> <?= htmlspecialchars($meta["SUPLIDOR"] ?: "-") ?></div>
         </div>
-
         <div class="row">
           <div><strong>Área de destino:</strong> <?= htmlspecialchars($meta["DESTINO"] ?: "-") ?></div>
           <div><strong>Nota:</strong> <?= htmlspecialchars($meta["NOTA"] ?: "-") ?></div>
@@ -173,11 +164,7 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
 
         <table>
           <thead>
-            <tr>
-              <th>Categoría</th>
-              <th>Producto</th>
-              <th class="qty">Cantidad</th>
-            </tr>
+            <tr><th>Categoría</th><th>Producto</th><th class="qty">Cantidad</th></tr>
           </thead>
           <tbody>
             <?php foreach ($lines as $l): ?>
@@ -200,7 +187,7 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
 }
 
 /* =========================================================
-   POST: Guardar + imprimir (factura inmediata)
+   POST: Guardar + imprimir
 ========================================================= */
 $print_mode = false;
 $print_data = [];
@@ -310,7 +297,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 }
 
 /* =========================================================
-   IMPRESIÓN (inmediata)
+   IMPRESIÓN INMEDIATA
 ========================================================= */
 if ($print_mode):
   $logoPath = "/assets/img/CEVIMEP.png";
@@ -355,13 +342,7 @@ if ($print_mode):
     </div>
 
     <table>
-      <thead>
-        <tr>
-          <th>Categoría</th>
-          <th>Producto</th>
-          <th class="qty">Cantidad</th>
-        </tr>
-      </thead>
+      <thead><tr><th>Categoría</th><th>Producto</th><th class="qty">Cantidad</th></tr></thead>
       <tbody>
         <?php foreach ($print_data["lines"] as $l): ?>
           <tr>
@@ -388,8 +369,6 @@ endif;
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Inventario - Entrada</title>
-
-  <!-- ✅ Igual que dashboard -->
   <link rel="stylesheet" href="/assets/css/styles.css?v=11">
 
   <style>
@@ -404,15 +383,6 @@ endif;
     .histWrap{display:none;margin-top:12px}
     .btnSmall{padding:8px 12px;border-radius:999px;font-weight:900;border:1px solid rgba(2,21,44,.12);background:#eef6ff;cursor:pointer}
 
-    /* Submenu de inventario (bonito, sin tocar sidebar global) */
-    .subnav{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-    .subnav a{
-      display:inline-flex;align-items:center;gap:8px;
-      padding:10px 14px;border-radius:999px;
-      border:1px solid rgba(2,21,44,.12);
-      background:#fff;text-decoration:none;font-weight:900;color:var(--primary-2);
-    }
-    .subnav a.active{background:rgba(20,184,166,.12);border-color:rgba(20,184,166,.35)}
     @media(max-width:900px){
       .formGrid{grid-template-columns:1fr}
       .rowAdd{grid-template-columns:1fr}
@@ -434,7 +404,6 @@ endif;
 
 <div class="layout">
 
-  <!-- ✅ Sidebar global igual al dashboard -->
   <aside class="sidebar">
     <div class="menu-title">Menú</div>
     <nav class="menu">
@@ -453,13 +422,6 @@ endif;
     <section class="hero">
       <h1>Inventario</h1>
       <p><?= htmlspecialchars($branch_name) ?> · Entrada</p>
-
-      <!-- ✅ Submenu del módulo Inventario -->
-      <div class="subnav">
-        <a href="/private/inventario/index.php">📦 Inventario</a>
-        <a class="active" href="/private/inventario/entrada.php">➕ Entrada</a>
-        <a href="/private/inventario/salida.php">➖ Salida</a>
-      </div>
     </section>
 
     <?php if ($branch_warning): ?>
@@ -505,7 +467,6 @@ endif;
 
         <hr style="margin:14px 0;opacity:.25;">
 
-        <!-- FILTRO POR CATEGORÍA + PRODUCTO + CANTIDAD -->
         <div class="rowAdd">
           <div class="field">
             <label>Categoría</label>
@@ -565,7 +526,6 @@ endif;
       </form>
     </div>
 
-    <!-- HISTORIAL ENTRADAS (BOTÓN) -->
     <div style="height:14px;"></div>
 
     <div class="card">
@@ -627,7 +587,6 @@ endif;
   const btn = document.getElementById('btnAdd');
   const tbody = document.getElementById('tbodyItems');
 
-  // Toggle historial
   const btnToggle = document.getElementById('btnToggleHist');
   const histWrap = document.getElementById('histWrap');
   btnToggle.addEventListener('click', () => {
