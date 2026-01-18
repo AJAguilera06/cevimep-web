@@ -1,11 +1,19 @@
 <?php
+session_set_cookie_params([
+  'lifetime' => 0,
+  'path' => '/',
+  'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+  'httponly' => true,
+  'samesite' => 'Lax',
+]);
 session_start();
-if (!isset($_SESSION["user"])) { header("Location: ../../public/login.php"); exit; }
-$year = date("Y");
 
-// ✅ sidebar shared
-$active = "inventario";
-$base = "../";
+if (empty($_SESSION["user"])) {
+  header("Location: /login.php");
+  exit;
+}
+
+$year = (int)date("Y");
 ?>
 <!doctype html>
 <html lang="es">
@@ -65,8 +73,25 @@ $base = "../";
 </header>
 
 <div class="layout">
+
+  <!-- ✅ Sidebar EXACTO como dashboard.php -->
   <aside class="sidebar">
-    <?php include __DIR__ . "/../partials/sidebar.php"; ?>
+    <div class="menu-title">Menú</div>
+
+    <nav class="menu">
+      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
+      <a href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
+
+      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;">
+        <span class="ico">🗓️</span> Citas
+      </a>
+
+      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
+      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
+
+      <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
+      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
+    </nav>
   </aside>
 
   <main class="content main">
@@ -114,7 +139,7 @@ $base = "../";
 </div>
 
 <footer class="footer">
-  <div class="footer-inner">© <?php echo (int)$year; ?> CEVIMEP. Todos los derechos reservados.</div>
+  <div class="footer-inner">© <?php echo $year; ?> CEVIMEP. Todos los derechos reservados.</div>
 </footer>
 
 </body>
