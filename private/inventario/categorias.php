@@ -203,11 +203,24 @@ try {
       <?php if ($success): ?><div class="msg ok"><?= h($success) ?></div><?php endif; ?>
       <?php if ($error): ?><div class="msg err"><?= h($error) ?></div><?php endif; ?>
 
-      <form method="post" style="margin-top:12px; display:flex; gap:10px; align-items:center;">
-        <input type="hidden" name="action" value="create">
-        <input class="input" name="name" placeholder="Nueva categoría..." required>
-        <button class="btn-pill" type="submit">Agregar</button>
-      </form>
+      <form method="post" style="margin-top:12px;">
+  <input type="hidden" name="action" value="create">
+
+  <div style="display:flex; gap:10px; align-items:center;">
+    <input
+      class="input"
+      name="name"
+      placeholder="Nueva categoría..."
+      required
+      style="flex:1;"
+    >
+
+    <button class="btn-pill" type="submit">
+      Añadir
+    </button>
+  </div>
+</form>
+
 
       <table style="margin-top:12px;">
         <thead>
