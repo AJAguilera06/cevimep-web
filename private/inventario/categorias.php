@@ -189,15 +189,8 @@ try {
       <p>Categorías</p>
     </section>
 
-    <div class="card">
-      <div class="invTabs">
-        <a class="active" href="/private/inventario/categorias.php"><span class="ico">🏷️</span> Categorías</a>
-        <a href="/private/inventario/items.php"><span class="ico">🧾</span> Inventario</a>
-        <a href="/private/inventario/entrada.php"><span class="ico">📥</span> Entrada</a>
-        <a href="/private/inventario/salida.php"><span class="ico">📤</span> Salida</a>
-      </div>
-
-      <h3>Categorías</h3>
+    
+    <h3>Categorías</h3>
       <p class="muted">Ej: Vacunas, Productos, Insumos…</p>
 
       <?php if ($success): ?><div class="msg ok"><?= h($success) ?></div><?php endif; ?>
@@ -207,19 +200,11 @@ try {
   <input type="hidden" name="action" value="create">
 
   <div style="display:flex; gap:10px; align-items:center;">
-    <input
-      class="input"
-      name="name"
-      placeholder="Nueva categoría..."
-      required
-      style="flex:1;"
-    >
-
-    <button class="btn-pill" type="submit">
-      Añadir
-    </button>
+    <input class="input" name="name" placeholder="Nueva categoría..." required style="flex:1;">
+    <button class="btn-pill" type="submit">Añadir</button>
   </div>
 </form>
+
 
 
       <table style="margin-top:12px;">
