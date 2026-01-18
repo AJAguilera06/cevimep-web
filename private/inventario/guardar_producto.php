@@ -84,11 +84,9 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
           <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;">
             <span class="ico">🧾</span> Facturación
           </a>
-          <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;">
-            <span class="ico">💳</span> Caja
-          </a>
+          <a href="../caja/index.php"><span class="ico">💳</span> Caja</a>
 
-          <a href="index.php"><span class="ico">📦</span> Inventario</a>
+          <a class="active" href="items.php"><span class="ico">📦</span> Inventario</a>
 
           <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;">
             <span class="ico">⏳</span> Coming Soon
