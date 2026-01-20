@@ -23,6 +23,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
 $error = "";
 
+// Base
 $first_name = "";
 $last_name = "";
 $cedula = "";
@@ -32,6 +33,14 @@ $birth_date = "";
 $gender = "";
 $blood_type = "";
 $branch_id = $userBranchId;
+
+// Nuevos
+$no_libro = "";
+$medico_refiere = "";
+$clinica_referencia = "";
+$ars = "";
+$numero_afiliado = "";
+$registrado_por = "";
 
 $branches = [];
 if ($isAdmin) {
@@ -48,6 +57,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   $birth_date = trim($_POST["birth_date"] ?? "");
   $gender     = trim($_POST["gender"] ?? "");
   $blood_type = trim($_POST["blood_type"] ?? "");
+
+  $no_libro           = trim($_POST["no_libro"] ?? "");
+  $medico_refiere     = trim($_POST["medico_refiere"] ?? "");
+  $clinica_referencia = trim($_POST["clinica_referencia"] ?? "");
+  $ars                = trim($_POST["ars"] ?? "");
+  $numero_afiliado    = trim($_POST["numero_afiliado"] ?? "");
+  $registrado_por     = trim($_POST["registrado_por"] ?? "");
 
   if ($isAdmin) {
     $branch_id = (int)($_POST["branch_id"] ?? 0);
@@ -69,9 +85,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     $st = $pdo->prepare("
       INSERT INTO patients
-        (first_name, last_name, cedula, phone, email, birth_date, gender, blood_type, branch_id)
+        (first_name, last_name, cedula, phone, email, birth_date, gender, blood_type, branch_id,
+         no_libro, medico_refiere, clinica_referencia, ars, numero_afiliado, registrado_por)
       VALUES
-        (:fn, :ln, :ced, :ph, :em, :bd, :ge, :bt, :bid)
+        (:fn, :ln, :ced, :ph, :em, :bd, :ge, :bt, :bid,
+         :nl, :mr, :cr, :ars, :na, :rp)
     ");
     $st->execute([
       "fn"  => $first_name,
@@ -82,7 +100,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       "bd"  => $birth_date,
       "ge"  => $gender !== "" ? $gender : null,
       "bt"  => $blood_type !== "" ? $blood_type : null,
-      "bid" => $branch_id
+      "bid" => $branch_id,
+
+      "nl"  => $no_libro !== "" ? $no_libro : null,
+      "mr"  => $medico_refiere !== "" ? $medico_refiere : null,
+      "cr"  => $clinica_referencia !== "" ? $clinica_referencia : null,
+      "ars" => $ars !== "" ? $ars : null,
+      "na"  => $numero_afiliado !== "" ? $numero_afiliado : null,
+      "rp"  => $registrado_por !== "" ? $registrado_por : null,
     ]);
 
     header("Location: index.php");
@@ -100,11 +125,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Nuevo paciente</title>
 
-  <!-- MISMO CSS Y MISMA VERSION QUE DASHBOARD -->
   <link rel="stylesheet" href="/assets/css/styles.css?v=11">
 
   <style>
-    /* Estilos del formulario (sin romper el layout global) */
     .card-form{
       background:#fff;
       border:1px solid #e6eef7;
@@ -115,8 +138,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       margin:0 auto;
     }
     .muted{color:#6b7280; font-weight:600;}
+
     .grid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
     @media(max-width:900px){ .grid{grid-template-columns:1fr;} }
+
+    .span2{grid-column:1 / -1;}
+    @media(max-width:900px){ .span2{grid-column:auto;} }
 
     label{display:block; font-weight:900; margin:10px 0 6px; color:#0f172a;}
     .input, select, input[type="date"], input[type="email"]{
@@ -131,6 +158,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     .input:focus, select:focus, input[type="date"]:focus, input[type="email"]:focus{
       border-color:#93c5fd;
       box-shadow:0 0 0 4px rgba(59,130,246,.12);
+    }
+
+    .section-title{
+      margin:14px 0 6px;
+      font-weight:900;
+      color:#052a7a;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .section-title:after{
+      content:"";
+      flex:1;
+      height:1px;
+      background:#e6eef7;
     }
 
     .rowActions{display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;}
@@ -181,7 +223,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
   <aside class="sidebar">
     <div class="menu-title">Menú</div>
-
     <nav class="menu">
       <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
       <a class="active" href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
@@ -217,103 +258,113 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         <div class="msg err"><?php echo h($error); ?></div>
       <?php endif; ?>
 
-      <form method="POST" action="store.php">
+      <form method="post" style="margin-top:12px;">
+        <?php if($isAdmin): ?>
+          <label>Sucursal</label>
+          <select class="input" name="branch_id" required>
+            <?php foreach($branches as $b): ?>
+              <option value="<?php echo (int)$b["id"]; ?>" <?php echo ((int)$b["id"]===$branch_id)?"selected":""; ?>>
+                <?php echo h($b["name"]); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        <?php endif; ?>
 
-  <div class="form-grid">
+        <div class="section-title">Datos del paciente</div>
 
-    <div class="form-group">
-      <label>No. Libro</label>
-      <input type="text" name="no_libro" class="form-control">
-    </div>
+        <div class="grid">
+          <div>
+            <label>No. Libro</label>
+            <input class="input" name="no_libro" value="<?php echo h($no_libro); ?>" placeholder="Ej: 001-2026">
+          </div>
 
-    <div class="form-group">
-      <label>Nombre</label>
-      <input type="text" name="first_name" class="form-control" required>
-    </div>
+          <div>
+            <label>Cédula</label>
+            <input class="input" name="cedula" value="<?php echo h($cedula); ?>" placeholder="Ej: 001-0000000-0">
+          </div>
 
-    <div class="form-group">
-      <label>Apellido</label>
-      <input type="text" name="last_name" class="form-control" required>
-    </div>
+          <div>
+            <label>Nombre</label>
+            <input class="input" name="first_name" value="<?php echo h($first_name); ?>" required>
+          </div>
 
-    <div class="form-group">
-      <label>Cédula</label>
-      <input type="text" name="cedula" class="form-control">
-    </div>
+          <div>
+            <label>Apellido</label>
+            <input class="input" name="last_name" value="<?php echo h($last_name); ?>" required>
+          </div>
 
-    <div class="form-group">
-      <label>Teléfono</label>
-      <input type="text" name="phone" class="form-control">
-    </div>
+          <div>
+            <label>Teléfono</label>
+            <input class="input" name="phone" value="<?php echo h($phone); ?>" placeholder="Ej: 809-000-0000">
+          </div>
 
-    <div class="form-group">
-      <label>Correo</label>
-      <input type="email" name="email" class="form-control">
-    </div>
+          <div>
+            <label>Correo</label>
+            <input class="input" type="email" name="email" value="<?php echo h($email); ?>" placeholder="correo@ejemplo.com">
+          </div>
 
-    <div class="form-group">
-      <label>Fecha de nacimiento</label>
-      <input type="date" name="birth_date" class="form-control">
-    </div>
+          <div>
+            <label>Fecha de nacimiento</label>
+            <input class="input" type="date" name="birth_date" id="birth_date" value="<?php echo h($birth_date); ?>">
+          </div>
 
-    <div class="form-group">
-      <label>Género</label>
-      <select name="gender" class="form-control">
-        <option value="">—</option>
-        <option value="M">Masculino</option>
-        <option value="F">Femenino</option>
-      </select>
-    </div>
+          <div>
+            <label>Género</label>
+            <select class="input" name="gender">
+              <option value="">—</option>
+              <option value="M" <?php echo $gender==="M"?"selected":""; ?>>Masculino</option>
+              <option value="F" <?php echo $gender==="F"?"selected":""; ?>>Femenino</option>
+              <option value="O" <?php echo $gender==="O"?"selected":""; ?>>Otro</option>
+            </select>
+          </div>
 
-    <div class="form-group">
-      <label>Tipo de sangre</label>
-      <select name="blood_type" class="form-control">
-        <option value="">—</option>
-        <option value="O+">O+</option>
-        <option value="O-">O-</option>
-        <option value="A+">A+</option>
-        <option value="A-">A-</option>
-        <option value="B+">B+</option>
-        <option value="B-">B-</option>
-        <option value="AB+">AB+</option>
-        <option value="AB-">AB-</option>
-      </select>
-    </div>
+          <div class="span2">
+            <label>Tipo de sangre</label>
+            <select class="input" name="blood_type">
+              <option value="">—</option>
+              <?php foreach(["A+","A-","B+","B-","AB+","AB-","O+","O-"] as $bt): ?>
+                <option value="<?php echo $bt; ?>" <?php echo $blood_type===$bt?"selected":""; ?>>
+                  <?php echo $bt; ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+        </div>
 
-    <div class="form-group">
-      <label>Médico que refiere</label>
-      <input type="text" name="medico_refiere" class="form-control">
-    </div>
+        <div class="section-title">Referencia / Seguro</div>
 
-    <div class="form-group">
-      <label>Clínica de referencia</label>
-      <input type="text" name="clinica_referencia" class="form-control">
-    </div>
+        <div class="grid">
+          <div>
+            <label>Médico que refiere</label>
+            <input class="input" name="medico_refiere" value="<?php echo h($medico_refiere); ?>" placeholder="Nombre del médico">
+          </div>
 
-    <div class="form-group">
-      <label>ARS</label>
-      <input type="text" name="ars" class="form-control">
-    </div>
+          <div>
+            <label>Clínica de referencia</label>
+            <input class="input" name="clinica_referencia" value="<?php echo h($clinica_referencia); ?>" placeholder="Nombre de la clínica">
+          </div>
 
-    <div class="form-group">
-      <label>Número de afiliado</label>
-      <input type="text" name="numero_afiliado" class="form-control">
-    </div>
+          <div>
+            <label>ARS</label>
+            <input class="input" name="ars" value="<?php echo h($ars); ?>" placeholder="Ej: Humano / Senasa / Universal">
+          </div>
 
-    <div class="form-group">
-      <label>Registrado por</label>
-      <input type="text" name="registrado_por" class="form-control">
-    </div>
+          <div>
+            <label>Número de afiliado</label>
+            <input class="input" name="numero_afiliado" value="<?php echo h($numero_afiliado); ?>" placeholder="Ej: 0000000000">
+          </div>
 
-  </div>
+          <div class="span2">
+            <label>Registrado por</label>
+            <input class="input" name="registrado_por" value="<?php echo h($registrado_por); ?>" placeholder="Ej: Recepción / Nombre de quien registra">
+          </div>
+        </div>
 
-  <div class="form-actions">
-    <button type="submit" class="btn-primary">Guardar</button>
-    <a href="index.php" class="btn-secondary">Cancelar</a>
-  </div>
-
-</form>
-
+        <div class="rowActions">
+          <button class="btn primary" type="submit">Guardar</button>
+          <a class="btn" href="index.php" style="text-decoration:none;">Cancelar</a>
+        </div>
+      </form>
     </section>
 
   </main>
