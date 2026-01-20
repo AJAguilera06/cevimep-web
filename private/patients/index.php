@@ -139,22 +139,30 @@ $year = date('Y');
   <main class="content">
 
     <section class="card">
-      <div class="card-head">
-        <div>
-          <h1 style="margin:0;">Pacientes</h1>
-          <p class="muted" style="margin:6px 0 0;">Listado filtrado por sucursal (automático).</p>
-        </div>
+      <div class="card-head" style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap;">
+  <div>
+    <h1 style="margin:0;">Pacientes</h1>
+    <p class="muted" style="margin:6px 0 0;">Listado filtrado por sucursal (automático).</p>
+  </div>
 
-        <div class="actions">
-          <form method="get" class="searchbar" style="display:flex; gap:10px; align-items:center;">
-            <input class="input" type="search" name="q" placeholder="Buscar por nombre, cédula, teléfono, No. Libro..." value="<?= htmlspecialchars($search) ?>">
-            <button class="btn" type="submit">Buscar</button>
-          </form>
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:flex-end; margin-left:auto;">
+    <form method="get" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <input
+        class="input"
+        type="search"
+        name="q"
+        placeholder="Buscar por nombre, cédula, teléfono..."
+        value="<?= htmlspecialchars($search) ?>"
+        style="min-width:360px; max-width:520px;"
+      >
+      <button class="btn" type="submit">Buscar</button>
+    </form>
 
-          <a class="btn primary" href="/private/patients/create.php">+ Nuevo paciente</a>
-          <a class="btn" href="/private/dashboard.php">Volver</a>
-        </div>
-      </div>
+    <a class="btn primary" href="/private/patients/create.php">Registrar nuevo paciente</a>
+    <a class="btn" href="/private/dashboard.php">Volver</a>
+  </div>
+</div>
+
 
       <div class="table-wrap">
         <table class="table">
