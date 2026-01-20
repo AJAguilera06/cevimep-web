@@ -78,8 +78,75 @@ function caja_get_or_open_current_session(PDO $pdo, int $branchId, int $userId):
 
 function caja_normalize_metodo_pago(string $mp): string {
   $mp = strtolower(trim($mp));
-  // ✅ Incluye COBERTURA (seguro) como método válido
+  // Normaliza a un set controlado (la BD puede ser ENUM y no aceptar valores nuevos)
   return in_array($mp, ["efectivo","tarjeta","transferencia","cobertura"], true) ? $mp : "efectivo";
+}
+
+/**
+ * Devuelve los valores permitidos de un ENUM (si la columna es ENUM). Si no lo es, devuelve [].
+ */
+function caja_get_enum_values(PDO $pdo, string $table, string $column): array {
+  try {
+    $db = (string)($pdo->query("SELECT DATABASE()")->fetchColumn() ?? "");
+    if ($db === "") return [];
+
+    $st = $pdo->prepare("SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+                         WHERE TABLE_SCHEMA=? AND TABLE_NAME=? AND COLUMN_NAME=?");
+    $st->execute([$db, $table, $column]);
+    $colType = (string)($st->fetchColumn() ?? "");
+
+    // Ej: enum('efectivo','tarjeta','transferencia')
+    if (stripos($colType, "enum(") !== 0) return [];
+    $inside = trim(substr($colType, 5), ")");
+
+    // Parse simple de valores entre comillas simples
+    $vals = [];
+    $parts = preg_split('/\s*,\s*/', $inside);
+    foreach ($parts as $p) {
+      $p = trim($p);
+      if ($p === "") continue;
+      // quitar comillas simples
+      if ($p[0] === "'" && substr($p, -1) === "'") {
+        $p = substr($p, 1, -1);
+      }
+      $vals[] = stripslashes($p);
+    }
+    return $vals;
+  } catch (Exception $e) {
+    return [];
+  }
+}
+
+/**
+ * Si metodo_pago es ENUM, valida que el valor exista. Si no existe, retorna un fallback seguro.
+ * Esto evita el warning 1265 (Data truncated) cuando intentamos guardar un valor no permitido.
+ */
+function caja_metodo_pago_safe(PDO $pdo, string $mp, bool $isCobertura = false): string {
+  $mp = caja_normalize_metodo_pago($mp);
+  $enumVals = caja_get_enum_values($pdo, "cash_movements", "metodo_pago");
+  if (empty($enumVals)) return $mp; // no es ENUM o no pudimos leerlo
+
+  // Comparación case-insensitive
+  $lowerSet = array_map('strtolower', $enumVals);
+  $needle = strtolower($mp);
+  $idx = array_search($needle, $lowerSet, true);
+  if ($idx !== false) {
+    // Devolver el valor EXACTO como está definido en el ENUM (respeta mayúsculas/minúsculas)
+    return (string)$enumVals[(int)$idx];
+  }
+
+  // Si la BD no soporta 'cobertura', usamos un método existente sin romper reportes.
+  if ($isCobertura) {
+    // Preferir transferencia si existe, sino efectivo.
+    $idxT = array_search('transferencia', $lowerSet, true);
+    if ($idxT !== false) return (string)$enumVals[(int)$idxT];
+    $idxE = array_search('efectivo', $lowerSet, true);
+    if ($idxE !== false) return (string)$enumVals[(int)$idxE];
+    return (string)$enumVals[0];
+  }
+  $idxE = array_search('efectivo', $lowerSet, true);
+  if ($idxE !== false) return (string)$enumVals[(int)$idxE];
+  return (string)$enumVals[0];
 }
 
 /**
@@ -102,7 +169,18 @@ function caja_registrar_ingreso_factura(PDO $pdo, int $branchId, int $userId, in
     $sessionId = (int)$pdo->lastInsertId();
   }
 
-  $metodoPago = caja_normalize_metodo_pago($metodoPago);
+  $requested = strtolower(trim($metodoPago));
+  $isCobertura = in_array($requested, ["cobertura","coverage"], true);
+
+  // Normalizar + validar contra ENUM si aplica
+  $metodoPago = caja_metodo_pago_safe($pdo, $metodoPago, $isCobertura);
+
+  // Si es cobertura, reflejarlo en el motivo para que se vea claro en reportes,
+  // incluso si la BD no permite 'cobertura' como metodo_pago.
+  $motivo = "Factura #".$invoiceId;
+  if ($isCobertura) {
+    $motivo .= " (COBERTURA)";
+  }
 
   $st = $pdo->prepare("INSERT INTO cash_movements
                         (session_id, type, motivo, metodo_pago, amount, created_by)
@@ -110,7 +188,7 @@ function caja_registrar_ingreso_factura(PDO $pdo, int $branchId, int $userId, in
                         (?, 'ingreso', ?, ?, ?, ?)");
   $st->execute([
     $sessionId,
-    "Factura #".$invoiceId,
+    $motivo,
     $metodoPago,
     round($totalFinal, 2),
     $userId
