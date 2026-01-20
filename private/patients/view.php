@@ -13,13 +13,12 @@ session_start();
 if (empty($_SESSION["user"])) { header("Location: /login.php"); exit; }
 require_once __DIR__ . "/../../config/db.php";
 
-$isAdmin = (($_SESSION["user"]["role"] ?? "") === "admin");
+$isAdmin  = (($_SESSION["user"]["role"] ?? "") === "admin");
 $branchId = $_SESSION["user"]["branch_id"] ?? null;
 
-if (!$isAdmin && empty($branchId)) {
-  header("Location: /logout.php");
-  exit;
-}
+if (!$isAdmin && empty($branchId)) { header("Location: /logout.php"); exit; }
+
+function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
 function calcAge(?string $birthDate): string {
   if (!$birthDate) return "";
@@ -30,6 +29,11 @@ function calcAge(?string $birthDate): string {
   } catch (Exception $e) {
     return "";
   }
+}
+
+function showOrDash($v): string {
+  $v = trim((string)$v);
+  return $v !== "" ? h($v) : "—";
 }
 
 $id = (int)($_GET["id"] ?? 0);
@@ -47,8 +51,6 @@ if (!$p) { die("Paciente no encontrado."); }
 
 $age  = calcAge($p["birth_date"] ?? null);
 $year = (int)date("Y");
-
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 ?>
 <!doctype html>
 <html lang="es">
@@ -57,11 +59,9 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Ver paciente</title>
 
-  <!-- MISMO CSS Y VERSION QUE DASHBOARD -->
   <link rel="stylesheet" href="/assets/css/styles.css?v=11">
 
   <style>
-    /* Solo estilos del contenido (sin romper layout global) */
     .card-form{
       background:#fff;
       border:1px solid #e6eef7;
@@ -72,17 +72,17 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
       margin:0 auto;
     }
     .muted{ color:#6b7280; font-weight:600; }
+
     .kv{
       display:grid;
-      grid-template-columns: 180px 1fr;
+      grid-template-columns: 200px 1fr;
       gap:10px;
       padding:10px 0;
       border-bottom:1px dashed #eef3fb;
       align-items:start;
     }
-    @media(max-width:900px){
-      .kv{ grid-template-columns:1fr; }
-    }
+    @media(max-width:900px){ .kv{ grid-template-columns:1fr; } }
+
     .pill{
       display:inline-flex;
       align-items:center;
@@ -96,6 +96,22 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
       font-size:12px;
       white-space:nowrap;
     }
+
+    .section-title{
+      margin:14px 0 6px;
+      font-weight:900;
+      color:#052a7a;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .section-title:after{
+      content:"";
+      flex:1;
+      height:1px;
+      background:#e6eef7;
+    }
+
     .rowActions{ display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
   </style>
 </head>
@@ -116,7 +132,6 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
   <aside class="sidebar">
     <div class="menu-title">Menú</div>
-
     <nav class="menu">
       <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
       <a class="active" href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
@@ -149,19 +164,38 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
         </div>
       </div>
 
-      <div style="margin-top:12px;">
-        <div class="kv"><strong>Nombre</strong><div><?php echo h($p["first_name"] ?? ""); ?></div></div>
-        <div class="kv"><strong>Apellido</strong><div><?php echo h($p["last_name"] ?? ""); ?></div></div>
-        <div class="kv"><strong>Cédula</strong><div><?php echo h($p["cedula"] ?? ""); ?></div></div>
-        <div class="kv"><strong>Teléfono</strong><div><?php echo h($p["phone"] ?? ""); ?></div></div>
-        <div class="kv"><strong>Correo</strong><div><?php echo h($p["email"] ?? ""); ?></div></div>
-        <div class="kv"><strong>Fecha nac.</strong><div><?php echo h($p["birth_date"] ?? ""); ?></div></div>
-        <div class="kv"><strong>Género</strong><div><?php echo h($p["gender"] ?? ""); ?></div></div>
-        <div class="kv"><strong>Tipo sangre</strong><div><?php echo h($p["blood_type"] ?? ""); ?></div></div>
-        <div class="kv"><strong>Dirección</strong><div><?php echo h($p["address"] ?? ""); ?></div></div>
+      <div class="section-title">Datos del paciente</div>
+
+      <div style="margin-top:6px;">
+        <div class="kv"><strong>No. Libro</strong><div><?php echo showOrDash($p["no_libro"] ?? ""); ?></div></div>
+
+        <div class="kv"><strong>Nombre</strong><div><?php echo showOrDash($p["first_name"] ?? ""); ?></div></div>
+        <div class="kv"><strong>Apellido</strong><div><?php echo showOrDash($p["last_name"] ?? ""); ?></div></div>
+        <div class="kv"><strong>Cédula</strong><div><?php echo showOrDash($p["cedula"] ?? ""); ?></div></div>
+        <div class="kv"><strong>Teléfono</strong><div><?php echo showOrDash($p["phone"] ?? ""); ?></div></div>
+        <div class="kv"><strong>Correo</strong><div><?php echo showOrDash($p["email"] ?? ""); ?></div></div>
+        <div class="kv"><strong>Fecha nac.</strong><div><?php echo showOrDash($p["birth_date"] ?? ""); ?></div></div>
+        <div class="kv"><strong>Género</strong><div><?php echo showOrDash($p["gender"] ?? ""); ?></div></div>
+        <div class="kv"><strong>Tipo sangre</strong><div><?php echo showOrDash($p["blood_type"] ?? ""); ?></div></div>
+        <div class="kv"><strong>Dirección</strong><div><?php echo showOrDash($p["address"] ?? ""); ?></div></div>
+      </div>
+
+      <div class="section-title">Referencia / Seguro</div>
+
+      <div style="margin-top:6px;">
+        <div class="kv"><strong>Médico que refiere</strong><div><?php echo showOrDash($p["medico_refiere"] ?? ""); ?></div></div>
+        <div class="kv"><strong>Clínica de referencia</strong><div><?php echo showOrDash($p["clinica_referencia"] ?? ""); ?></div></div>
+        <div class="kv"><strong>ARS</strong><div><?php echo showOrDash($p["ars"] ?? ""); ?></div></div>
+        <div class="kv"><strong>Número de afiliado</strong><div><?php echo showOrDash($p["numero_afiliado"] ?? ""); ?></div></div>
+        <div class="kv"><strong>Registrado por</strong><div><?php echo showOrDash($p["registrado_por"] ?? ""); ?></div></div>
+      </div>
+
+      <div class="section-title">Notas</div>
+
+      <div style="margin-top:6px;">
         <div class="kv" style="border-bottom:none;">
           <strong>Notas</strong>
-          <div><?php echo nl2br(h($p["notes"] ?? "")); ?></div>
+          <div><?php echo ($p["notes"] ?? "") !== "" ? nl2br(h($p["notes"])) : "—"; ?></div>
         </div>
       </div>
 
