@@ -217,77 +217,103 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         <div class="msg err"><?php echo h($error); ?></div>
       <?php endif; ?>
 
-      <form method="post" style="margin-top:12px;">
-        <?php if($isAdmin): ?>
-          <label>Sucursal</label>
-          <select class="input" name="branch_id" required>
-            <?php foreach($branches as $b): ?>
-              <option value="<?php echo (int)$b["id"]; ?>" <?php echo ((int)$b["id"]===$branch_id)?"selected":""; ?>>
-                <?php echo h($b["name"]); ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
-        <?php endif; ?>
+      <form method="POST" action="store.php">
 
-        <div class="grid">
-          <div>
-            <label>Nombre</label>
-            <input class="input" name="first_name" value="<?php echo h($first_name); ?>" required>
-          </div>
+  <div class="form-grid">
 
-          <div>
-            <label>Apellido</label>
-            <input class="input" name="last_name" value="<?php echo h($last_name); ?>" required>
-          </div>
+    <div class="form-group">
+      <label>No. Libro</label>
+      <input type="text" name="no_libro" class="form-control">
+    </div>
 
-          <div>
-            <label>Cédula</label>
-            <input class="input" name="cedula" value="<?php echo h($cedula); ?>">
-          </div>
+    <div class="form-group">
+      <label>Nombre</label>
+      <input type="text" name="first_name" class="form-control" required>
+    </div>
 
-          <div>
-            <label>Teléfono</label>
-            <input class="input" name="phone" value="<?php echo h($phone); ?>">
-          </div>
+    <div class="form-group">
+      <label>Apellido</label>
+      <input type="text" name="last_name" class="form-control" required>
+    </div>
 
-          <div>
-            <label>Correo</label>
-            <input class="input" type="email" name="email" value="<?php echo h($email); ?>">
-          </div>
+    <div class="form-group">
+      <label>Cédula</label>
+      <input type="text" name="cedula" class="form-control">
+    </div>
 
-          <div>
-            <label>Fecha de nacimiento</label>
-            <input class="input" type="date" name="birth_date" id="birth_date" value="<?php echo h($birth_date); ?>">
-          </div>
+    <div class="form-group">
+      <label>Teléfono</label>
+      <input type="text" name="phone" class="form-control">
+    </div>
 
-          <div>
-            <label>Género</label>
-            <select class="input" name="gender">
-              <option value="">—</option>
-              <option value="M" <?php echo $gender==="M"?"selected":""; ?>>Masculino</option>
-              <option value="F" <?php echo $gender==="F"?"selected":""; ?>>Femenino</option>
-              <option value="O" <?php echo $gender==="O"?"selected":""; ?>>Otro</option>
-            </select>
-          </div>
+    <div class="form-group">
+      <label>Correo</label>
+      <input type="email" name="email" class="form-control">
+    </div>
 
-          <div>
-            <label>Tipo de sangre</label>
-            <select class="input" name="blood_type">
-              <option value="">—</option>
-              <?php foreach(["A+","A-","B+","B-","AB+","AB-","O+","O-"] as $bt): ?>
-                <option value="<?php echo $bt; ?>" <?php echo $blood_type===$bt?"selected":""; ?>>
-                  <?php echo $bt; ?>
-                </option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-        </div>
+    <div class="form-group">
+      <label>Fecha de nacimiento</label>
+      <input type="date" name="birth_date" class="form-control">
+    </div>
 
-        <div class="rowActions">
-          <button class="btn primary" type="submit">Guardar</button>
-          <a class="btn" href="index.php" style="text-decoration:none;">Cancelar</a>
-        </div>
-      </form>
+    <div class="form-group">
+      <label>Género</label>
+      <select name="gender" class="form-control">
+        <option value="">—</option>
+        <option value="M">Masculino</option>
+        <option value="F">Femenino</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Tipo de sangre</label>
+      <select name="blood_type" class="form-control">
+        <option value="">—</option>
+        <option value="O+">O+</option>
+        <option value="O-">O-</option>
+        <option value="A+">A+</option>
+        <option value="A-">A-</option>
+        <option value="B+">B+</option>
+        <option value="B-">B-</option>
+        <option value="AB+">AB+</option>
+        <option value="AB-">AB-</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Médico que refiere</label>
+      <input type="text" name="medico_refiere" class="form-control">
+    </div>
+
+    <div class="form-group">
+      <label>Clínica de referencia</label>
+      <input type="text" name="clinica_referencia" class="form-control">
+    </div>
+
+    <div class="form-group">
+      <label>ARS</label>
+      <input type="text" name="ars" class="form-control">
+    </div>
+
+    <div class="form-group">
+      <label>Número de afiliado</label>
+      <input type="text" name="numero_afiliado" class="form-control">
+    </div>
+
+    <div class="form-group">
+      <label>Registrado por</label>
+      <input type="text" name="registrado_por" class="form-control">
+    </div>
+
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn-primary">Guardar</button>
+    <a href="index.php" class="btn-secondary">Cancelar</a>
+  </div>
+
+</form>
+
     </section>
 
   </main>
