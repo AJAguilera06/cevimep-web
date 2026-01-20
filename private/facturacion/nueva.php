@@ -43,16 +43,24 @@ $categories = [];
 $stC = $conn->query("SELECT id, name FROM inventory_categories ORDER BY name ASC");
 $categories = $stC ? $stC->fetchAll(PDO::FETCH_ASSOC) : [];
 
-/* Productos con precio venta */
+/* Productos con precio venta (SOLO DE ESTA SUCURSAL)
+   - Si un producto no tiene registro en inventory_stock para la sucursal, NO debe salir.
+   - Por defecto mostramos solo los que tienen existencia > 0.
+*/
 $products = [];
-$st = $conn->query("
-  SELECT i.id, i.name, i.sale_price, COALESCE(c.id,0) AS category_id
-  FROM inventory_items i
-  LEFT JOIN inventory_categories c ON c.id=i.category_id
-  WHERE i.is_active=1
-  ORDER BY i.name ASC
-");
-$products = $st ? $st->fetchAll(PDO::FETCH_ASSOC) : [];
+if ($branch_id > 0) {
+  $st = $conn->prepare("
+    SELECT i.id, i.name, i.sale_price, COALESCE(c.id,0) AS category_id
+    FROM inventory_items i
+    LEFT JOIN inventory_categories c ON c.id=i.category_id
+    INNER JOIN inventory_stock s ON s.item_id=i.id AND s.branch_id=?
+    WHERE i.is_active=1
+      AND s.quantity > 0
+    ORDER BY i.name ASC
+  ");
+  $st->execute([$branch_id]);
+  $products = $st->fetchAll(PDO::FETCH_ASSOC);
+}
 
 /* Helper: verificar columna */
 function columnExists(PDO $conn, string $table, string $column): bool {
@@ -220,34 +228,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         $invoice_id = (int)$conn->lastInsertId();
 
-        // ===============================
-        // COBERTURA – guardar ajuste
-        // ===============================
-        $cobertura = (float)($_POST['cobertura'] ?? 0);
-
-        if ($cobertura > 0) {
-
-            // sesión de caja activa
-            $session_id = caja_get_or_open_current_session(
-                $pdo,
-                (int)$branch_id,
-                (int)$created_by
-            );
-
-            $stmtAdj = $pdo->prepare("
-                INSERT INTO invoice_adjustments
-                    (invoice_id, session_id, branch_id, tipo, monto, created_at)
-                VALUES (?, ?, ?, 'cobertura', ?, CURDATE())
-            ");
-
-            $stmtAdj->execute([
-                (int)$invoice_id,
-                (int)$session_id,
-                (int)$branch_id,
-                (float)$cobertura
-            ]);
-        }
-
         $stItem = $conn->prepare("
           INSERT INTO invoice_items (invoice_id, item_id, category_id, qty, unit_price, line_total)
           VALUES (?, ?, ?, ?, ?, ?)
@@ -276,34 +256,62 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         // ================================
         // ✅ CONECTAR FACTURACIÓN → CAJA
+        // ✅ Cobertura CUENTA como ingreso
+        //    - 1) Ingreso por el monto pagado (total a pagar) con el método seleccionado
+        //    - 2) Ingreso por Cobertura con método "COBERTURA"
         // ================================
-        caja_registrar_ingreso_factura(
-          $conn,
-          (int)$branch_id,
-          (int)$created_by,
-          (int)$invoice_id,
-          (float)$total,          // TOTAL A PAGAR
-          (string)$payment_method // EFECTIVO | TARJETA | TRANSFERENCIA
-        );
 
-        // ✅ Si hay cobertura, registrarla también en caja como ingreso separado
-        // ✅ Guardar cobertura en invoice_adjustments
-        if ($coverage_amount > 0) {
-          $stAdj = $conn->prepare("
-            INSERT INTO invoice_adjustments
-              (invoice_id, session_id, branch_id, tipo, monto, created_at)
-            VALUES (?, ?, ?, 'cobertura', ?, CURDATE())
-          ");
-
-          // sesión de caja activa
-          $session_id = caja_get_or_open_current_session($conn, $branch_id, $created_by);
-
-          $stAdj->execute([
-            (int)$invoice_id,
-            (int)$session_id,
+        // 1) Pago del paciente (después de cobertura)
+        if ((float)$total > 0) {
+          caja_registrar_ingreso_factura(
+            $conn,
             (int)$branch_id,
-            (float)$coverage_amount
-          ]);
+            (int)$created_by,
+            (int)$invoice_id,
+            (float)$total,
+            (string)$payment_method
+          );
+        }
+
+        // 2) Cobertura como ingreso separado
+        if ((float)$coverage_amount > 0) {
+          caja_registrar_ingreso_factura(
+            $conn,
+            (int)$branch_id,
+            (int)$created_by,
+            (int)$invoice_id,
+            (float)$coverage_amount,
+            "COBERTURA"
+          );
+
+          // Guardar cobertura en invoice_adjustments (si existe la tabla)
+          try {
+            $session_id = caja_get_or_open_current_session($conn, (int)$branch_id, (int)$created_by);
+            if ($session_id <= 0) {
+              // fallback: replicar apertura de sesión para no perder trazabilidad
+              $today2  = date("Y-m-d");
+              $cajaNum2 = caja_get_current_caja_num();
+              [$shiftStart2, $shiftEnd2] = caja_shift_times($cajaNum2);
+              $insS = $conn->prepare("INSERT INTO cash_sessions (branch_id, caja_num, shift_start, shift_end, date_open, opened_at, opened_by)
+                                     VALUES (?, ?, ?, ?, ?, NOW(), ?)");
+              $insS->execute([(int)$branch_id, (int)$cajaNum2, (string)$shiftStart2, (string)$shiftEnd2, (string)$today2, (int)$created_by]);
+              $session_id = (int)$conn->lastInsertId();
+            }
+
+            $stAdj = $conn->prepare("
+              INSERT INTO invoice_adjustments
+                (invoice_id, session_id, branch_id, tipo, monto, created_at)
+              VALUES (?, ?, ?, 'cobertura', ?, CURDATE())
+            ");
+            $stAdj->execute([
+              (int)$invoice_id,
+              (int)$session_id,
+              (int)$branch_id,
+              (float)$coverage_amount
+            ]);
+          } catch (Exception $eAdj) {
+            // Si no existe la tabla invoice_adjustments o falla el insert, no bloqueamos la factura.
+          }
         }
 
         $conn->commit();
