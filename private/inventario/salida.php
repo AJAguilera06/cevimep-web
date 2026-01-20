@@ -30,20 +30,21 @@ try {
 } catch (Exception $e) {}
 
 /* ===== Productos (con stock por sucursal) ===== */
+/* ===== Productos activos ===== */
 $products = [];
 try {
   $st = $conn->prepare("
     SELECT 
-      i.id,
+      i.id, 
       i.name,
-      COALESCE(c.name,'') AS category,
+      COALESCE(c.name,'') AS category, 
       COALESCE(c.id,0) AS category_id,
       COALESCE(s.quantity,0) AS stock
     FROM inventory_items i
     LEFT JOIN inventory_categories c ON c.id = i.category_id
     LEFT JOIN inventory_stock s 
       ON s.item_id = i.id AND s.branch_id = ?
-    WHERE i.is_active = 1
+    WHERE i.is_active=1
     ORDER BY i.name ASC
   ");
   $st->execute([$branch_id]);
@@ -51,6 +52,7 @@ try {
 } catch (Exception $e) {
   $flash_error = "Error cargando productos.";
 }
+
 
 /* ===== Historial OUT (sede actual) ===== */
 $history_out = [];
