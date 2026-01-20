@@ -45,17 +45,17 @@ $categories = $stC ? $stC->fetchAll(PDO::FETCH_ASSOC) : [];
 
 /* Productos con precio venta (SOLO DE ESTA SUCURSAL)
    - Si un producto no tiene registro en inventory_stock para la sucursal, NO debe salir.
-   - Por defecto mostramos solo los que tienen existencia > 0.
+   - Mostramos tambien los que tengan existencia = 0 (pero se marcaran como "Sin stock").
+     Asi puedes ver toda tu lista por sucursal sin mezclar con otras sedes.
 */
 $products = [];
 if ($branch_id > 0) {
   $st = $conn->prepare("
-    SELECT i.id, i.name, i.sale_price, COALESCE(c.id,0) AS category_id
+    SELECT i.id, i.name, i.sale_price, COALESCE(c.id,0) AS category_id, COALESCE(s.quantity,0) AS stock_qty
     FROM inventory_items i
     LEFT JOIN inventory_categories c ON c.id=i.category_id
     INNER JOIN inventory_stock s ON s.item_id=i.id AND s.branch_id=?
     WHERE i.is_active=1
-      AND s.quantity > 0
     ORDER BY i.name ASC
   ");
   $st->execute([$branch_id]);
@@ -480,8 +480,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             <select class="input" id="selItem">
               <option value="0">-- Seleccionar --</option>
               <?php foreach($products as $p): ?>
-                <option value="<?= (int)$p["id"] ?>" data-price="<?= htmlspecialchars($p["sale_price"]) ?>" data-cat-id="<?= (int)$p["category_id"] ?>">
-                  <?= htmlspecialchars($p["name"]) ?>
+                <?php $stk = (int)($p['stock_qty'] ?? 0); ?>
+                <option value="<?= (int)$p['id'] ?>"
+                        data-price="<?= htmlspecialchars($p['sale_price']) ?>"
+                        data-cat-id="<?= (int)$p['category_id'] ?>"
+                        data-stock="<?= $stk ?>">
+                  <?= htmlspecialchars($p['name']) ?><?= ($stk <= 0 ? ' (Sin stock)' : '') ?>
                 </option>
               <?php endforeach; ?>
             </select>
@@ -690,9 +694,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     const opt = selItem.options[selItem.selectedIndex];
     const name = opt.textContent.trim();
     const price = parseFloat(opt.getAttribute('data-price')||"0");
+    const stock = parseInt(opt.getAttribute('data-stock')||"0",10);
     const q = parseInt(qty.value||"1",10);
 
     if (!q || q < 1) return;
+
+    // Validacion rapida en UI (la validacion real tambien corre en el servidor)
+    if (stock <= 0) {
+      alert('Este producto esta sin stock en esta sucursal.');
+      return;
+    }
+    if (q > stock) {
+      alert('Cantidad solicitada supera la existencia. Disponible: ' + stock);
+      return;
+    }
 
     addRow(id, name, q, price);
   });
