@@ -22,41 +22,27 @@ if (empty($_SESSION['user'])) {
   exit;
 }
 
-require_once __DIR__ . '/../../config/db.php';
+require_once __DIR__ . "/../../config/db.php";
+$db = $pdo;
 
-$db = $pdo ?? null;
-if (!$db || !($db instanceof PDO)) {
-  http_response_code(500);
-  echo "DB no inicializada (PDO). Revisa config/db.php";
-  exit;
-}
+$user = $_SESSION['user'];
+$isAdmin = (($user['role'] ?? '') === 'admin');
+$branchId = (int)($user['branch_id'] ?? 0);
 
-$isAdmin  = (($_SESSION['user']['role'] ?? '') === 'admin');
-$branchId = $_SESSION['user']['branch_id'] ?? null;
-
-if (!$isAdmin && empty($branchId)) {
-  header('Location: /logout.php');
-  exit;
-}
+$search = trim((string)($_GET['q'] ?? ''));
 
 function calcAge(?string $birthDate): string {
   if (!$birthDate) return '';
   try {
     $dob = new DateTime($birthDate);
-    $now = new DateTime();
-    return (string)$now->diff($dob)->y;
+    $today = new DateTime();
+    $age = $today->diff($dob)->y;
+    return (string)$age;
   } catch (Throwable $e) {
     return '';
   }
 }
 
-$search = trim((string)($_GET['search'] ?? ''));
-
-/**
- * Consulta a prueba de fallos:
- * - Seleccionamos columnas reales: first_name, last_name, cedula, phone
- * - Si no tienes email/gender/blood_type en tu tabla, no rompe (se deja vacío)
- */
 $params = [];
 $where  = [];
 
@@ -70,7 +56,8 @@ if ($search !== '') {
     first_name LIKE :q OR
     last_name  LIKE :q OR
     cedula     LIKE :q OR
-    phone      LIKE :q
+    phone      LIKE :q OR
+    no_libro   LIKE :q
   )";
   $params[':q'] = "%{$search}%";
 }
@@ -78,6 +65,7 @@ if ($search !== '') {
 $sql = "
   SELECT
     id,
+    no_libro,
     first_name,
     last_name,
     cedula,
@@ -97,18 +85,17 @@ try {
   $stmt->execute($params);
   $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
-  // Si en tu tabla NO existen email/birth_date/gender/blood_type, esto podría fallar.
-  // Entonces caemos a una consulta mínima que seguro existe.
+  // Fallback mínimo (por si faltan columnas en alguna instalación)
   $sql2 = "
-    SELECT id, first_name, last_name, cedula, phone
+    SELECT id, no_libro, first_name, last_name, cedula, phone
     FROM patients
   ";
   if ($where) $sql2 .= " WHERE " . implode(" AND ", $where);
   $sql2 .= " ORDER BY id DESC";
 
-  $stmt2 = $db->prepare($sql2);
-  $stmt2->execute($params);
-  $patients = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+  $stmt = $db->prepare($sql2);
+  $stmt->execute($params);
+  $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 $year = date('Y');
@@ -118,81 +105,8 @@ $year = date('Y');
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pacientes | CEVIMEP</title>
-  <link rel="stylesheet" href="/assets/css/styles.css?v=6">
-
-  <style>
-    .page-wrap{ padding:18px 22px 28px; }
-    .panel-card{
-      background:#fff;
-      border:1px solid #e6eef7;
-      border-radius:22px;
-      box-shadow:0 12px 24px rgba(2,21,44,.06);
-      padding:18px;
-    }
-    .page-head{
-      display:flex;
-      align-items:flex-start;
-      justify-content:space-between;
-      gap:14px;
-      flex-wrap:wrap;
-      margin-bottom:14px;
-    }
-    .page-title{
-      margin:0;
-      font-size:22px;
-      font-weight:900;
-      color:#052a7a;
-      line-height:1.1;
-    }
-    .page-sub{
-      margin:6px 0 0;
-      color:#6b7a90;
-      font-weight:700;
-      font-size:13px;
-    }
-    .actions{
-      display:flex;
-      align-items:center;
-      gap:10px;
-      flex-wrap:wrap;
-      justify-content:flex-end;
-    }
-    .search-input{
-      width:min(360px, 70vw);
-      padding:10px 12px;
-      border-radius:14px;
-      border:1px solid #e6eef7;
-      outline:none;
-    }
-    .btn-primary{
-      border:1px solid #1d4ed8;
-      background:linear-gradient(135deg, rgba(29,78,216,.18), rgba(5,42,122,.08));
-      color:#052a7a;
-      font-weight:900;
-    }
-    .btn-solid{
-      background:linear-gradient(135deg,#0ea5e9,#052a7a);
-      border:1px solid rgba(255,255,255,0);
-      color:#fff;
-      font-weight:900;
-    }
-    .table-wrap{ margin-top:14px; overflow:auto; }
-    .table th{ white-space:nowrap; }
-    .td-actions{ display:flex; gap:8px; flex-wrap:wrap; }
-    .pill{
-      display:inline-flex;
-      align-items:center;
-      padding:6px 10px;
-      border-radius:999px;
-      border:1px solid #e6eef7;
-      background:#f8fbff;
-      color:#0f172a;
-      font-weight:800;
-      font-size:12px;
-      white-space:nowrap;
-    }
-  </style>
+  <title>CEVIMEP | Pacientes</title>
+  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
 </head>
 
 <body>
@@ -201,20 +115,20 @@ $year = date('Y');
   <div class="inner">
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
-    <div class="nav-right"><a class="btn-pill" href="/logout.php">Cerrar sesión</a></div>
+    <div class="nav-right">
+      <a class="btn-pill" href="/logout.php">Cerrar sesión</a>
+    </div>
   </div>
 </header>
 
 <div class="layout">
+
   <aside class="sidebar">
     <div class="menu-title">Menú</div>
-
     <nav class="menu">
       <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
       <a class="active" href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
-      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;">
-  <span class="ico">🗓️</span> Citas
-</a>
+      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;"><span class="ico">🗓️</span> Citas</a>
       <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
       <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
       <a href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
@@ -223,49 +137,51 @@ $year = date('Y');
   </aside>
 
   <main class="content">
-    <div class="page-wrap">
 
-      <div class="panel-card">
-        <div class="page-head">
-          <div>
-            <h2 class="page-title">Pacientes</h2>
-            <p class="page-sub">Listado filtrado por sucursal (automático).</p>
-          </div>
-
-          <div class="actions">
-            <form method="get" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:0;">
-              <input class="search-input" type="text" name="search" placeholder="Buscar por nombre, cédula, teléfono..." value="<?= htmlspecialchars($search) ?>">
-              <button class="btn btn-primary" type="submit">Buscar</button>
-            </form>
-
-            <a class="btn btn-solid" href="/private/patients/create.php">+ Nuevo paciente</a>
-            <a class="btn btn-ghost" href="/private/dashboard.php">Volver</a>
-          </div>
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h1 style="margin:0;">Pacientes</h1>
+          <p class="muted" style="margin:6px 0 0;">Listado filtrado por sucursal (automático).</p>
         </div>
 
-        <div class="table-wrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th style="width:70px;">ID</th>
-                <th>Nombre</th>
-                <th>Cédula</th>
-                <th>Teléfono</th>
-                <th>Correo</th>
-                <th style="width:90px;">Edad</th>
-                <th style="width:110px;">Género</th>
-                <th style="width:110px;">Sangre</th>
-                <th style="width:160px;">Acciones</th>
-              </tr>
-            </thead>
+        <div class="actions">
+          <form method="get" class="searchbar" style="display:flex; gap:10px; align-items:center;">
+            <input class="input" type="search" name="q" placeholder="Buscar por nombre, cédula, teléfono, No. Libro..." value="<?= htmlspecialchars($search) ?>">
+            <button class="btn" type="submit">Buscar</button>
+          </form>
 
-            <tbody>
+          <a class="btn primary" href="/private/patients/create.php">+ Nuevo paciente</a>
+          <a class="btn" href="/private/dashboard.php">Volver</a>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width:120px;">No. Libro</th>
+              <th>Nombre</th>
+              <th>Cédula</th>
+              <th>Teléfono</th>
+              <th>Correo</th>
+              <th style="width:90px;">Edad</th>
+              <th style="width:110px;">Género</th>
+              <th style="width:110px;">Sangre</th>
+              <th style="width:170px;">Acciones</th>
+            </tr>
+          </thead>
+
+          <tbody>
             <?php if (!$patients): ?>
-              <tr><td colspan="9" class="muted">No hay pacientes registrados.</td></tr>
+              <tr>
+                <td colspan="9" style="padding:18px; color:#6b7280;">No hay pacientes registrados.</td>
+              </tr>
             <?php else: ?>
               <?php foreach ($patients as $p): ?>
                 <?php
                   $id = (int)($p['id'] ?? 0);
+                  $no_libro = trim((string)($p['no_libro'] ?? ''));
                   $nombre = trim((string)($p['first_name'] ?? '') . ' ' . (string)($p['last_name'] ?? ''));
                   $cedula = (string)($p['cedula'] ?? '');
                   $phone  = (string)($p['phone'] ?? '');
@@ -275,7 +191,7 @@ $year = date('Y');
                   $blood  = (string)($p['blood_type'] ?? '');
                 ?>
                 <tr>
-                  <td><?= $id ?></td>
+                  <td><?= $no_libro !== '' ? htmlspecialchars($no_libro) : '—' ?></td>
                   <td><?= htmlspecialchars($nombre) ?></td>
                   <td><?= htmlspecialchars($cedula) ?></td>
                   <td><?= htmlspecialchars($phone) ?></td>
@@ -290,16 +206,17 @@ $year = date('Y');
                 </tr>
               <?php endforeach; ?>
             <?php endif; ?>
-            </tbody>
-          </table>
-        </div>
-
+          </tbody>
+        </table>
       </div>
+    </section>
 
-    </div>
   </main>
 </div>
 
 <footer class="footer">
-  <div class="inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
+  <div class="footer-inner">© <?= htmlspecialchars((string)$year) ?> CEVIMEP. Todos los derechos reservados.</div>
 </footer>
+
+</body>
+</html>
