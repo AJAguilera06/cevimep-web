@@ -55,7 +55,7 @@ function getTotals(PDO $pdo, int $sessionId): array {
       COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='efectivo' THEN amount END),0) AS efectivo,
       COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='tarjeta' THEN amount END),0) AS tarjeta,
       COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='transferencia' THEN amount END),0) AS transferencia,
-      COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago IN ('cobertura','seguro') THEN amount END),0) AS cobertura,
+      COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='cobertura' THEN amount END),0) AS cobertura,
       COALESCE(SUM(CASE WHEN type='desembolso' THEN amount END),0) AS desembolso
     FROM cash_movements
     WHERE session_id=?
@@ -78,8 +78,10 @@ function getTotals(PDO $pdo, int $sessionId): array {
 }
 
 function getMovements(PDO $pdo, int $sessionId): array {
+  // ✅ En cash_movements no existe `concept`, existe `motivo`.
+  //    Usamos alias para no tocar el HTML.
   $st = $pdo->prepare("
-    SELECT id, created_at, type, metodo_pago, concept, amount
+    SELECT id, created_at, type, metodo_pago, motivo AS concept, amount
     FROM cash_movements
     WHERE session_id=?
     ORDER BY created_at ASC, id ASC
