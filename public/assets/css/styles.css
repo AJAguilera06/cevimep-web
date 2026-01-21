@@ -24,7 +24,6 @@ body{
     radial-gradient(1200px 700px at 18% 0%, rgba(5,42,122,.18), transparent 58%),
     radial-gradient(1200px 700px at 92% 8%, rgba(20,184,166,.18), transparent 55%),
     var(--bg);
-
   overflow:hidden;
   padding-top: var(--bar-h);
   padding-bottom: var(--bar-h);
@@ -58,7 +57,7 @@ body{
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
 }
 
-/* CONTENEDOR UNIFICADO (navbar y footer) */
+/* CONTENEDOR UNIFICADO */
 .navbar .inner,
 .footer .inner,
 .footer .footer-inner{
@@ -71,11 +70,9 @@ body{
 }
 
 /* Navbar layout */
-.navbar .inner{
-  justify-content:space-between;
-}
+.navbar .inner{ justify-content:space-between; }
 
-/* Footer layout (CENTRADO SIEMPRE) */
+/* Footer centrado */
 .footer .inner,
 .footer .footer-inner{
   justify-content:center !important;
@@ -92,14 +89,12 @@ body{
   font-weight:900;
   letter-spacing:.6px;
 }
-
 .dot{
   width:10px;
   height:10px;
   border-radius:50%;
   background:linear-gradient(135deg,var(--accent),#7dd3fc);
 }
-
 .nav-right{ display:flex; align-items:center; }
 
 /* ===== BUTTON PILL (Salir) ===== */
@@ -138,11 +133,7 @@ body{
   margin:0 0 10px;
 }
 
-.menu{
-  display:flex;
-  flex-direction:column;
-  gap:6px;
-}
+.menu{ display:flex; flex-direction:column; gap:6px; }
 
 .menu a{
   display:flex;
@@ -154,7 +145,6 @@ body{
   color:var(--text);
   font-weight:800;
 }
-
 .menu a:hover{ background:#f3f7ff; }
 
 .menu a.active{
@@ -163,9 +153,7 @@ body{
   border:1px solid #fed7aa;
 }
 
-.menu a[style*="not-allowed"]{
-  pointer-events:none;
-}
+.menu a[style*="not-allowed"]{ pointer-events:none; }
 
 .ico{ width:22px; text-align:center; opacity:.9; }
 
@@ -186,7 +174,6 @@ body{
   text-align:center;
   margin:0;
 }
-
 .hero h1{ margin:0; font-size:34px; }
 .hero p{ margin:10px 0 0; color:rgba(255,255,255,.90); font-weight:700; }
 
@@ -206,14 +193,12 @@ body{
   padding:18px;
   box-shadow:var(--shadow-soft);
 }
-
 .card h3{
   margin:0 0 8px;
   color:#052a7a;
   font-size:16px;
   font-weight:900;
 }
-
 .muted{
   color:var(--muted);
   margin:0;
@@ -227,14 +212,12 @@ body{
   border-collapse:collapse;
   font-size:14px;
 }
-
 .table th,
 .table td{
   padding:12px;
   border-bottom:1px solid var(--border);
   text-align:left;
 }
-
 .table th{
   font-weight:900;
   color:#052a7a;
@@ -269,7 +252,6 @@ body{
   align-items:center;
   flex-wrap:wrap;
 }
-
 .searchbar input{
   min-width:280px;
   padding:10px 12px;
@@ -282,7 +264,6 @@ body{
 @media(max-width:1050px){
   .grid-top{ grid-template-columns:1fr; }
 }
-
 @media(max-width:760px){
   .layout{ flex-direction:column; }
   .sidebar{
@@ -293,22 +274,15 @@ body{
   }
 }
 
-/* Inputs bonitos para formularios */
-.form-control,
-select,
-input[type="text"],
-input[type="number"],
-input[type="date"]{
+/* Inputs bonitos */
+.form-control, select, input[type="text"], input[type="number"], input[type="date"]{
   border-radius: 10px;
   padding: 10px 12px;
   border: 1px solid #cfd8dc;
   background: #fff;
   transition: all .2s ease;
 }
-
-.form-control:focus,
-select:focus,
-input:focus{
+.form-control:focus, select:focus, input:focus{
   border-color: #00a8a8;
   box-shadow: 0 0 0 2px rgba(0,168,168,.15);
   outline: none;
