@@ -133,18 +133,35 @@ if (isset($_GET["print_batch"]) && $_GET["print_batch"] !== "") {
     <meta charset="utf-8">
     <title>Acuse de Entrada | <?= htmlspecialchars($batch) ?></title>
     <style>
-      body{font-family:Arial,Helvetica,sans-serif;margin:24px}
-      .box{border:1px solid #ddd;border-radius:14px;padding:18px}
-      h2{margin:0 0 6px}
-      .muted{color:#666;font-size:13px;line-height:1.4}
-      table{width:100%;border-collapse:collapse;margin-top:14px}
-      th,td{border-bottom:1px solid #eee;padding:8px 6px;text-align:left;font-size:14px}
-      th{background:#f6f7f8;text-transform:uppercase;font-size:12px;letter-spacing:.04em}
+      body{font-family:Arial,Helvetica,sans-serif;margin:24px;background:#f8fafc}
+      .box{
+        max-width:760px;
+        margin:40px auto;
+        background:#fff;
+        border:1px solid rgba(15,23,42,.08);
+        border-radius:18px;
+        padding:22px;
+        box-shadow:0 20px 40px rgba(2,6,23,.12);
+      }
+      h2{margin:0 0 6px;text-align:center;font-size:28px}
+      .muted{color:#64748b;font-size:13px;line-height:1.4;text-align:center}
+      table{width:100%;border-collapse:collapse;margin-top:16px}
+      th,td{border-bottom:1px solid rgba(0,0,0,.08);padding:10px 8px;text-align:left;font-size:14px}
+      th{background:#f1f5f9;text-transform:uppercase;font-size:12px;letter-spacing:.04em;color:#475569}
       .right{text-align:right}
-      .topgrid{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px}
-      .pill{border:1px solid #eee;border-radius:12px;padding:10px 12px;min-width:220px}
+      .topgrid{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;justify-content:center}
+      .pill{
+        border:1px solid rgba(15,23,42,.10);
+        border-radius:14px;
+        padding:10px 12px;
+        min-width:220px;
+        background:#fff;
+      }
       .pill b{display:block;font-size:12px;text-transform:uppercase;color:#64748b;margin-bottom:4px}
-      @media print{ .no-print{display:none} }
+      @media print{
+        body{margin:0;background:#fff}
+        .box{margin:0;border:none;border-radius:0;box-shadow:none;max-width:none}
+      }
     </style>
   </head>
   <body onload="window.print(); setTimeout(function(){ window.location.href='entrada.php?printed=1'; }, 700);">
@@ -169,7 +186,7 @@ if (isset($_GET["print_batch"]) && $_GET["print_batch"] !== "") {
           </tr>
         </thead>
         <tbody>
-          <?php foreach($rows as $r): 
+          <?php foreach($rows as $r):
             $iid = (int)$r["item_id"];
             $nm = $infoMap[$iid] ?? ("ID ".$iid);
           ?>
@@ -181,11 +198,6 @@ if (isset($_GET["print_batch"]) && $_GET["print_batch"] !== "") {
           <?php endforeach; ?>
         </tbody>
       </table>
-
-      <div class="no-print" style="margin-top:16px;display:flex;gap:8px">
-        <button onclick="window.print()">Imprimir</button>
-        <button onclick="window.location.href='entrada.php'">Volver</button>
-      </div>
     </div>
   </body>
   </html>
@@ -282,6 +294,16 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | HECHO_POR={$he
   <link rel="stylesheet" href="/assets/css/styles.css?v=11">
 
   <style>
+    .big-header{
+      min-height: 140px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:32px 24px !important;
+    }
+    .big-header h1{font-size:40px !important;margin:0}
+    .big-header .muted{margin-top:10px !important;font-size:15px !important}
+
     .page-head{display:flex;align-items:center;justify-content:center;margin-bottom:12px}
     .hero.hero-white{background:transparent !important; padding:0 !important; margin-bottom:16px;}
     .hero.hero-white .page-head{
@@ -355,7 +377,7 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | HECHO_POR={$he
 
     <!-- CUADRO BLANCO SUPERIOR -->
     <section class="hero hero-white">
-      <div class="page-head">
+      <div class="page-head big-header">
         <div class="center">
           <h1>Entrada</h1>
           <p class="muted">Sucursal: <?= htmlspecialchars($branch_name ?? '') ?></p>
@@ -396,7 +418,7 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | HECHO_POR={$he
 
         <div class="field">
           <label>Hecho por</label>
-          <input class="input" type="text" id="hecho_por" value="<?= htmlspecialchars($made_by_name) ?>" readonly>
+          <input class="input" type="text" id="hecho_por" value="<?= htmlspecialchars($made_by_name) ?>">
         </div>
       </div>
 
@@ -438,7 +460,7 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | HECHO_POR={$he
       </div>
 
       <p class="muted" style="margin:10px 0 0">
-        Al añadir, seU se mantiene seleccionado el producto y la cantidad.
+        Al añadir, se mantiene seleccionado el producto y la cantidad.
       </p>
 
       <table style="margin-top:10px">
@@ -478,7 +500,7 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | HECHO_POR={$he
             <?php if (count($history_in) === 0): ?>
               <tr><td colspan="5" class="muted">No hay registros.</td></tr>
             <?php else: ?>
-              <?php foreach ($history_in as $h): 
+              <?php foreach ($history_in as $h):
                 $note = (string)($h["note"] ?? "");
                 $batch = "";
                 if (preg_match("/BATCH=([0-9]{14}\-[0-9a-fA-F]{6})/",$note,$m)) {
