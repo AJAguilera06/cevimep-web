@@ -199,39 +199,73 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CEVIMEP | Inventario - Entrada</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="../../public/assets/css/styles.css?v=<?= time() ?>">
+
+  <!-- IMPORTANTE: mismo CSS y misma versión que el Dashboard -->
+  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+
   <style>
-    .grid{display:grid;grid-template-columns:1fr;gap:16px}
-    .card{background:#fff;border-radius:16px;box-shadow:0 8px 20px rgba(0,0,0,.08);padding:16px}
-    .title{font-size:18px;font-weight:700;color:#0a3a78;margin:0 0 8px}
-    .muted{color:#6b7280;font-size:13px}
-    .row{display:flex;gap:12px;flex-wrap:wrap}
+    /* Ajustes mínimos para que Entrada/Salida se vean como el Dashboard, sin depender de partials */
+    .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+    .page-head h1{margin:0}
+    .page-head .muted{margin:0}
+    .card{margin-top:12px}
+    .form-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
     .field{flex:1;min-width:220px}
-    .input{width:100%}
-    .btn{background:#0ea5a5;border:none;color:#fff;padding:10px 14px;border-radius:12px;font-weight:700;cursor:pointer}
-    .btn:hover{opacity:.92}
-    .btn-soft{background:#e6f7f7;color:#0a3a78;border:1px solid #cceeee}
-    table{width:100%;border-collapse:collapse;margin-top:10px}
-    th,td{padding:10px;border-bottom:1px solid #edf2f7;text-align:left;font-size:14px}
-    th{color:#0a3a78;font-weight:800}
-    .right{text-align:right}
-    .flash{padding:10px 12px;border-radius:12px;margin-bottom:10px}
-    .flash.ok{background:#e8fff3;color:#146c43;border:1px solid #bfead2}
-    .flash.err{background:#fff2f2;color:#842029;border:1px solid #f5c2c7}
+    .field label{display:block;font-size:13px;color:#6b7280;margin-bottom:6px}
+    .input, select.input{width:100%}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px 12px;border-bottom:1px solid rgba(0,0,0,.06);text-align:left}
+    th{font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.02em}
+    .actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:14px}
+    .btn{cursor:pointer}
+    .flash{margin-top:10px;padding:10px 12px;border-radius:12px}
+    .flash.ok{background:#d1fae5;color:#065f46}
+    .flash.err{background:#fee2e2;color:#991b1b}
   </style>
 </head>
+
 <body>
 
-<?php $sb = __DIR__ . "/../partials/sidebar.php"; if (file_exists($sb)) { include $sb; } ?>
+<header class="navbar">
+  <div class="inner">
+    <div></div>
+    <div class="brand"><span class="dot"></span> CEVIMEP</div>
+    <div class="nav-right">
+      <a class="btn-pill" href="/logout.php">Salir</a>
+    </div>
+  </div>
+</header>
 
-<div class="content">
-  <?php $tb = __DIR__ . "/../partials/topbar.php"; if (file_exists($tb)) { include $tb; } ?>
+<div class="layout">
 
-  <div class="grid">
-    <div class="card">
+  <aside class="sidebar">
+    <div class="menu-title">Menú</div>
+    <nav class="menu">
+      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
+      <a href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
+      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;"><span class="ico">🗓️</span> Citas</a>
+      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
+      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
+      <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
+      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+
+    <section class="hero">
+      <div class="page-head">
+        <div>
+          <h1>Entrada</h1>
+          <p class="muted">Sucursal: <?= htmlspecialchars($branch_name ?? '') ?></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
       <div class="title">Entrada</div>
       <div class="muted">Registra entrada de inventario (sede actual)</div>
 
@@ -347,9 +381,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
         <input type="hidden" name="area_destino" id="f_area_destino">
         <input type="hidden" name="items_json" id="f_items">
       </form>
-    </div>
-  </div>
+    </section>
+
+  </main>
 </div>
+
+<footer class="footer">
+  <div class="footer-inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
+</footer>
 
 <script>
 (function(){
