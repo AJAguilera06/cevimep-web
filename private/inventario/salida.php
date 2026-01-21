@@ -45,8 +45,8 @@ try {
       ON s.item_id = i.id AND s.branch_id = ?
     WHERE i.is_active = 1
       AND EXISTS (
-        SELECT 1 FROM inventory_stock s2 
-        WHERE s2.item_id = i.id AND s2.branch_id = ?
+        SELECT 1 FROM inventory_movements m2
+        WHERE m2.item_id = i.id AND m2.branch_id = ?
       )
     ORDER BY i.name ASC
   ");
