@@ -23,6 +23,7 @@ try {
 
 $flash_success = "";
 $flash_error = "";
+$print_now_batch = "";
 
 /* ===== Categorías ===== */
 $categories = [];
@@ -73,6 +74,15 @@ try {
   $history_in = $stH->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
+
+/* ===========================
+   IMPRIMIR DETALLE (POST, MISMA RESPUESTA)
+   (mejora compatibilidad con navegadores que bloquean window.print tras redirect)
+=========================== */
+if (!empty($print_now_batch)) {
+  $batch = $print_now_batch;
+  $_GET["print_batch"] = $batch; // reutiliza el bloque de impresión existente
+}
 /* ===========================
    IMPRIMIR DETALLE (POR LOTE)
    ?print_batch=XXXX
@@ -232,8 +242,7 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
       $conn->commit();
       $flash_success = "Entrada guardada correctamente.";
       if ((int)($_POST["do_print"] ?? 0) === 1) {
-        header("Location: entrada.php?print_batch=".$batch);
-        exit;
+        $print_now_batch = $batch;
       }
     } catch (Exception $e) {
       if ($conn->inTransaction()) $conn->rollBack();
@@ -270,7 +279,20 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
     .flash{margin-top:10px;padding:10px 12px;border-radius:12px}
     .flash.ok{background:#d1fae5;color:#065f46}
     .flash.err{background:#fee2e2;color:#991b1b}
-  </style>
+  
+    /* ===== Ajuste solicitado: cabecera blanca y centrada ===== */
+    .hero.hero-white{background:transparent !important; padding:0 !important; margin-bottom:16px;}
+    .hero.hero-white .page-head{
+      background:#fff !important;
+      border:1px solid rgba(15,23,42,.08);
+      border-radius:18px;
+      padding:22px 24px;
+      box-shadow:0 10px 30px rgba(2,6,23,.06);
+    }
+    .hero.hero-white .page-head.center{display:flex; justify-content:center; text-align:center;}
+    .hero.hero-white .page-head h1{margin:0; font-size:34px;}
+    .hero.hero-white .page-head .muted{margin:6px 0 0 0;}
+    </style>
 </head>
 
 <body>
@@ -302,8 +324,8 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
 
   <main class="content">
 
-    <section class="hero">
-      <div class="page-head">
+    <section class="hero hero-white">
+      <div class="page-head center">
         <div>
           <h1>Entrada</h1>
           <p class="muted">Sucursal: <?= htmlspecialchars($branch_name ?? '') ?></p>
