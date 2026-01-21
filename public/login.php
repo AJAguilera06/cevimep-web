@@ -1,29 +1,19 @@
 <?php
 declare(strict_types=1);
 
-/**
- * CEVIMEP - Login (estable para Railway/XAMPP + Front Controller)
- */
-
-// DEBUG (quita cuando funcione)
-ini_set('display_errors', '1');
-ini_set('display_startup_errors', '1');
-error_reporting(E_ALL);
-
-// Iniciar sesión SOLO si no está activa (evita doble session_start cuando index.php incluye)
+// Iniciar sesión SOLO si no está activa
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
 /* ===============================
    Cargar conexión a la BD
-   - Incluye tu caso real: private/config/db.php
    =============================== */
 $db_candidates = [
-    __DIR__ . '/../config/db.php',           // recomendado (si existe)
-    __DIR__ . '/../db.php',                  // si existe en raíz
-    __DIR__ . '/../private/config/db.php',   // TU CASO ACTUAL (importante)
-    __DIR__ . '/db.php',                     // fallback
+    __DIR__ . '/../config/db.php',
+    __DIR__ . '/../db.php',
+    __DIR__ . '/../private/config/db.php',
+    __DIR__ . '/db.php',
 ];
 
 $loaded = false;
@@ -82,7 +72,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'role'      => (string)$user['role'],
                     'branch_id' => (int)$user['branch_id'],
                 ];
-
                 session_regenerate_id(true);
 
                 header("Location: /private/dashboard.php");
@@ -101,46 +90,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Iniciar sesión</title>
 
-  <!-- Assets correctos en Railway (document root = public) -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=12">
 </head>
-<body class="auth-page">
+<body class="cev-auth-body">
 
-  <div class="auth-wrap">
-    <div class="auth-card">
+  <div class="cev-auth-bg"></div>
 
-      <div class="auth-header">
-        <img src="/assets/img/logo.png" alt="CEVIMEP" class="auth-logo" onerror="this.style.display='none'">
-        <h2>CEVIMEP</h2>
-        <p>Centro de Vacunación y Medicina Preventiva</p>
+  <main class="cev-auth-wrap">
+    <section class="cev-auth-card">
+
+      <div class="cev-auth-header">
+        <div class="cev-auth-logo">
+          <img src="/assets/img/logo.png" alt="CEVIMEP" onerror="this.style.display='none'">
+        </div>
+        <h1 class="cev-auth-title">CEVIMEP</h1>
+        <p class="cev-auth-subtitle">Centro de Vacunación y Medicina Preventiva</p>
       </div>
 
       <?php if ($error): ?>
-        <div class="alert-danger"><?= h($error) ?></div>
+        <div class="cev-alert cev-alert-danger"><?= h($error) ?></div>
       <?php endif; ?>
 
-      <form method="post" action="/login.php" autocomplete="on">
-        <div class="field">
-          <label>Correo</label>
-          <input class="input" type="email" name="email" required autocomplete="email">
+      <form class="cev-auth-form" method="post" action="/login.php" autocomplete="on">
+        <div class="cev-field">
+          <label class="cev-label">Correo</label>
+          <input class="cev-input" type="email" name="email" required autocomplete="email" placeholder="ej: usuario@cevimep.com">
         </div>
 
-        <div class="field">
-          <label>Contraseña</label>
-          <input class="input" type="password" name="password" required autocomplete="current-password">
+        <div class="cev-field">
+          <label class="cev-label">Contraseña</label>
+          <input class="cev-input" type="password" name="password" required autocomplete="current-password" placeholder="••••••••">
         </div>
 
-        <div class="actions">
-          <button type="submit" class="btn-primary-pill">Ingresar</button>
-        </div>
+        <button class="cev-btn cev-btn-primary" type="submit">Ingresar</button>
       </form>
 
-      <div class="auth-footer">
-        <small>© <?= (int)date("Y") ?> CEVIMEP</small>
-      </div>
+      <footer class="cev-auth-footer">
+        <span>© <?= (int)date("Y") ?> CEVIMEP</span>
+      </footer>
 
-    </div>
-  </div>
+    </section>
+  </main>
 
 </body>
 </html>
