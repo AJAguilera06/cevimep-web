@@ -23,7 +23,7 @@ try {
 
 $flash_success = "";
 $flash_error = "";
-$print_now_batch = "";
+
 
 /* ===== Categorías ===== */
 $categories = [];
@@ -75,14 +75,6 @@ try {
 } catch (Exception $e) {}
 
 
-/* ===========================
-   IMPRIMIR DETALLE (POST, MISMA RESPUESTA)
-   (mejora compatibilidad con navegadores que bloquean window.print tras redirect)
-=========================== */
-if (!empty($print_now_batch)) {
-  $batch = $print_now_batch;
-  $_GET["print_batch"] = $batch; // reutiliza el bloque de impresión existente
-}
 /* ===========================
    IMPRIMIR DETALLE (POR LOTE)
    ?print_batch=XXXX
@@ -197,6 +189,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     $flash_error = "No hay productos agregados.";
   } else {
     try {
+      // ID de lote para agrupar e imprimir la entrada completa
+      // (se guarda dentro de la nota para poder reconstruir el comprobante)
+      $batch = date("YmdHis") . "-" . substr(bin2hex(random_bytes(3)), 0, 6);
+
       $conn->beginTransaction();
 
       $ids = [];
@@ -241,8 +237,11 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
 
       $conn->commit();
       $flash_success = "Entrada guardada correctamente.";
+
+      // Imprimir inmediatamente (abre comprobante por lote)
       if ((int)($_POST["do_print"] ?? 0) === 1) {
-        $print_now_batch = $batch;
+        header("Location: entrada.php?print_batch=" . urlencode($batch));
+        exit;
       }
     } catch (Exception $e) {
       if ($conn->inTransaction()) $conn->rollBack();
@@ -269,8 +268,25 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
     .card{margin-top:12px}
     .form-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
     .field{flex:1;min-width:220px}
-    .field label{display:block;font-size:13px;color:#6b7280;margin-bottom:6px}
+    .field label{display:block;font-size:13px;color:#475569;margin-bottom:6px;font-weight:600}
     .input, select.input{width:100%}
+
+    /* Inputs más bonitos (sin romper el CSS global) */
+    .input, select.input{
+      height:42px;
+      padding:10px 12px;
+      border:1px solid rgba(15,23,42,.15);
+      border-radius:14px;
+      background:#fff;
+      box-shadow:0 2px 10px rgba(2,6,23,.04);
+      transition:box-shadow .15s ease, border-color .15s ease, transform .05s ease;
+    }
+    .input:focus, select.input:focus{
+      outline:none;
+      border-color:rgba(11,74,162,.55);
+      box-shadow:0 0 0 4px rgba(14,165,164,.18), 0 8px 24px rgba(2,6,23,.08);
+    }
+    input.input[readonly]{background:#f8fafc; color:#334155}
     table{width:100%;border-collapse:collapse}
     th,td{padding:10px 12px;border-bottom:1px solid rgba(0,0,0,.06);text-align:left}
     th{font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.02em}
