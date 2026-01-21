@@ -287,6 +287,7 @@ body{
   box-shadow: 0 0 0 2px rgba(0,168,168,.15);
   outline: none;
 }
+
 /* ===========================
    CEVIMEP AUTH (LOGIN) UI
    =========================== */
@@ -296,6 +297,8 @@ body{
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   background:#f3f7fb;
   color:#0b1b2b;
+  padding:0;
+  overflow:hidden;
 }
 
 .cev-auth-bg{
@@ -316,17 +319,18 @@ body{
   align-items:center;
   justify-content:center;
   padding:24px;
+  padding-bottom:80px; /* espacio para la barra inferior */
 }
 
 .cev-auth-card{
   width:100%;
-  max-width:420px;
-  background:rgba(255,255,255,.92);
-  backdrop-filter: blur(8px);
+  max-width:460px;
+  background:rgba(255,255,255,.94);
+  backdrop-filter: blur(10px);
   border:1px solid rgba(10, 24, 45, .10);
-  border-radius:18px;
-  box-shadow: 0 18px 40px rgba(10, 24, 45, .14);
-  padding:22px 22px 18px;
+  border-radius:20px;
+  box-shadow: 0 20px 46px rgba(10, 24, 45, .16);
+  padding:26px 26px 18px;
 }
 
 .cev-auth-header{
@@ -335,20 +339,20 @@ body{
 }
 
 .cev-auth-logo{
-  width:84px;
-  height:84px;
-  margin:0 auto 10px;
-  border-radius:18px;
+  width:110px;
+  height:110px;
+  margin:-6px auto 12px;
+  border-radius:24px;
   background:rgba(0,180,200,.10);
   display:flex;
   align-items:center;
   justify-content:center;
-  border:1px solid rgba(0,180,200,.25);
+  border:1px solid rgba(0,180,200,.30);
 }
 
 .cev-auth-logo img{
-  max-width:62px;
-  max-height:62px;
+  max-width:86px;
+  max-height:86px;
   display:block;
 }
 
@@ -433,9 +437,20 @@ body{
   box-shadow: 0 14px 30px rgba(0,120,255,.28);
 }
 
-.cev-auth-footer{
-  margin-top:14px;
-  text-align:center;
-  font-size:12px;
-  opacity:.65;
+/* ===== Barra inferior login (azul) ===== */
+.cev-auth-bottom-bar{
+  position:fixed;
+  left:0; right:0; bottom:0;
+  height:46px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:0 14px;
+  color:rgba(255,255,255,.92);
+  font-size:12.5px;
+  font-weight:700;
+  letter-spacing:.2px;
+  background: linear-gradient(135deg, rgba(0,180,200,1), rgba(0,120,255,1));
+  box-shadow: 0 -10px 24px rgba(0,120,255,.18);
+  z-index:50;
 }

@@ -90,8 +90,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Iniciar sesión</title>
 
-  <link rel="stylesheet" href="/assets/css/styles.css?v=12">
+  <!-- subí el v para que no se quede cacheado -->
+  <link rel="stylesheet" href="/assets/css/styles.css?v=14">
 </head>
+
 <body class="cev-auth-body">
 
   <div class="cev-auth-bg"></div>
@@ -125,12 +127,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <button class="cev-btn cev-btn-primary" type="submit">Ingresar</button>
       </form>
 
-      <footer class="cev-auth-footer">
-        <span>© <?= (int)date("Y") ?> CEVIMEP</span>
-      </footer>
-
     </section>
   </main>
+
+  <!-- Barra azul inferior fija -->
+  <div class="cev-auth-bottom-bar">
+    © <?= (int)date("Y") ?> CEVIMEP — Todos los derechos reservados.
+  </div>
 
 </body>
 </html>
