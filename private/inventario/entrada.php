@@ -291,7 +291,7 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | HECHO_POR={$he
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CEVIMEP | Inventario - Entrada</title>
 
-  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
 
   <style>
     .big-header{
@@ -353,7 +353,7 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | HECHO_POR={$he
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
+      <a class="btn-pill" href="/public/logout.php">Salir</a>
     </div>
   </div>
 </header>
