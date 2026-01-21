@@ -27,12 +27,11 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 
-// Permitir assets (si por rewrite caen aquí por error)
+// Dejar pasar assets (CSS, JS, IMG)
 if (strpos($uri, '/assets/') === 0) {
-    http_response_code(404);
-    echo "Asset no encontrado.";
-    exit;
+    return false;
 }
+
 
 // Rutas públicas (INCLUDE para evitar loop)
 if ($uri === '/login.php' || $uri === '/login') {
