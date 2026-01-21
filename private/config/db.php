@@ -1,55 +1,31 @@
 <?php
-// config/db.php
 declare(strict_types=1);
 
-// 1) Si existe MYSQL_URL (muy común en Railway), úsalo
-$mysqlUrl = getenv('MYSQL_URL') ?: getenv('DATABASE_URL');
-
-if ($mysqlUrl) {
-  $parts = parse_url($mysqlUrl);
-
-  $host = $parts['host'] ?? 'localhost';
-  $port = $parts['port'] ?? 3306;
-  $user = $parts['user'] ?? 'root';
-  $pass = $parts['pass'] ?? '';
-  $dbname = isset($parts['path']) ? ltrim($parts['path'], '/') : '';
-
-  try {
-    $dsn = "mysql:host={$host};port={$port};dbname={$dbname};charset=utf8mb4";
-    $pdo = new PDO(
-      $dsn,
-      $user,
-      $pass,
-      [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-      ]
-    );
-  } catch (PDOException $e) {
-    die("DB ERROR (URL): " . $e->getMessage());
-  }
-
-  return;
-}
-
-// 2) Fallback por variables separadas (MYSQLHOST, MYSQLPORT, etc.)
-$host = getenv("DB_HOST") ?: (getenv("MYSQLHOST") ?: "localhost");
-$dbname = getenv("DB_NAME") ?: (getenv("MYSQLDATABASE") ?: (getenv("MYSQL_DATABASE") ?: "cevimep-db"));
-$user = getenv("DB_USER") ?: (getenv("MYSQLUSER") ?: "root");
-$pass = getenv("DB_PASS") ?: (getenv("MYSQLPASSWORD") ?: "");
-$port = getenv("DB_PORT") ?: (getenv("MYSQLPORT") ?: "3306");
+/*
+|--------------------------------------------------------------------------
+| CEVIMEP - Conexión a Base de Datos
+| Compatible XAMPP + Railway
+|--------------------------------------------------------------------------
+*/
 
 try {
-  $dsn = "mysql:host=$host;port=$port;dbname=$dbname;charset=utf8mb4";
-  $pdo = new PDO(
-    $dsn,
-    $user,
-    $pass,
-    [
-      PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-      PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]
-  );
-} catch (PDOException $e) {
-  die("DB ERROR: " . $e->getMessage());
+    // Railway usa variables de entorno
+    $db_host = $_ENV['MYSQLHOST']     ?? $_ENV['DB_HOST']     ?? 'localhost';
+    $db_name = $_ENV['MYSQLDATABASE'] ?? $_ENV['DB_DATABASE']?? 'cevimep';
+    $db_user = $_ENV['MYSQLUSER']     ?? $_ENV['DB_USERNAME']?? 'root';
+    $db_pass = $_ENV['MYSQLPASSWORD'] ?? $_ENV['DB_PASSWORD']?? '';
+    $db_port = $_ENV['MYSQLPORT']     ?? '3306';
+
+    $dsn = "mysql:host={$db_host};port={$db_port};dbname={$db_name};charset=utf8mb4";
+
+    $pdo = new PDO($dsn, $db_user, $db_pass, [
+        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES   => false,
+    ]);
+
+} catch (Throwable $e) {
+    http_response_code(500);
+    echo "Error de conexión a la base de datos.";
+    exit;
 }
