@@ -182,7 +182,11 @@ $year = (int)date("Y");
       border-radius:999px; background:#f3f7ff; border:1px solid #dbeafe;
       color:#052a7a; font-weight:900; font-size:12px; white-space:nowrap;
     }
-    .btn.primary{
+    .
+/assets/css/styles.css
+
+
+.primary{
       border:none; color:#fff;
       background:linear-gradient(135deg,#0b4be3,#052a7a);
     }
@@ -212,7 +216,11 @@ $year = (int)date("Y");
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
+      <a class="
+/assets/css/styles.css
+
+
+-pill" href="/logout.php">Salir</a>
     </div>
   </div>
 </header>
@@ -248,7 +256,11 @@ $year = (int)date("Y");
 
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
           <span class="pill">Edad: <span id="ageLabel">—</span></span>
-          <a class="btn" href="view.php?id=<?= (int)$id ?>" style="text-decoration:none;">Volver</a>
+          <a class="
+/assets/css/styles.css
+
+
+" href="view.php?id=<?= (int)$id ?>" style="text-decoration:none;">Volver</a>
         </div>
       </div>
 
@@ -365,8 +377,16 @@ $year = (int)date("Y");
         </div>
 
         <div class="rowActions">
-          <button class="btn primary" type="submit">Guardar cambios</button>
-          <a class="btn" href="view.php?id=<?= (int)$id ?>" style="text-decoration:none;">Cancelar</a>
+          <button class="
+/assets/css/styles.css
+
+
+ primary" type="submit">Guardar cambios</button>
+          <a class="
+/assets/css/styles.css
+
+
+" href="view.php?id=<?= (int)$id ?>" style="text-decoration:none;">Cancelar</a>
         </div>
       </form>
     </section>

@@ -50,7 +50,11 @@ $branchLabel = $branch ? $branch : 'Sucursal';
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
+      <a class="
+/assets/css/styles.css
+
+
+-pill" href="/logout.php">Salir</a>
     </div>
   </div>
 </header>

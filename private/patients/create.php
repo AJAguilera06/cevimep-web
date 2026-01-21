@@ -176,7 +176,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     }
 
     .rowActions{display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;}
-    .btn.primary{
+    .
+/assets/css/styles.css
+
+
+.primary{
       border:none;
       color:#fff;
       background:linear-gradient(135deg,#0b4be3,#052a7a);
@@ -214,7 +218,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
+      <a class="
+/assets/css/styles.css
+
+
+-pill" href="/logout.php">Salir</a>
     </div>
   </div>
 </header>
@@ -250,7 +258,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         <div style="display:flex; gap:10px; align-items:center;">
           <span class="pill" id="agePill">Edad: —</span>
-          <a class="btn" href="index.php" style="text-decoration:none;">Volver</a>
+          <a class="
+/assets/css/styles.css
+
+
+" href="index.php" style="text-decoration:none;">Volver</a>
         </div>
       </div>
 
@@ -361,8 +373,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         </div>
 
         <div class="rowActions">
-          <button class="btn primary" type="submit">Guardar</button>
-          <a class="btn" href="index.php" style="text-decoration:none;">Cancelar</a>
+          <button class="
+/assets/css/styles.css
+
+
+ primary" type="submit">Guardar</button>
+          <a class="
+/assets/css/styles.css
+
+
+" href="index.php" style="text-decoration:none;">Cancelar</a>
         </div>
       </form>
     </section>

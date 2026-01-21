@@ -271,8 +271,16 @@ endif;
     .muted{color:#6b7280;font-weight:700;}
     label{display:block;font-weight:900;margin-top:12px;color:#0b3b9a;}
     input[type="text"]{width:100%;padding:10px 12px;border:1px solid #e6eef7;border-radius:14px;outline:none;}
-    .btnLocal{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:14px;border:1px solid #dbeafe;background:#fff;color:#052a7a;font-weight:900;text-decoration:none;cursor:pointer;}
-    .btnLocal.primary{background:#e0f2fe;}
+    .
+/assets/css/styles.css
+
+
+Local{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:14px;border:1px solid #dbeafe;background:#fff;color:#052a7a;font-weight:900;text-decoration:none;cursor:pointer;}
+    .
+/assets/css/styles.css
+
+
+Local.primary{background:#e0f2fe;}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
     .alert-ok{margin-top:10px;padding:10px 12px;border-radius:14px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;font-weight:900;}
     .alert-err{margin-top:10px;padding:10px 12px;border-radius:14px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239;font-weight:900;}
@@ -289,7 +297,11 @@ endif;
   <div class="inner">
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
-    <div class="nav-right"><a class="btn-pill" href="/logout.php">Salir</a></div>
+    <div class="nav-right"><a class="
+/assets/css/styles.css
+
+
+-pill" href="/logout.php">Salir</a></div>
   </div>
 </header>
 
@@ -325,8 +337,16 @@ endif;
           </div>
         </div>
         <div class="row">
-          <a class="btnLocal" href="index.php">Volver</a>
-          <a class="btnLocal primary" href="desembolso.php?print=1" target="_blank">Imprimir historial (día)</a>
+          <a class="
+/assets/css/styles.css
+
+
+Local" href="index.php">Volver</a>
+          <a class="
+/assets/css/styles.css
+
+
+Local primary" href="desembolso.php?print=1" target="_blank">Imprimir historial (día)</a>
         </div>
       </div>
 
@@ -341,8 +361,16 @@ endif;
         <input type="text" name="monto" value="<?php echo h($monto); ?>" placeholder="Ej: 500" required>
 
         <div class="row" style="margin-top:14px;">
-          <button class="btnLocal primary" type="submit">Guardar</button>
-          <a class="btnLocal" href="index.php">Cancelar</a>
+          <button class="
+/assets/css/styles.css
+
+
+Local primary" type="submit">Guardar</button>
+          <a class="
+/assets/css/styles.css
+
+
+Local" href="index.php">Cancelar</a>
         </div>
       </form>
     </section>

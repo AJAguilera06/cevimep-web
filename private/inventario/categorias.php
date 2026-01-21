@@ -144,7 +144,11 @@ try {
       border-radius:18px; overflow:hidden;
     }
     .row td{ padding:12px; font-weight:800; }
-    .btnDanger{ background:linear-gradient(135deg,#ef4444,#991b1b) !important; }
+    .
+/assets/css/styles.css
+
+
+Danger{ background:linear-gradient(135deg,#ef4444,#991b1b) !important; }
   </style>
 </head>
 
@@ -155,7 +159,11 @@ try {
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
+      <a class="
+/assets/css/styles.css
+
+
+-pill" href="/logout.php">Salir</a>
     </div>
   </div>
 </header>
@@ -201,7 +209,11 @@ try {
 
   <div style="display:flex; gap:10px; align-items:center;">
     <input class="input" name="name" placeholder="Nueva categoría..." required style="flex:1;">
-    <button class="btn-pill" type="submit">Añadir</button>
+    <button class="
+/assets/css/styles.css
+
+
+-pill" type="submit">Añadir</button>
   </div>
 </form>
 
@@ -222,7 +234,15 @@ try {
                 <form method="post" onsubmit="return confirm('¿Eliminar categoría?');" style="display:inline;">
                   <input type="hidden" name="action" value="delete">
                   <input type="hidden" name="id" value="<?= (int)$c["id"] ?>">
-                  <button class="btn-pill btnDanger" type="submit">Eliminar</button>
+                  <button class="
+/assets/css/styles.css
+
+
+-pill 
+/assets/css/styles.css
+
+
+Danger" type="submit">Eliminar</button>
                 </form>
               </td>
             </tr>

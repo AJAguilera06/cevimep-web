@@ -350,8 +350,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     @media(max-width:980px){.grid2{grid-template-columns:1fr;}}
     .input, select{width:100%;padding:10px 12px;border:1px solid #e6eef7;border-radius:14px;outline:none;}
     label{font-weight:900;color:#0b3b9a;display:block;margin:0 0 6px;}
-    .btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:14px;border:1px solid #dbeafe;background:#e0f2fe;color:#052a7a;font-weight:900;text-decoration:none;cursor:pointer;}
-    .btn.secondary{background:#fff;border:1px solid #dbeafe;}
+    .
+/assets/css/styles.css
+
+
+{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:14px;border:1px solid #dbeafe;background:#e0f2fe;color:#052a7a;font-weight:900;text-decoration:none;cursor:pointer;}
+    .
+/assets/css/styles.css
+
+
+.secondary{background:#fff;border:1px solid #dbeafe;}
     .muted{color:#6b7280;font-weight:700;}
     .row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
     .table{width:100%;border-collapse:collapse;border:1px solid #e6eef7;border-radius:16px;overflow:hidden;}
@@ -367,7 +375,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
+      <a class="
+/assets/css/styles.css
+
+
+-pill" href="/logout.php">Salir</a>
     </div>
   </div>
 </header>
@@ -398,7 +410,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           <h2 style="margin:0; color:var(--primary-2);">Nueva factura</h2>
           <div class="muted">Paciente: <b><?= htmlspecialchars($patient["full_name"]) ?></b></div>
         </div>
-        <a class="btn secondary" href="index.php">Volver</a>
+        <a class="
+/assets/css/styles.css
+
+
+ secondary" href="index.php">Volver</a>
       </div>
 
       <?php if($flash_error): ?>
@@ -497,7 +513,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           </div>
 
           <div style="display:flex;align-items:flex-end;">
-            <button class="btn" type="button" id="btnAdd">Añadir</button>
+            <button class="
+/assets/css/styles.css
+
+
+" type="button" id="
+/assets/css/styles.css
+
+
+Add">Añadir</button>
           </div>
         </div>
 
@@ -534,7 +558,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         </div>
 
         <div style="display:flex;justify-content:flex-end;margin-top:14px;">
-          <button type="submit" class="btn">Realizar orden</button>
+          <button type="submit" class="
+/assets/css/styles.css
+
+
+">Realizar orden</button>
         </div>
 
       </form>
@@ -551,7 +579,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   const selCat = document.getElementById('selCat');
   const selItem = document.getElementById('selItem');
   const qty = document.getElementById('qty');
-  const btn = document.getElementById('btnAdd');
+  const 
+/assets/css/styles.css
+
+
+ = document.getElementById('
+/assets/css/styles.css
+
+
+Add');
   const tbody = document.getElementById('tbodyItems');
 
   const payMethod = document.getElementById('payMethod');
@@ -667,7 +703,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       <td class="qtyRight">RD$ ${money(price)}</td>
       <td class="qtyRight">RD$ <span class="jsTotal">${money(lineTotal)}</span></td>
       <td>
-        <button class="btn secondary jsDel" type="button">Quitar</button>
+        <button class="
+/assets/css/styles.css
+
+
+ secondary jsDel" type="button">Quitar</button>
       </td>
     `;
 
@@ -687,7 +727,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     recalcTotals();
   }
 
-  btn.addEventListener('click', ()=>{
+  
+/assets/css/styles.css
+
+
+.addEventListener('click', ()=>{
     const id = parseInt(selItem.value||"0",10);
     if (!id) return;
 

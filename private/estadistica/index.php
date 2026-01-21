@@ -289,9 +289,33 @@ $base   = "../";           // 🔥 rutas correctas
               <input name="year" type="number" class="form-control form-control-sm" value="<?php echo (int)$year; ?>" min="2020" max="2100">
             </div>
             <div>
-              <button class="btn btn-sm btn-primary">Aplicar</button>
+              <button class="
+/assets/css/styles.css
+
+
+ 
+/assets/css/styles.css
+
+
+-sm 
+/assets/css/styles.css
+
+
+-primary">Aplicar</button>
               <?php if ($estadistica_ok): ?>
-                <a class="btn btn-sm btn-outline-secondary" href="logout.php">Cerrar</a>
+                <a class="
+/assets/css/styles.css
+
+
+ 
+/assets/css/styles.css
+
+
+-sm 
+/assets/css/styles.css
+
+
+-outline-secondary" href="logout.php">Cerrar</a>
               <?php endif; ?>
             </div>
           </form>
@@ -420,8 +444,28 @@ $base   = "../";           // 🔥 rutas correctas
         <div id="passMsg" class="small text-danger mt-2" style="display:none;"></div>
       </div>
       <div class="modal-footer">
-        <a href="../dashboard.php" class="btn btn-outline-secondary">Salir</a>
-        <button type="button" id="passBtn" class="btn btn-primary">Entrar</button>
+        <a href="../dashboard.php" class="
+/assets/css/styles.css
+
+
+ 
+/assets/css/styles.css
+
+
+-outline-secondary">Salir</a>
+        <button type="button" id="pass
+/assets/css/styles.css
+
+
+" class="
+/assets/css/styles.css
+
+
+ 
+/assets/css/styles.css
+
+
+-primary">Entrar</button>
       </div>
     </div>
   </div>
@@ -438,7 +482,15 @@ $base   = "../";           // 🔥 rutas correctas
     const modal = new bootstrap.Modal(document.getElementById('passModal'), {backdrop:'static', keyboard:false});
     modal.show();
 
-    const btn = document.getElementById("passBtn");
+    const 
+/assets/css/styles.css
+
+
+ = document.getElementById("pass
+/assets/css/styles.css
+
+
+");
     const inp = document.getElementById("passInput");
     const msg = document.getElementById("passMsg");
 
@@ -450,7 +502,15 @@ $base   = "../";           // 🔥 rutas correctas
         msg.style.display="block";
         return;
       }
-      btn.disabled=true; btn.textContent="Verificando...";
+      
+/assets/css/styles.css
+
+
+.disabled=true; 
+/assets/css/styles.css
+
+
+.textContent="Verificando...";
       try{
         const fd = new FormData();
         fd.append("password", password);
@@ -463,10 +523,22 @@ $base   = "../";           // 🔥 rutas correctas
         msg.textContent="Error de conexión.";
         msg.style.display="block";
       }finally{
-        btn.disabled=false; btn.textContent="Entrar";
+        
+/assets/css/styles.css
+
+
+.disabled=false; 
+/assets/css/styles.css
+
+
+.textContent="Entrar";
       }
     }
-    btn.addEventListener("click", go);
+    
+/assets/css/styles.css
+
+
+.addEventListener("click", go);
     inp.addEventListener("keydown", e => { if(e.key==="Enter") go(); });
     setTimeout(()=>inp.focus(), 250);
   }

@@ -235,7 +235,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     /* Botón estilo pill (por si tu CSS no lo tiene en login) */
-    .btn-pill{
+    .
+/assets/css/styles.css
+
+
+-pill{
       display:inline-flex;
       align-items:center;
       justify-content:center;
@@ -248,7 +252,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       background:linear-gradient(135deg, rgba(127,178,255,.28), rgba(39,211,199,.18));
       color:#0b2a4a;
     }
-    .btn-primary-pill{
+    .
+/assets/css/styles.css
+
+
+-primary-pill{
       background:linear-gradient(135deg, #1c6cff, #0f3a67);
       color:#fff;
       border:1px solid rgba(255,255,255,.10);
@@ -319,8 +327,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
 
         <div class="actions">
-          <a class="btn-pill" href="/index.php">Volver</a>
-          <button type="submit" class="btn-pill btn-primary-pill">Entrar</button>
+          <a class="
+/assets/css/styles.css
+
+
+-pill" href="/index.php">Volver</a>
+          <button type="submit" class="
+/assets/css/styles.css
+
+
+-pill 
+/assets/css/styles.css
+
+
+-primary-pill">Entrar</button>
         </div>
       </form>
 

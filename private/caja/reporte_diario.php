@@ -119,13 +119,21 @@ try {
 
   <style>
     .actions{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
-    .btnLocal{
+    .
+/assets/css/styles.css
+
+
+Local{
       display:inline-flex;align-items:center;justify-content:center;
       padding:10px 14px;border-radius:14px;
       border:1px solid #dbeafe;background:#fff;color:#052a7a;
       font-weight:900;text-decoration:none;cursor:pointer;
     }
-    .btnLocal:hover{box-shadow:0 10px 25px rgba(2,6,23,.10);}
+    .
+/assets/css/styles.css
+
+
+Local:hover{box-shadow:0 10px 25px rgba(2,6,23,.10);}
     .gridBox{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px;}
     @media(max-width:900px){ .gridBox{grid-template-columns:1fr;} }
     .cardBox{
@@ -149,7 +157,11 @@ try {
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
+      <a class="
+/assets/css/styles.css
+
+
+-pill" href="/logout.php">Salir</a>
     </div>
   </div>
 </header>
@@ -183,12 +195,24 @@ try {
             <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Fecha</label>
             <input type="date" name="date" value="<?= h($date) ?>" style="border:0;outline:none;font-weight:800;">
           </div>
-          <button class="btnLocal" type="submit">Ver</button>
+          <button class="
+/assets/css/styles.css
+
+
+Local" type="submit">Ver</button>
         </form>
 
         <div class="right actions">
-          <a class="btnLocal" href="/private/caja/index.php">Volver a Caja</a>
-          <a class="btnLocal" href="javascript:void(0)" onclick="window.print()">Imprimir</a>
+          <a class="
+/assets/css/styles.css
+
+
+Local" href="/private/caja/index.php">Volver a Caja</a>
+          <a class="
+/assets/css/styles.css
+
+
+Local" href="javascript:void(0)" onclick="window.print()">Imprimir</a>
         </div>
       </div>
 

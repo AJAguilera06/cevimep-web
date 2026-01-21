@@ -123,7 +123,11 @@ $year = (int)date("Y");
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
+      <a class="
+/assets/css/styles.css
+
+
+-pill" href="/logout.php">Salir</a>
     </div>
   </div>
 </header>
@@ -159,8 +163,16 @@ $year = (int)date("Y");
 
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
           <span class="pill">Edad: <?php echo h($age !== "" ? $age : "—"); ?></span>
-          <a class="btn" href="index.php" style="text-decoration:none;">← Volver</a>
-          <a class="btn" href="edit.php?id=<?php echo (int)$id; ?>" style="text-decoration:none;">Editar</a>
+          <a class="
+/assets/css/styles.css
+
+
+" href="index.php" style="text-decoration:none;">← Volver</a>
+          <a class="
+/assets/css/styles.css
+
+
+" href="edit.php?id=<?php echo (int)$id; ?>" style="text-decoration:none;">Editar</a>
         </div>
       </div>
 
@@ -200,8 +212,16 @@ $year = (int)date("Y");
       </div>
 
       <div class="rowActions">
-        <a class="btn" href="index.php" style="text-decoration:none;">Volver al listado</a>
-        <a class="btn" href="edit.php?id=<?php echo (int)$id; ?>" style="text-decoration:none;">Editar paciente</a>
+        <a class="
+/assets/css/styles.css
+
+
+" href="index.php" style="text-decoration:none;">Volver al listado</a>
+        <a class="
+/assets/css/styles.css
+
+
+" href="edit.php?id=<?php echo (int)$id; ?>" style="text-decoration:none;">Editar paciente</a>
       </div>
     </section>
 

@@ -68,7 +68,11 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
   <link rel="stylesheet" href="/assets/css/styles.css?v=11">
 
   <style>
-    .btnSmall{
+    .
+/assets/css/styles.css
+
+
+Small{
       padding:8px 12px;
       border-radius:999px;
       font-weight:900;
@@ -90,7 +94,11 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
+      <a class="
+/assets/css/styles.css
+
+
+-pill" href="/logout.php">Salir</a>
     </div>
   </div>
 </header>
@@ -130,8 +138,16 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
         </div>
 
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <a class="btnSmall" href="index.php">Volver</a>
-          <a class="btn" href="nueva.php?patient_id=<?php echo (int)$patient_id; ?>" style="text-decoration:none;">
+          <a class="
+/assets/css/styles.css
+
+
+Small" href="index.php">Volver</a>
+          <a class="
+/assets/css/styles.css
+
+
+" href="nueva.php?patient_id=<?php echo (int)$patient_id; ?>" style="text-decoration:none;">
             Registrar nueva factura
           </a>
         </div>
@@ -162,7 +178,11 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                 <td><?php echo h($inv["payment_method"]); ?></td>
                 <td style="font-weight:900;"><?php echo number_format((float)$inv["total"], 2); ?></td>
                 <td>
-                  <a class="btnSmall" target="_blank" href="print.php?id=<?php echo (int)$inv["id"]; ?>">Detalle</a>
+                  <a class="
+/assets/css/styles.css
+
+
+Small" target="_blank" href="print.php?id=<?php echo (int)$inv["id"]; ?>">Detalle</a>
                 </td>
               </tr>
             <?php endforeach; ?>

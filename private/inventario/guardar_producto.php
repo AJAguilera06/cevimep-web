@@ -54,10 +54,18 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
         border-color:#7fb2ff; box-shadow:0 0 0 3px rgba(127,178,255,.20);
       }
       .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap;}
-      .btnLink{ text-decoration:none; display:inline-flex; align-items:center; justify-content:center; }
+      .
+/assets/css/styles.css
+
+
+Link{ text-decoration:none; display:inline-flex; align-items:center; justify-content:center; }
 
       /* ✅ Asegurar que el botón Guardar se vea SIEMPRE */
-      button.btn-pill{
+      button.
+/assets/css/styles.css
+
+
+-pill{
         display:inline-flex !important;
         align-items:center !important;
         justify-content:center !important;
@@ -73,7 +81,11 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
       <div class="inner">
         <div></div>
         <div class="brand"><span class="dot"></span> CEVIMEP</div>
-        <div class="nav-right"><a class="btn-pill" href="/logout.php">Salir</a></div>
+        <div class="nav-right"><a class="
+/assets/css/styles.css
+
+
+-pill" href="/logout.php">Salir</a></div>
       </div>
     </header>
 
@@ -103,7 +115,15 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
               <h3 style="margin:0 0 6px;">Registrar nuevo producto</h3>
               <p class="muted" style="margin:0;">Completa los datos para agregarlo al inventario.</p>
             </div>
-            <a class="btn-pill btnLink" href="/private/inventario/items.php">Volver</a>
+            <a class="
+/assets/css/styles.css
+
+
+-pill 
+/assets/css/styles.css
+
+
+Link" href="/private/inventario/items.php">Volver</a>
           </div>
 
           <form method="POST" action="/private/inventario/guardar_producto.php">
@@ -144,9 +164,21 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 
             <div class="actions">
               <!-- ✅ Guardar visible -->
-              <button class="btn-pill" type="submit">Guardar</button>
+              <button class="
+/assets/css/styles.css
 
-              <a class="btn-pill btnLink" href="/private/inventario/items.php"
+
+-pill" type="submit">Guardar</button>
+
+              <a class="
+/assets/css/styles.css
+
+
+-pill 
+/assets/css/styles.css
+
+
+Link" href="/private/inventario/items.php"
                  style="background:#eef6ff;border:1px solid rgba(2,21,44,.12);color:#0b2a4a;">
                 Cancelar
               </a>

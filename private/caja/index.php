@@ -138,15 +138,27 @@ if ($caja2) {
   <style>
     /* Mantener el diseño "pill" de los botones, igual al look de tu UI */
     .actions{display:flex; gap:10px; flex-wrap:wrap;}
-    .btnLocal{
+    .
+/assets/css/styles.css
+
+
+Local{
       display:inline-flex;align-items:center;justify-content:center;
       padding:10px 14px;border-radius:14px;
       border:1px solid #dbeafe;background:#fff;color:#052a7a;
       font-weight:900;text-decoration:none;cursor:pointer;
       transition:transform .05s ease, box-shadow .15s ease;
     }
-    .btnLocal:hover{box-shadow:0 10px 25px rgba(2,6,23,.10);}
-    .btnLocal:active{transform:translateY(1px);}
+    .
+/assets/css/styles.css
+
+
+Local:hover{box-shadow:0 10px 25px rgba(2,6,23,.10);}
+    .
+/assets/css/styles.css
+
+
+Local:active{transform:translateY(1px);}
 
     .gridBox{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px;}
     @media(max-width:900px){ .gridBox{grid-template-columns:1fr;} }
@@ -173,7 +185,11 @@ if ($caja2) {
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
+      <a class="
+/assets/css/styles.css
+
+
+-pill" href="/logout.php">Salir</a>
     </div>
   </div>
 </header>
@@ -220,9 +236,21 @@ if ($caja2) {
 
         <!-- ✅ BOTONES BONITOS + ✅ RUTAS CORRECTAS (EN CAJA) -->
         <div class="actions">
-          <a class="btnLocal" href="/private/caja/desembolso.php">Desembolso</a>
-          <a class="btnLocal" href="/private/caja/reporte_diario.php">Reporte diario</a>
-          <a class="btnLocal" href="/private/caja/reporte_mensual.php">Reporte mensual</a>
+          <a class="
+/assets/css/styles.css
+
+
+Local" href="/private/caja/desembolso.php">Desembolso</a>
+          <a class="
+/assets/css/styles.css
+
+
+Local" href="/private/caja/reporte_diario.php">Reporte diario</a>
+          <a class="
+/assets/css/styles.css
+
+
+Local" href="/private/caja/reporte_mensual.php">Reporte mensual</a>
         </div>
       </div>
     </section>
@@ -290,3 +318,4 @@ if ($caja2) {
 
 </body>
 </html>
+            

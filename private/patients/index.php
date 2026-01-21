@@ -116,7 +116,11 @@ $year = date('Y');
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Cerrar sesión</a>
+      <a class="
+/assets/css/styles.css
+
+
+-pill" href="/logout.php">Cerrar sesión</a>
     </div>
   </div>
 </header>
@@ -176,20 +180,32 @@ $year = date('Y');
           width:320px;
         "
       >
-      <button class="btn" type="submit">Buscar</button>
+      <button class="
+/assets/css/styles.css
+
+
+" type="submit">Buscar</button>
     </form>
 
     <!-- BOTÓN PRINCIPAL -->
     <a
       href="/private/patients/create.php"
-      class="btn primary"
+      class="
+/assets/css/styles.css
+
+
+ primary"
       style="padding:10px 16px;"
     >
       Registrar nuevo paciente
     </a>
 
     <!-- VOLVER -->
-    <a href="/private/dashboard.php" class="btn">
+    <a href="/private/dashboard.php" class="
+/assets/css/styles.css
+
+
+">
       Volver
     </a>
 
@@ -240,8 +256,28 @@ $year = date('Y');
                   <td><?= $gender !== '' ? '<span class="pill">'.htmlspecialchars($gender).'</span>' : '' ?></td>
                   <td><?= $blood  !== '' ? '<span class="pill">'.htmlspecialchars($blood).'</span>' : '' ?></td>
                   <td class="td-actions">
-                    <a class="btn btn-small" href="/private/patients/view.php?id=<?= $id ?>">Ver</a>
-                    <a class="btn btn-small btn-ghost" href="/private/patients/edit.php?id=<?= $id ?>">Editar</a>
+                    <a class="
+/assets/css/styles.css
+
+
+ 
+/assets/css/styles.css
+
+
+-small" href="/private/patients/view.php?id=<?= $id ?>">Ver</a>
+                    <a class="
+/assets/css/styles.css
+
+
+ 
+/assets/css/styles.css
+
+
+-small 
+/assets/css/styles.css
+
+
+-ghost" href="/private/patients/edit.php?id=<?= $id ?>">Editar</a>
                   </td>
                 </tr>
               <?php endforeach; ?>

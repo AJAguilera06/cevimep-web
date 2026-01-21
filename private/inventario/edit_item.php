@@ -131,7 +131,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       margin-top:16px;
       align-items:center;
     }
-    .btn.secondary{
+    .
+/assets/css/styles.css
+
+
+.secondary{
       background:#eef6ff;
       border:1px solid rgba(2,21,44,.12);
       color:#0b2a4a;
@@ -210,7 +214,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           <p class="muted" style="margin:0;">ID: <?php echo (int)$item["id"]; ?></p>
         </div>
 
-        <a class="btn secondary" href="items.php" style="text-decoration:none;">Volver</a>
+        <a class="
+/assets/css/styles.css
+
+
+ secondary" href="items.php" style="text-decoration:none;">Volver</a>
       </div>
 
       <?php if ($flash_error): ?>
@@ -260,8 +268,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         </div>
 
         <div class="actions">
-          <button class="btn" type="submit">Guardar cambios</button>
-          <a class="btn secondary" href="items.php" style="text-decoration:none;">Cancelar</a>
+          <button class="
+/assets/css/styles.css
+
+
+" type="submit">Guardar cambios</button>
+          <a class="
+/assets/css/styles.css
+
+
+ secondary" href="items.php" style="text-decoration:none;">Cancelar</a>
         </div>
       </form>
 

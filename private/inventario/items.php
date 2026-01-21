@@ -100,7 +100,11 @@ if ($branch_id > 0) {
   <link rel="stylesheet" href="/assets/css/styles.css?v=11">
 
   <style>
-    .btn.small{
+    .
+/assets/css/styles.css
+
+
+.small{
       padding:6px 12px;
       border-radius:999px;
       font-weight:900;
@@ -109,7 +113,11 @@ if ($branch_id > 0) {
       background:#eef6ff;
       cursor:pointer;
     }
-    .btn.small.danger{
+    .
+/assets/css/styles.css
+
+
+.small.danger{
       background:#dc3545;
       color:#fff;
       border-color:#dc3545;
@@ -164,7 +172,11 @@ if ($branch_id > 0) {
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
+      <a class="
+/assets/css/styles.css
+
+
+-pill" href="/logout.php">Salir</a>
     </div>
   </div>
 </header>
@@ -199,7 +211,11 @@ if ($branch_id > 0) {
           <p class="muted" style="margin:0;">Gestiona precios, categorías y existencia</p>
         </div>
 
-        <a class="btn" href="guardar_producto.php" style="text-decoration:none;">Registrar nuevo producto</a>
+        <a class="
+/assets/css/styles.css
+
+
+" href="guardar_producto.php" style="text-decoration:none;">Registrar nuevo producto</a>
       </div>
 
       <?php if ($flash_success): ?>
@@ -261,8 +277,16 @@ if ($branch_id > 0) {
                   <td class="<?php echo $low ? "low-stock" : ""; ?>"><?php echo $existencia; ?></td>
 
                   <td style="display:flex; gap:10px; align-items:center;">
-                    <button class="btn small" type="button" onclick="editItem(<?php echo (int)$item['id']; ?>)">Editar</button>
-                    <button class="btn small danger" type="button" onclick="deleteItem(<?php echo (int)$item['id']; ?>)">Eliminar</button>
+                    <button class="
+/assets/css/styles.css
+
+
+ small" type="button" onclick="editItem(<?php echo (int)$item['id']; ?>)">Editar</button>
+                    <button class="
+/assets/css/styles.css
+
+
+ small danger" type="button" onclick="deleteItem(<?php echo (int)$item['id']; ?>)">Eliminar</button>
                   </td>
                 </tr>
               <?php endforeach; ?>

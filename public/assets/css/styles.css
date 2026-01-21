@@ -102,6 +102,7 @@ body{
 
 .nav-right{ display:flex; align-items:center; }
 
+/* ===== BUTTON PILL (Salir) ===== */
 .btn-pill{
   text-decoration:none;
   color:#fff;
@@ -254,7 +255,6 @@ body{
   align-items:center;
   gap:8px;
 }
-
 .btn:hover{ transform: translateY(-1px); }
 
 .btn-small{
@@ -292,8 +292,13 @@ body{
     border-bottom:1px solid var(--border);
   }
 }
+
 /* Inputs bonitos para formularios */
-.form-control, select, input[type="text"], input[type="number"], input[type="date"]{
+.form-control,
+select,
+input[type="text"],
+input[type="number"],
+input[type="date"]{
   border-radius: 10px;
   padding: 10px 12px;
   border: 1px solid #cfd8dc;
@@ -301,7 +306,9 @@ body{
   transition: all .2s ease;
 }
 
-.form-control:focus, select:focus, input:focus{
+.form-control:focus,
+select:focus,
+input:focus{
   border-color: #00a8a8;
   box-shadow: 0 0 0 2px rgba(0,168,168,.15);
   outline: none;

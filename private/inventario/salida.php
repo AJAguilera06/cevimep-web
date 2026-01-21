@@ -132,8 +132,24 @@ if (isset($_GET["print_batch"]) && $_GET["print_batch"] !== "") {
       .right{text-align:right}
       @media print{ .no-print{display:none} }
     
-    .btn.btn-primary{background:linear-gradient(135deg,#0ea5a4,#0b4aa2);border:none;color:#fff}
-    .btn.btn-primary:hover{filter:brightness(1.03)}
+    .
+/assets/css/styles.css
+
+
+.
+/assets/css/styles.css
+
+
+-primary{background:linear-gradient(135deg,#0ea5a4,#0b4aa2);border:none;color:#fff}
+    .
+/assets/css/styles.css
+
+
+.
+/assets/css/styles.css
+
+
+-primary:hover{filter:brightness(1.03)}
     .field label{display:block;font-weight:600;font-size:13px;margin-bottom:6px;color:#2b3a4a}
     table th{text-transform:uppercase;font-size:12px;letter-spacing:.04em}
   </style>
@@ -298,7 +314,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     th,td{padding:10px 12px;border-bottom:1px solid rgba(0,0,0,.06);text-align:left}
     th{font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.02em}
     .actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:14px}
-    .btn{cursor:pointer}
+    .
+/assets/css/styles.css
+
+
+{cursor:pointer}
     .flash{margin-top:10px;padding:10px 12px;border-radius:12px}
     .flash.ok{background:#d1fae5;color:#065f46}
     .flash.err{background:#fee2e2;color:#991b1b}
@@ -325,7 +345,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
+      <a class="
+/assets/css/styles.css
+
+
+-pill" href="/logout.php">Salir</a>
     </div>
   </div>
 </header>
@@ -420,7 +444,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
         </div>
 
         <div class="field" style="flex:0 0 auto;min-width:auto">
-          <button type="button" class="btn btn-primary" id="btnAdd">Añadir</button>
+          <button type="button" class="
+/assets/css/styles.css
+
+
+ 
+/assets/css/styles.css
+
+
+-primary" id="
+/assets/css/styles.css
+
+
+Add">Añadir</button>
         </div>
       </div>
 
@@ -439,8 +475,32 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
       </table>
 
       <div style="display:flex;justify-content:flex-end;margin-top:14px;gap:10px;flex-wrap:wrap">
-        <button type="button" class="btn btn-soft" id="btnToggleHist">Ver el historial</button>
-        <button type="button" class="btn btn-primary" id="btnSave">Guardar e Imprimir</button>
+        <button type="button" class="
+/assets/css/styles.css
+
+
+ 
+/assets/css/styles.css
+
+
+-soft" id="
+/assets/css/styles.css
+
+
+ToggleHist">Ver el historial</button>
+        <button type="button" class="
+/assets/css/styles.css
+
+
+ 
+/assets/css/styles.css
+
+
+-primary" id="
+/assets/css/styles.css
+
+
+Save">Guardar e Imprimir</button>
       </div>
 
       <div id="histWrap" style="display:none;margin-top:16px">
@@ -496,15 +556,39 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
   const selCat = document.getElementById('selCat');
   const selItem = document.getElementById('selItem');
   const qty = document.getElementById('qty');
-  const btn = document.getElementById('btnAdd');
+  const 
+/assets/css/styles.css
+
+
+ = document.getElementById('
+/assets/css/styles.css
+
+
+Add');
   const tbody = document.getElementById('tbodyItems');
 
-  const btnToggle = document.getElementById('btnToggleHist');
+  const 
+/assets/css/styles.css
+
+
+Toggle = document.getElementById('
+/assets/css/styles.css
+
+
+ToggleHist');
   const histWrap = document.getElementById('histWrap');
-  btnToggle.addEventListener('click', () => {
+  
+/assets/css/styles.css
+
+
+Toggle.addEventListener('click', () => {
     const open = histWrap.style.display === 'block';
     histWrap.style.display = open ? 'none' : 'block';
-    btnToggle.textContent = open ? 'Ver el historial' : 'Ocultar historial';
+    
+/assets/css/styles.css
+
+
+Toggle.textContent = open ? 'Ver el historial' : 'Ocultar historial';
   });
 
   let items = [];
@@ -534,13 +618,25 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
         <td>${it.category || ''}</td>
         <td>${it.name}</td>
         <td class="right">${it.qty}</td>
-        <td class="right"><button type="button" class="btn btn-soft" data-del="${it.id}">Quitar</button></td>
+        <td class="right"><button type="button" class="
+/assets/css/styles.css
+
+
+ 
+/assets/css/styles.css
+
+
+-soft" data-del="${it.id}">Quitar</button></td>
       `;
       tbody.appendChild(tr);
     }
   }
 
-  btn.addEventListener('click', () => {
+  
+/assets/css/styles.css
+
+
+.addEventListener('click', () => {
     const id = parseInt(selItem.value||"0",10);
     const q = parseInt(qty.value||"0",10);
     if (!id || q <= 0) return;
@@ -565,7 +661,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     render();
   });
 
-  document.getElementById('btnSave').addEventListener('click', () => {
+  document.getElementById('
+/assets/css/styles.css
+
+
+Save').addEventListener('click', () => {
     if (items.length === 0) return;
 
     document.getElementById('f_fecha').value = document.getElementById('fecha').value;
