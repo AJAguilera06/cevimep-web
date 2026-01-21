@@ -1,26 +1,17 @@
 <?php
 declare(strict_types=1);
 
-ini_set('display_errors', '1');
-ini_set('display_startup_errors', '1');
-error_reporting(E_ALL);
-
-session_set_cookie_params([
-  'lifetime' => 0,
-  'path' => '/',
-  'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
-  'httponly' => true,
-  'samesite' => 'Lax',
-]);
-session_start();
+// OJO: NO llamar session_set_cookie_params aquí si index.php ya inició sesión
+if (session_status() !== PHP_SESSION_ACTIVE) {
+  session_start();
+}
 
 require_once __DIR__ . '/../config/db.php';
 
 if (!empty($_SESSION['user'])) {
-  header('Location: /private/dashboard.php');
+  header("Location: /private/dashboard.php");
   exit;
 }
-
 
 $error = '';
 

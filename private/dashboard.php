@@ -1,26 +1,11 @@
 <?php
-declare(strict_types=1);
-
-/**
- * CEVIMEP - Dashboard
- * - Mantiene layout/estilos consistentes con los demás módulos
- * - Botón: "Salir"
- * - Footer centrado
- */
-
-session_set_cookie_params([
-  'lifetime' => 0,
-  'path' => '/',
-  'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
-  'httponly' => true,
-  'samesite' => 'Lax',
-]);
 session_start();
 
-if (empty($_SESSION['user'])) {
-  header('Location: /login.php');
+if (!isset($_SESSION['user'])) {
+  header("Location: /login.php");
   exit;
 }
+
 
 $year = (int)date('Y');
 
