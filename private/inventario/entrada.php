@@ -32,21 +32,20 @@ try {
 } catch (Exception $e) {}
 
 /* ===== Productos (con stock por sucursal) ===== */
-/* ===== Productos ===== */
 $products = [];
 try {
   $st = $conn->prepare("
     SELECT 
-      i.id, 
+      i.id,
       i.name,
-      COALESCE(c.name,'') AS category, 
+      COALESCE(c.name,'') AS category,
       COALESCE(c.id,0) AS category_id,
       COALESCE(s.quantity,0) AS stock
     FROM inventory_items i
     LEFT JOIN inventory_categories c ON c.id = i.category_id
     LEFT JOIN inventory_stock s 
       ON s.item_id = i.id AND s.branch_id = ?
-    WHERE i.is_active=1
+    WHERE i.is_active = 1
     ORDER BY i.name ASC
   ");
   $st->execute([$branch_id]);
@@ -55,23 +54,20 @@ try {
   $flash_error = "Error cargando productos.";
 }
 
-
 /* ===== Historial IN ===== */
 $history_in = [];
-if ($branch_id > 0) {
-  try {
-    $stH = $conn->prepare("
-      SELECT 
-        m.id, m.qty, m.note, m.created_at, m.created_by
-      FROM inventory_movements m
-      WHERE m.branch_id = ? AND m.movement_type = 'IN'
-      ORDER BY m.id DESC
-      LIMIT 50
-    ");
-    $stH->execute([$branch_id]);
-    $history_in = $stH->fetchAll(PDO::FETCH_ASSOC);
-  } catch (Exception $e) {}
-}
+try {
+  $stH = $conn->prepare("
+    SELECT 
+      m.id, m.qty, m.note, m.created_at, m.created_by
+    FROM inventory_movements m
+    WHERE m.branch_id = ? AND m.movement_type = 'IN'
+    ORDER BY m.id DESC
+    LIMIT 50
+  ");
+  $stH->execute([$branch_id]);
+  $history_in = $stH->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
 
 /* ===========================
    IMPRIMIR DETALLE
@@ -136,7 +132,7 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
 /* ===========================
    GUARDAR ENTRADA
 =========================== */
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["action"] === "save_entry") {
+if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_entry") {
 
   $fecha = trim($_POST["fecha"] ?? $today);
   $suplidor = trim($_POST["suplidor"] ?? "");
@@ -152,7 +148,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
     try {
       $conn->beginTransaction();
 
-      // validar ids/cantidades
       $ids = [];
       foreach ($items as $it) {
         $iid = (int)($it["id"] ?? 0);
@@ -162,23 +157,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
       $ids = array_values(array_unique($ids));
       if (count($ids) === 0) throw new Exception("Items inválidos.");
 
-      // info items
       $in = implode(",", array_fill(0, count($ids), "?"));
       $stInfo = $conn->prepare("SELECT id, name FROM inventory_items WHERE id IN ($in)");
       $stInfo->execute($ids);
       $infoRows = $stInfo->fetchAll(PDO::FETCH_ASSOC);
-
       $infoMap = [];
       foreach ($infoRows as $r) $infoMap[(int)$r["id"]] = $r;
 
-      // sumar stock por sucursal
       $stStock = $conn->prepare("
         INSERT INTO inventory_stock (item_id, branch_id, quantity)
         VALUES (?, ?, ?)
         ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
       ");
 
-      // registrar movimientos
       $stMov = $conn->prepare("
         INSERT INTO inventory_movements (item_id, branch_id, movement_type, qty, note, created_by)
         VALUES (?, ?, 'IN', ?, ?, ?)
@@ -190,8 +181,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
         if ($iid <= 0 || $q <= 0) continue;
 
         $pname = $infoMap[$iid]["name"] ?? ("ID ".$iid);
-
         $metaNote = "FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}";
+
         $stStock->execute([$iid, $branch_id, $q]);
         $stMov->execute([$iid, $branch_id, $q, $metaNote, $created_by]);
       }
@@ -234,10 +225,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
 </head>
 <body>
 
-<?php include __DIR__ . "/../partials/sidebar.php"; ?>
+<?php $sb = __DIR__ . "/../partials/sidebar.php"; if (file_exists($sb)) { include $sb; } ?>
 
 <div class="content">
-  <?php include __DIR__ . "/../partials/topbar.php"; ?>
+  <?php $tb = __DIR__ . "/../partials/topbar.php"; if (file_exists($tb)) { include $tb; } ?>
 
   <div class="grid">
     <div class="card">
@@ -391,20 +382,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
   selCat.addEventListener('change', filterProducts);
   filterProducts();
 
-  function ensureNoEmpty(){
-    const er = document.getElementById('emptyRow');
-    if (items.length === 0) {
-      if (!er) {
-        const tr = document.createElement('tr');
-        tr.id = 'emptyRow';
-        tr.innerHTML = '<td colspan="4" class="muted">No hay productos agregados.</td>';
-        tbody.appendChild(tr);
-      }
-    } else {
-      if (er) er.remove();
-    }
-  }
-
   function render(){
     tbody.innerHTML = '';
     if (items.length === 0) {
@@ -452,7 +429,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
     if (items.length === 0) return;
 
     document.getElementById('f_fecha').value = document.getElementById('fecha').value;
-    document.getElementById('f_suplidor').value = ''; // si luego agregas campo suplidor en UI
+    document.getElementById('f_suplidor').value = '';
     document.getElementById('f_area_destino').value = document.getElementById('area_destino').value;
     document.getElementById('f_items').value = JSON.stringify(items);
 

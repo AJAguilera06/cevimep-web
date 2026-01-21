@@ -30,21 +30,20 @@ try {
 } catch (Exception $e) {}
 
 /* ===== Productos (con stock por sucursal) ===== */
-/* ===== Productos activos ===== */
 $products = [];
 try {
   $st = $conn->prepare("
     SELECT 
-      i.id, 
+      i.id,
       i.name,
-      COALESCE(c.name,'') AS category, 
+      COALESCE(c.name,'') AS category,
       COALESCE(c.id,0) AS category_id,
       COALESCE(s.quantity,0) AS stock
     FROM inventory_items i
     LEFT JOIN inventory_categories c ON c.id = i.category_id
     LEFT JOIN inventory_stock s 
       ON s.item_id = i.id AND s.branch_id = ?
-    WHERE i.is_active=1
+    WHERE i.is_active = 1
     ORDER BY i.name ASC
   ");
   $st->execute([$branch_id]);
@@ -53,23 +52,20 @@ try {
   $flash_error = "Error cargando productos.";
 }
 
-
 /* ===== Historial OUT (sede actual) ===== */
 $history_out = [];
-if ($branch_id > 0) {
-  try {
-    $stH = $conn->prepare("
-      SELECT 
-        m.id, m.qty, m.note, m.created_at, m.created_by
-      FROM inventory_movements m
-      WHERE m.branch_id = ? AND m.movement_type = 'OUT'
-      ORDER BY m.id DESC
-      LIMIT 50
-    ");
-    $stH->execute([$branch_id]);
-    $history_out = $stH->fetchAll(PDO::FETCH_ASSOC);
-  } catch (Exception $e) {}
-}
+try {
+  $stH = $conn->prepare("
+    SELECT 
+      m.id, m.qty, m.note, m.created_at, m.created_by
+    FROM inventory_movements m
+    WHERE m.branch_id = ? AND m.movement_type = 'OUT'
+    ORDER BY m.id DESC
+    LIMIT 50
+  ");
+  $stH->execute([$branch_id]);
+  $history_out = $stH->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
 
 /* ===========================
    IMPRIMIR DETALLE
@@ -134,7 +130,7 @@ if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
 /* ===========================
    GUARDAR SALIDA
 =========================== */
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["action"] === "save_exit") {
+if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_exit") {
 
   $fecha = trim($_POST["fecha"] ?? $today);
   $area_salida = trim($_POST["area_salida"] ?? $branch_name);
@@ -154,7 +150,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
     try {
       $conn->beginTransaction();
 
-      // validar ids/cantidades
       $ids = [];
       foreach ($items as $it) {
         $iid = (int)($it["id"] ?? 0);
@@ -164,16 +159,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
       $ids = array_values(array_unique($ids));
       if (count($ids) === 0) throw new Exception("Items inválidos.");
 
-      // info items
       $in = implode(",", array_fill(0, count($ids), "?"));
+
       $stInfo = $conn->prepare("SELECT id, name FROM inventory_items WHERE id IN ($in)");
       $stInfo->execute($ids);
       $infoRows = $stInfo->fetchAll(PDO::FETCH_ASSOC);
-
       $infoMap = [];
       foreach ($infoRows as $r) $infoMap[(int)$r["id"]] = $r;
 
-      // validar stock disponible por sucursal
       $stAvail = $conn->prepare("
         SELECT item_id, quantity
         FROM inventory_stock
@@ -196,14 +189,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
         }
       }
 
-      // descontar stock
       $stStockUpd = $conn->prepare("
         UPDATE inventory_stock
         SET quantity = quantity - ?
         WHERE branch_id=? AND item_id=?
       ");
 
-      // registrar movimientos OUT
       $stMov = $conn->prepare("
         INSERT INTO inventory_movements (item_id, branch_id, movement_type, qty, note, created_by)
         VALUES (?, ?, 'OUT', ?, ?, ?)
@@ -259,9 +250,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
 </head>
 <body>
 
-<?php include __DIR__ . "/../partials/sidebar.php"; ?>
+<?php $sb = __DIR__ . "/../partials/sidebar.php"; if (file_exists($sb)) { include $sb; } ?>
+
 <div class="content">
-  <?php include __DIR__ . "/../partials/topbar.php"; ?>
+  <?php $tb = __DIR__ . "/../partials/topbar.php"; if (file_exists($tb)) { include $tb; } ?>
 
   <div class="grid">
     <div class="card">
@@ -479,5 +471,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
 
 })();
 </script>
+
 </body>
 </html>
