@@ -74,57 +74,94 @@ try {
 } catch (Exception $e) {}
 
 /* ===========================
-   IMPRIMIR DETALLE
-   ?print=1&id=XX
+   IMPRIMIR DETALLE (POR LOTE)
+   ?print_batch=XXXX
 =========================== */
-if (isset($_GET["print"]) && (int)($_GET["id"] ?? 0) > 0) {
-  $pid = (int)$_GET["id"];
-  $print_data = null;
+if (isset($_GET["print_batch"]) && $_GET["print_batch"] !== "") {
+  $batch = trim($_GET["print_batch"]);
+  $rows = [];
   try {
     $stP = $conn->prepare("
-      SELECT id, branch_id, note, created_by, created_at
+      SELECT id, item_id, qty, note, created_by, created_at
       FROM inventory_movements
-      WHERE id=? AND branch_id=? AND movement_type='IN'
-      LIMIT 1
+      WHERE branch_id=? AND movement_type='IN' AND note LIKE ?
+      ORDER BY id ASC
     ");
-    $stP->execute([$pid, $branch_id]);
-    $print_data = $stP->fetch(PDO::FETCH_ASSOC);
+    $stP->execute([$branch_id, "%BATCH={$batch}%"]);
+    $rows = $stP->fetchAll(PDO::FETCH_ASSOC);
   } catch (Exception $e) {}
 
-  if (!$print_data) { die("Registro no encontrado."); }
+  if (!$rows || count($rows) === 0) { die("Registro no encontrado."); }
 
+  $ids = array_values(array_unique(array_map(fn($r)=> (int)$r["item_id"], $rows)));
+  $infoMap = [];
+  if (count($ids) > 0) {
+    try {
+      $in = implode(",", array_fill(0, count($ids), "?"));
+      $stInfo = $conn->prepare("SELECT id, name FROM inventory_items WHERE id IN ($in)");
+      $stInfo->execute($ids);
+      foreach ($stInfo->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $infoMap[(int)$r["id"]] = $r["name"];
+      }
+    } catch (Exception $e) {}
+  }
+
+  $created_at = $rows[0]["created_at"] ?? "";
   header("Content-Type: text/html; charset=utf-8");
   ?>
   <!doctype html>
   <html lang="es">
   <head>
     <meta charset="utf-8">
-    <title>Entrada #<?= (int)$print_data["id"] ?></title>
+    <title>Entrada de Inventario | <?= htmlspecialchars($batch) ?></title>
     <style>
       body{font-family:Arial,Helvetica,sans-serif;margin:24px}
       h2{margin:0 0 8px}
-      .box{border:1px solid #ddd;border-radius:10px;padding:16px}
+      .box{border:1px solid #ddd;border-radius:12px;padding:16px}
       .muted{color:#666;font-size:13px}
-      .row{display:flex;gap:16px;flex-wrap:wrap}
-      .row>div{min-width:220px}
+      table{width:100%;border-collapse:collapse;margin-top:14px}
+      th,td{border-bottom:1px solid #eee;padding:8px 6px;text-align:left;font-size:14px}
+      th{background:#f6f7f8}
+      .right{text-align:right}
       @media print{ .no-print{display:none} }
-    </style>
+    
+    .btn.btn-primary{background:linear-gradient(135deg,#0ea5a4,#0b4aa2);border:none;color:#fff}
+    .btn.btn-primary:hover{filter:brightness(1.03)}
+    .field label{display:block;font-weight:600;font-size:13px;margin-bottom:6px;color:#2b3a4a}
+    table th{text-transform:uppercase;font-size:12px;letter-spacing:.04em}
+  </style>
   </head>
-  <body onload="window.print()">
+  <body onload="window.print(); setTimeout(function(){ window.location.href='entrada.php?printed=1'; }, 600);">
     <div class="box">
       <h2>Entrada de Inventario</h2>
-      <div class="muted">CEVIMEP - <?= htmlspecialchars($branch_name) ?></div>
-      <hr>
-      <div class="row">
-        <div><strong>ID:</strong> <?= (int)$print_data["id"] ?></div>
-        <div><strong>Fecha:</strong> <?= htmlspecialchars($print_data["created_at"]) ?></div>
-      </div>
-      <div style="margin-top:10px">
-        <strong>Nota:</strong><br>
-        <?= nl2br(htmlspecialchars($print_data["note"])) ?>
-      </div>
+      <div class="muted">CEVIMEP - <?= htmlspecialchars($branch_name) ?> · Lote: <?= htmlspecialchars($batch) ?></div>
+      <div class="muted">Fecha/Hora: <?= htmlspecialchars($created_at) ?></div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Producto</th>
+            <th class="right">Cantidad</th>
+            <th>ID Mov.</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach($rows as $r): 
+            $iid = (int)$r["item_id"];
+            $nm = $infoMap[$iid] ?? ("ID ".$iid);
+          ?>
+            <tr>
+              <td><?= htmlspecialchars($nm) ?></td>
+              <td class="right"><?= (int)$r["qty"] ?></td>
+              <td>#<?= (int)$r["id"] ?></td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+
       <div class="no-print" style="margin-top:16px">
-        <button onclick="window.close()">Cerrar</button>
+        <button onclick="window.print()">Imprimir</button>
+        <button onclick="window.location.href='entrada.php'">Volver</button>
       </div>
     </div>
   </body>
@@ -185,7 +222,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
         if ($iid <= 0 || $q <= 0) continue;
 
         $pname = $infoMap[$iid]["name"] ?? ("ID ".$iid);
-        $metaNote = "FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}";
+        $metaNote = "BATCH={$batch}
+FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}";
 
         $stStock->execute([$iid, $branch_id, $q]);
         $stMov->execute([$iid, $branch_id, $q, $metaNote, $created_by]);
@@ -193,6 +231,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
 
       $conn->commit();
       $flash_success = "Entrada guardada correctamente.";
+      if ((int)($_POST["do_print"] ?? 0) === 1) {
+        header("Location: entrada.php?print_batch=".$batch);
+        exit;
+      }
     } catch (Exception $e) {
       if ($conn->inTransaction()) $conn->rollBack();
       $flash_error = "No se pudo guardar la entrada: " . $e->getMessage();
@@ -280,7 +322,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
         <div class="flash err"><?= htmlspecialchars($flash_error) ?></div>
       <?php endif; ?>
 
-      <div class="row" style="margin-top:12px">
+      <div class="form-row" style="margin-top:12px">
         <div class="field">
           <label>Fecha</label>
           <input class="input" type="date" id="fecha" value="<?= htmlspecialchars($today) ?>">
@@ -322,7 +364,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
           <input class="input" type="number" id="qty" min="1" value="1">
         </div>
 
-        <button type="button" class="btn" id="btnAdd">Añadir</button>
+        <div class="field" style="flex:0 0 auto;min-width:auto">
+          <button type="button" class="btn btn-primary" id="btnAdd">Añadir</button>
+        </div>
       </div>
 
       <p class="muted" style="margin:10px 0 0">
@@ -343,9 +387,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
         </tbody>
       </table>
 
-      <div style="display:flex;justify-content:flex-end;margin-top:14px;gap:10px">
+      <div style="display:flex;justify-content:flex-end;margin-top:14px;gap:10px;flex-wrap:wrap">
         <button type="button" class="btn btn-soft" id="btnToggleHist">Ver el historial</button>
-        <button type="button" class="btn" id="btnSave">Guardar e Imprimir</button>
+        <button type="button" class="btn btn-primary" id="btnSave">Guardar e Imprimir</button>
       </div>
 
       <div id="histWrap" style="display:none;margin-top:16px">
@@ -384,6 +428,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
         <input type="hidden" name="suplidor" id="f_suplidor">
         <input type="hidden" name="area_destino" id="f_area_destino">
         <input type="hidden" name="items_json" id="f_items">
+        <input type="hidden" name="do_print" id="f_do_print" value="1">
       </form>
     </section>
 
@@ -475,6 +520,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     document.getElementById('f_suplidor').value = '';
     document.getElementById('f_area_destino').value = document.getElementById('area_destino').value;
     document.getElementById('f_items').value = JSON.stringify(items);
+    document.getElementById('f_do_print').value = '1';
 
     document.getElementById('frmSave').submit();
   });
