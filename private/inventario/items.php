@@ -97,7 +97,12 @@ if ($branch_id > 0) {
   <title>CEVIMEP | Inventario</title>
 
   <!-- IMPORTANTE: mismo CSS y misma versión que los demás módulos -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
+
+
+
+
+
 
   <style>
     .

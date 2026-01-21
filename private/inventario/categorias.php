@@ -106,7 +106,12 @@ try {
   <title>CEVIMEP | Categorías</title>
 
   <!-- EXACTO igual que dashboard.php -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
+
+
+
+
+
 
   <style>
     /* Tabs internos (sin sidebar extra) */

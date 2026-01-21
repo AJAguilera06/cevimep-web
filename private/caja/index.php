@@ -133,7 +133,12 @@ if ($caja2) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CEVIMEP | Caja</title>
 
-  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
+
+
+
+
+
 
   <style>
     /* Mantener el diseño "pill" de los botones, igual al look de tu UI */

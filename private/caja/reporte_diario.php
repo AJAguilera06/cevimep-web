@@ -115,7 +115,12 @@ try {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CEVIMEP | Reporte Diario Caja</title>
-  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
+
+
+
+
+
 
   <style>
     .actions{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}

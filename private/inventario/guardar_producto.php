@@ -40,7 +40,12 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     <title>CEVIMEP | Registrar producto</title>
 
     <!-- mismo css del dashboard -->
-    <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+    <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
+
+
+
+
+
 
     <style>
       .formGrid{ display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-top:14px; }

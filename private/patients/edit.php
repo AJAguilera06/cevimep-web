@@ -151,7 +151,12 @@ $year = (int)date("Y");
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Editar paciente</title>
 
-  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
+
+
+
+
+
 
   <style>
     .muted{ color:#6b7280; font-weight:600; }

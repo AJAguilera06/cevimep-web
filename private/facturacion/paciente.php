@@ -65,7 +65,12 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
   <title>CEVIMEP | Facturación - Paciente</title>
 
   <!-- MISMO CSS Y VERSION QUE DASHBOARD -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
+
+
+
+
+
 
   <style>
     .

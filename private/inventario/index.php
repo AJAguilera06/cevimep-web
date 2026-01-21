@@ -21,7 +21,12 @@ $year = (int)date("Y");
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Inventario</title>
-  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
+
+
+
+
+
   <style>
     html,body{height:100%;}
     body{margin:0; overflow:hidden !important;}

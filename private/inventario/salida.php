@@ -298,7 +298,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
   <title>CEVIMEP | Inventario - Salida</title>
 
   <!-- IMPORTANTE: mismo CSS y misma versión que el Dashboard -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
+
+
+
+
+
 
   <style>
     /* Ajustes mínimos para que Entrada/Salida se vean como el Dashboard, sin depender de partials */

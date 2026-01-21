@@ -45,7 +45,12 @@ if ($branch_id > 0) {
   <title>CEVIMEP | Facturación</title>
 
   <!-- ✅ MISMO CSS QUE DASHBOARD (ruta absoluta) -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
+
+
+
+
+
 
   <style>
     /* ✅ Asegura layout estable como los otros módulos */

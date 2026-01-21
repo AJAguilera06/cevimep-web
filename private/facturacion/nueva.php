@@ -335,7 +335,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   <title>CEVIMEP | Nueva Factura</title>
 
   <!-- ✅ ESTÁNDAR -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=11">
+  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
+
+
+
+
+
 
   <style>
     /* Solo estilos internos del formulario/tabla (sin tocar layout global) */
