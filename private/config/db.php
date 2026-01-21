@@ -1,24 +1,41 @@
 <?php
 declare(strict_types=1);
 
-/*
-|--------------------------------------------------------------------------
-| CEVIMEP - Conexión a Base de Datos
-| Compatible XAMPP + Railway
-|--------------------------------------------------------------------------
-*/
+/**
+ * CEVIMEP - DB
+ * - Compatible XAMPP + Railway
+ * - Soporta MYSQL_URL / DATABASE_URL
+ * - Fallback a MYSQLHOST / MYSQLDATABASE / MYSQLUSER / MYSQLPASSWORD / MYSQLPORT
+ */
+
+function envv(string $k, $default = null) {
+    $v = $_ENV[$k] ?? getenv($k);
+    return ($v === false || $v === null || $v === '') ? $default : $v;
+}
 
 try {
-    // Railway usa variables de entorno
-    $db_host = $_ENV['MYSQLHOST']     ?? $_ENV['DB_HOST']     ?? 'localhost';
-    $db_name = $_ENV['MYSQLDATABASE'] ?? $_ENV['DB_DATABASE']?? 'cevimep';
-    $db_user = $_ENV['MYSQLUSER']     ?? $_ENV['DB_USERNAME']?? 'root';
-    $db_pass = $_ENV['MYSQLPASSWORD'] ?? $_ENV['DB_PASSWORD']?? '';
-    $db_port = $_ENV['MYSQLPORT']     ?? '3306';
+    // 1) Railway a veces trae MYSQL_URL o DATABASE_URL
+    $url = envv('MYSQL_URL') ?? envv('DATABASE_URL');
 
-    $dsn = "mysql:host={$db_host};port={$db_port};dbname={$db_name};charset=utf8mb4";
+    if ($url) {
+        $p = parse_url($url);
+        $host = $p['host'] ?? 'localhost';
+        $port = (string)($p['port'] ?? '3306');
+        $user = $p['user'] ?? 'root';
+        $pass = $p['pass'] ?? '';
+        $db   = isset($p['path']) ? ltrim($p['path'], '/') : 'cevimep';
+    } else {
+        // 2) Variables típicas del plugin MySQL
+        $host = envv('MYSQLHOST', envv('DB_HOST', 'localhost'));
+        $port = (string)envv('MYSQLPORT', '3306');
+        $db   = envv('MYSQLDATABASE', envv('DB_DATABASE', 'cevimep'));
+        $user = envv('MYSQLUSER', envv('DB_USERNAME', 'root'));
+        $pass = envv('MYSQLPASSWORD', envv('DB_PASSWORD', ''));
+    }
 
-    $pdo = new PDO($dsn, $db_user, $db_pass, [
+    $dsn = "mysql:host={$host};port={$port};dbname={$db};charset=utf8mb4";
+
+    $pdo = new PDO($dsn, $user, $pass, [
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES   => false,
