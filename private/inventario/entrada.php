@@ -34,14 +34,20 @@ if (isset($_GET["print_batch"]) && $_GET["print_batch"] !== "") {
 
   $rows = [];
   try {
-    $stP = $conn->prepare("
-      SELECT id, item_id, qty, note, created_by, created_at
-      FROM inventory_movements
-      WHERE branch_id=? AND movement_type='IN' AND note LIKE ?
-      ORDER BY id ASC
-    ");
-    $stP->execute([$branch_id, "%BATCH={$batch}%"]);
-    $rows = $stP->fetchAll(PDO::FETCH_ASSOC);
+    $sqlItems = "
+  SELECT i.id, i.name
+  FROM inventory_items i
+  INNER JOIN inventory_stock s
+    ON s.item_id = i.id
+   AND s.branch_id = ?
+  WHERE i.is_active = 1
+    AND ( ? = 0 OR i.category_id = ? )
+  ORDER BY i.name
+";
+
+$stItems = $pdo->prepare($sqlItems);
+$stItems->execute([$branch_id, $cat_id, $cat_id]);
+$items = $stItems->fetchAll(PDO::FETCH_ASSOC);
   } catch (Exception $e) {}
 
   if (!$rows || count($rows) === 0) { die("Registro no encontrado."); }
