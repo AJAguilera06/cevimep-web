@@ -8,9 +8,11 @@ $conn = $pdo;
 $user = $_SESSION["user"];
 $year = date("Y");
 $today = date("Y-m-d");
-$now_dt = date("Y-m-d H:i:s");
 $branch_id = (int)($user["branch_id"] ?? 0);
 $created_by = (int)($user["id"] ?? 0);
+
+$made_by_name = trim(($user["name"] ?? "") . " " . ($user["lastname"] ?? ""));
+if ($made_by_name === "") $made_by_name = ($user["username"] ?? "Usuario");
 
 if ($branch_id <= 0) { die("Sucursal inválida."); }
 
@@ -23,7 +25,6 @@ try {
 
 $flash_success = "";
 $flash_error = "";
-
 
 /* ===== Categorías ===== */
 $categories = [];
@@ -81,6 +82,7 @@ try {
 =========================== */
 if (isset($_GET["print_batch"]) && $_GET["print_batch"] !== "") {
   $batch = trim($_GET["print_batch"]);
+
   $rows = [];
   try {
     $stP = $conn->prepare("
@@ -94,6 +96,20 @@ if (isset($_GET["print_batch"]) && $_GET["print_batch"] !== "") {
   } catch (Exception $e) {}
 
   if (!$rows || count($rows) === 0) { die("Registro no encontrado."); }
+
+  // Parseo de metadatos (suplidor, destino, hecho_por) desde la nota
+  $meta = [
+    "FECHA" => "",
+    "SUPLIDOR" => "",
+    "DESTINO" => "",
+    "HECHO_POR" => ""
+  ];
+  $note0 = (string)($rows[0]["note"] ?? "");
+  foreach (array_keys($meta) as $k) {
+    if (preg_match("/{$k}=([^\|\n\r]*)/i", $note0, $m)) {
+      $meta[$k] = trim($m[1]);
+    }
+  }
 
   $ids = array_values(array_unique(array_map(fn($r)=> (int)$r["item_id"], $rows)));
   $infoMap = [];
@@ -115,29 +131,34 @@ if (isset($_GET["print_batch"]) && $_GET["print_batch"] !== "") {
   <html lang="es">
   <head>
     <meta charset="utf-8">
-    <title>Entrada de Inventario | <?= htmlspecialchars($batch) ?></title>
+    <title>Acuse de Entrada | <?= htmlspecialchars($batch) ?></title>
     <style>
       body{font-family:Arial,Helvetica,sans-serif;margin:24px}
-      h2{margin:0 0 8px}
-      .box{border:1px solid #ddd;border-radius:12px;padding:16px}
-      .muted{color:#666;font-size:13px}
+      .box{border:1px solid #ddd;border-radius:14px;padding:18px}
+      h2{margin:0 0 6px}
+      .muted{color:#666;font-size:13px;line-height:1.4}
       table{width:100%;border-collapse:collapse;margin-top:14px}
       th,td{border-bottom:1px solid #eee;padding:8px 6px;text-align:left;font-size:14px}
-      th{background:#f6f7f8}
+      th{background:#f6f7f8;text-transform:uppercase;font-size:12px;letter-spacing:.04em}
       .right{text-align:right}
+      .topgrid{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px}
+      .pill{border:1px solid #eee;border-radius:12px;padding:10px 12px;min-width:220px}
+      .pill b{display:block;font-size:12px;text-transform:uppercase;color:#64748b;margin-bottom:4px}
       @media print{ .no-print{display:none} }
-    
-    .btn.btn-primary{background:linear-gradient(135deg,#0ea5a4,#0b4aa2);border:none;color:#fff}
-    .btn.btn-primary:hover{filter:brightness(1.03)}
-    .field label{display:block;font-weight:600;font-size:13px;margin-bottom:6px;color:#2b3a4a}
-    table th{text-transform:uppercase;font-size:12px;letter-spacing:.04em}
-  </style>
+    </style>
   </head>
-  <body onload="window.print(); setTimeout(function(){ window.location.href='entrada.php?printed=1'; }, 600);">
+  <body onload="window.print(); setTimeout(function(){ window.location.href='entrada.php?printed=1'; }, 700);">
     <div class="box">
       <h2>Entrada de Inventario</h2>
       <div class="muted">CEVIMEP - <?= htmlspecialchars($branch_name) ?> · Lote: <?= htmlspecialchars($batch) ?></div>
-      <div class="muted">Fecha/Hora: <?= htmlspecialchars($created_at) ?></div>
+      <div class="muted">Fecha/Hora sistema: <?= htmlspecialchars($created_at) ?></div>
+
+      <div class="topgrid">
+        <div class="pill"><b>Fecha</b><?= htmlspecialchars($meta["FECHA"]) ?></div>
+        <div class="pill"><b>Sucursal / Destino</b><?= htmlspecialchars($meta["DESTINO"] ?: $branch_name) ?></div>
+        <div class="pill"><b>Suplidor</b><?= htmlspecialchars($meta["SUPLIDOR"]) ?></div>
+        <div class="pill"><b>Hecho por</b><?= htmlspecialchars($meta["HECHO_POR"]) ?></div>
+      </div>
 
       <table>
         <thead>
@@ -161,7 +182,7 @@ if (isset($_GET["print_batch"]) && $_GET["print_batch"] !== "") {
         </tbody>
       </table>
 
-      <div class="no-print" style="margin-top:16px">
+      <div class="no-print" style="margin-top:16px;display:flex;gap:8px">
         <button onclick="window.print()">Imprimir</button>
         <button onclick="window.location.href='entrada.php'">Volver</button>
       </div>
@@ -172,6 +193,7 @@ if (isset($_GET["print_batch"]) && $_GET["print_batch"] !== "") {
   exit;
 }
 
+
 /* ===========================
    GUARDAR ENTRADA
 =========================== */
@@ -180,6 +202,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
   $fecha = trim($_POST["fecha"] ?? $today);
   $suplidor = trim($_POST["suplidor"] ?? "");
   $area_destino = trim($_POST["area_destino"] ?? $branch_name);
+  $hecho_por = trim($_POST["hecho_por"] ?? $made_by_name);
 
   $items_json = $_POST["items_json"] ?? "[]";
   $items = json_decode($items_json, true);
@@ -189,8 +212,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     $flash_error = "No hay productos agregados.";
   } else {
     try {
-      // ID de lote para agrupar e imprimir la entrada completa
-      // (se guarda dentro de la nota para poder reconstruir el comprobante)
       $batch = date("YmdHis") . "-" . substr(bin2hex(random_bytes(3)), 0, 6);
 
       $conn->beginTransaction();
@@ -228,8 +249,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
         if ($iid <= 0 || $q <= 0) continue;
 
         $pname = $infoMap[$iid]["name"] ?? ("ID ".$iid);
+
+        // Nota con metadatos (usado para reconstruir e imprimir el acuse)
         $metaNote = "BATCH={$batch}
-FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}";
+FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | HECHO_POR={$hecho_por} | ITEM={$pname}";
 
         $stStock->execute([$iid, $branch_id, $q]);
         $stMov->execute([$iid, $branch_id, $q, $metaNote, $created_by]);
@@ -238,7 +261,6 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
       $conn->commit();
       $flash_success = "Entrada guardada correctamente.";
 
-      // Imprimir inmediatamente (abre comprobante por lote)
       if ((int)($_POST["do_print"] ?? 0) === 1) {
         header("Location: entrada.php?print_batch=" . urlencode($batch));
         exit;
@@ -257,46 +279,10 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CEVIMEP | Inventario - Entrada</title>
 
-  <!-- IMPORTANTE: mismo CSS y misma versión que el Dashboard -->
   <link rel="stylesheet" href="/assets/css/styles.css?v=11">
 
   <style>
-    /* Ajustes mínimos para que Entrada/Salida se vean como el Dashboard, sin depender de partials */
-    .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
-    .page-head h1{margin:0}
-    .page-head .muted{margin:0}
-    .card{margin-top:12px}
-    .form-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
-    .field{flex:1;min-width:220px}
-    .field label{display:block;font-size:13px;color:#475569;margin-bottom:6px;font-weight:600}
-    .input, select.input{width:100%}
-
-    /* Inputs más bonitos (sin romper el CSS global) */
-    .input, select.input{
-      height:42px;
-      padding:10px 12px;
-      border:1px solid rgba(15,23,42,.15);
-      border-radius:14px;
-      background:#fff;
-      box-shadow:0 2px 10px rgba(2,6,23,.04);
-      transition:box-shadow .15s ease, border-color .15s ease, transform .05s ease;
-    }
-    .input:focus, select.input:focus{
-      outline:none;
-      border-color:rgba(11,74,162,.55);
-      box-shadow:0 0 0 4px rgba(14,165,164,.18), 0 8px 24px rgba(2,6,23,.08);
-    }
-    input.input[readonly]{background:#f8fafc; color:#334155}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:10px 12px;border-bottom:1px solid rgba(0,0,0,.06);text-align:left}
-    th{font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.02em}
-    .actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:14px}
-    .btn{cursor:pointer}
-    .flash{margin-top:10px;padding:10px 12px;border-radius:12px}
-    .flash.ok{background:#d1fae5;color:#065f46}
-    .flash.err{background:#fee2e2;color:#991b1b}
-  
-    /* ===== Ajuste solicitado: cabecera blanca y centrada ===== */
+    .page-head{display:flex;align-items:center;justify-content:center;margin-bottom:12px}
     .hero.hero-white{background:transparent !important; padding:0 !important; margin-bottom:16px;}
     .hero.hero-white .page-head{
       background:#fff !important;
@@ -304,11 +290,38 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
       border-radius:18px;
       padding:22px 24px;
       box-shadow:0 10px 30px rgba(2,6,23,.06);
+      width:100%;
+      max-width: 1200px;
     }
-    .hero.hero-white .page-head.center{display:flex; justify-content:center; text-align:center;}
-    .hero.hero-white .page-head h1{margin:0; font-size:34px;}
-    .hero.hero-white .page-head .muted{margin:6px 0 0 0;}
-    </style>
+    .hero.hero-white .center{text-align:center}
+    .hero.hero-white h1{margin:0; font-size:34px;}
+    .hero.hero-white .muted{margin:6px 0 0 0; color:#64748b}
+
+    .card{margin-top:12px}
+    .form-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+    .field{flex:1;min-width:220px}
+    .field label{display:block;font-size:13px;color:#475569;margin-bottom:6px;font-weight:600}
+    .input, select.input{
+      width:100%;
+      height:42px;
+      padding:10px 12px;
+      border:1px solid rgba(15,23,42,.15);
+      border-radius:14px;
+      background:#fff;
+      box-shadow:0 2px 10px rgba(2,6,23,.04);
+      transition:box-shadow .15s ease, border-color .15s ease;
+    }
+    .input:focus, select.input:focus{
+      outline:none;
+      border-color:rgba(11,74,162,.55);
+      box-shadow:0 0 0 4px rgba(14,165,164,.18), 0 8px 24px rgba(2,6,23,.08);
+    }
+    input.input[readonly]{background:#f8fafc; color:#334155}
+
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px 12px;border-bottom:1px solid rgba(0,0,0,.06);text-align:left}
+    th{font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.02em}
+  </style>
 </head>
 
 <body>
@@ -340,9 +353,10 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
 
   <main class="content">
 
+    <!-- CUADRO BLANCO SUPERIOR -->
     <section class="hero hero-white">
-      <div class="page-head center">
-        <div>
+      <div class="page-head">
+        <div class="center">
           <h1>Entrada</h1>
           <p class="muted">Sucursal: <?= htmlspecialchars($branch_name ?? '') ?></p>
         </div>
@@ -354,10 +368,14 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
       <div class="muted">Registra entrada de inventario (sede actual)</div>
 
       <?php if ($flash_success): ?>
-        <div class="flash ok"><?= htmlspecialchars($flash_success) ?></div>
+        <div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:#d1fae5;color:#065f46">
+          <?= htmlspecialchars($flash_success) ?>
+        </div>
       <?php endif; ?>
       <?php if ($flash_error): ?>
-        <div class="flash err"><?= htmlspecialchars($flash_error) ?></div>
+        <div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:#fee2e2;color:#991b1b">
+          <?= htmlspecialchars($flash_error) ?>
+        </div>
       <?php endif; ?>
 
       <div class="form-row" style="margin-top:12px">
@@ -371,6 +389,18 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
           <input class="input" type="text" id="area_destino" value="<?= htmlspecialchars($branch_name) ?>" readonly>
         </div>
 
+        <div class="field">
+          <label>Suplidor</label>
+          <input class="input" type="text" id="suplidor" placeholder="Ej: Suplidor X">
+        </div>
+
+        <div class="field">
+          <label>Hecho por</label>
+          <input class="input" type="text" id="hecho_por" value="<?= htmlspecialchars($made_by_name) ?>" readonly>
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-top:12px">
         <div class="field">
           <label>Categoría</label>
           <select class="input" id="selCat">
@@ -408,10 +438,10 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
       </div>
 
       <p class="muted" style="margin:10px 0 0">
-        Al añadir, se mantiene seleccionado el producto y la cantidad.
+        Al añadir, seU se mantiene seleccionado el producto y la cantidad.
       </p>
 
-      <table>
+      <table style="margin-top:10px">
         <thead>
           <tr>
             <th>Categoría</th>
@@ -434,25 +464,41 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
         <div class="title" style="font-size:16px">Historial de Entradas</div>
         <div class="muted">Últimos 50 registros (sede actual)</div>
 
-        <table>
+        <table style="margin-top:10px">
           <thead>
             <tr>
               <th>ID</th>
               <th>Cantidad</th>
               <th>Nota</th>
               <th>Fecha</th>
+              <th class="right">Detalle</th>
             </tr>
           </thead>
           <tbody>
             <?php if (count($history_in) === 0): ?>
-              <tr><td colspan="4" class="muted">No hay registros.</td></tr>
+              <tr><td colspan="5" class="muted">No hay registros.</td></tr>
             <?php else: ?>
-              <?php foreach ($history_in as $h): ?>
+              <?php foreach ($history_in as $h): 
+                $note = (string)($h["note"] ?? "");
+                $batch = "";
+                if (preg_match("/BATCH=([0-9]{14}\-[0-9a-fA-F]{6})/",$note,$m)) {
+                  $batch = trim($m[1]);
+                }
+              ?>
                 <tr>
                   <td>#<?= (int)$h["id"] ?></td>
                   <td><?= (int)$h["qty"] ?></td>
-                  <td><?= htmlspecialchars($h["note"]) ?></td>
+                  <td style="max-width:560px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                    <?= htmlspecialchars($note) ?>
+                  </td>
                   <td><?= htmlspecialchars($h["created_at"]) ?></td>
+                  <td class="right">
+                    <?php if ($batch !== ""): ?>
+                      <a class="btn btn-soft" href="entrada.php?print_batch=<?= urlencode($batch) ?>" target="_blank" rel="noopener">Ver acuse</a>
+                    <?php else: ?>
+                      <span class="muted">N/A</span>
+                    <?php endif; ?>
+                  </td>
                 </tr>
               <?php endforeach; ?>
             <?php endif; ?>
@@ -464,6 +510,7 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
         <input type="hidden" name="action" value="save_entry">
         <input type="hidden" name="fecha" id="f_fecha">
         <input type="hidden" name="suplidor" id="f_suplidor">
+        <input type="hidden" name="hecho_por" id="f_hecho_por">
         <input type="hidden" name="area_destino" id="f_area_destino">
         <input type="hidden" name="items_json" id="f_items">
         <input type="hidden" name="do_print" id="f_do_print" value="1">
@@ -487,6 +534,7 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
 
   const btnToggle = document.getElementById('btnToggleHist');
   const histWrap = document.getElementById('histWrap');
+
   btnToggle.addEventListener('click', () => {
     const open = histWrap.style.display === 'block';
     histWrap.style.display = open ? 'none' : 'block';
@@ -555,7 +603,8 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
     if (items.length === 0) return;
 
     document.getElementById('f_fecha').value = document.getElementById('fecha').value;
-    document.getElementById('f_suplidor').value = '';
+    document.getElementById('f_suplidor').value = document.getElementById('suplidor').value;
+    document.getElementById('f_hecho_por').value = document.getElementById('hecho_por').value;
     document.getElementById('f_area_destino').value = document.getElementById('area_destino').value;
     document.getElementById('f_items').value = JSON.stringify(items);
     document.getElementById('f_do_print').value = '1';
