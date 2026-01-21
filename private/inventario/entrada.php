@@ -174,6 +174,10 @@ if (isset($_GET["print_batch"]) && $_GET["print_batch"] !== "") {
    GUARDAR ENTRADA
 =========================== */
 if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_entry") {
+if (isset($_POST["save_print"])) {
+  header("Location: entrada_print.php?id=".$entry_id);
+  exit;
+}
 
   $fecha = trim($_POST["fecha"] ?? $today);
   $suplidor = trim($_POST["suplidor"] ?? "");
@@ -389,7 +393,7 @@ FECHA={$fecha} | SUPLIDOR={$suplidor} | DESTINO={$area_destino} | ITEM={$pname}"
 
       <div style="display:flex;justify-content:flex-end;margin-top:14px;gap:10px;flex-wrap:wrap">
         <button type="button" class="btn btn-soft" id="btnToggleHist">Ver el historial</button>
-        <button type="button" class="btn btn-primary" id="btnSave">Guardar e Imprimir</button>
+        <button type="submit" name="save_print"class="btn btn-primary" >Guardar e Imprimir</button>
       </div>
 
       <div id="histWrap" style="display:none;margin-top:16px">
