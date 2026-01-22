@@ -7,13 +7,13 @@ $conn = $pdo;
 $user = $_SESSION["user"];
 $branch_id = (int)($user["branch_id"] ?? 0);
 
-$branch_name = "";
+$branch_name = "CEVIMEP";
 if ($branch_id > 0) {
   $stB = $conn->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
   $stB->execute([$branch_id]);
-  $branch_name = (string)($stB->fetchColumn() ?? "");
+  $bn = $stB->fetchColumn();
+  if ($bn) $branch_name = (string)$bn;
 }
-if ($branch_name === "") $branch_name = "CEVIMEP";
 
 $today = date("Y-m-d");
 
@@ -34,7 +34,6 @@ function table_columns(PDO $conn, string $table): array {
   $st->execute([$db, $table]);
   return array_map('strtolower', $st->fetchAll(PDO::FETCH_COLUMN));
 }
-
 function pick_col(array $cols, array $candidates): ?string {
   foreach ($candidates as $c) {
     if (in_array(strtolower($c), $cols, true)) return $c;
@@ -42,6 +41,9 @@ function pick_col(array $cols, array $candidates): ?string {
   return null;
 }
 
+/* =========================
+   Categorías (autodetect)
+========================= */
 function get_categories(PDO $conn, int $branch_id): array {
   $db = (string)$conn->query("SELECT DATABASE()")->fetchColumn();
   $candidates = ["inventory_categories","categories","categorias"];
@@ -49,8 +51,8 @@ function get_categories(PDO $conn, int $branch_id): array {
 
   foreach ($candidates as $t) {
     $st = $conn->prepare("
-      SELECT COUNT(*) 
-      FROM information_schema.tables 
+      SELECT COUNT(*)
+      FROM information_schema.tables
       WHERE table_schema=? AND table_name=?
     ");
     $st->execute([$db, $t]);
@@ -59,7 +61,6 @@ function get_categories(PDO $conn, int $branch_id): array {
   if (!$table) return [];
 
   $cols = table_columns($conn, $table);
-
   $idCol = pick_col($cols, ["id"]);
   $nameCol = pick_col($cols, ["name","nombre","categoria","category","title"]);
   if (!$idCol || !$nameCol) return [];
@@ -78,7 +79,6 @@ function get_categories(PDO $conn, int $branch_id): array {
 
   return $st->fetchAll(PDO::FETCH_ASSOC);
 }
-
 $categories = get_categories($conn, $branch_id);
 
 /* =========================
@@ -99,13 +99,12 @@ $products = $st->fetchAll(PDO::FETCH_ASSOC);
    Agregar item
 ========================= */
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["add_item"])) {
-
   $category_id = (int)($_POST["category_id"] ?? 0);
   $item_id     = (int)($_POST["item_id"] ?? 0);
   $qty         = (int)($_POST["qty"] ?? 0);
 
   if ($item_id > 0 && $qty > 0) {
-    // validar producto en esta sede
+
     $st = $conn->prepare("
       SELECT i.id, i.name
       FROM inventory_items i
@@ -143,10 +142,9 @@ if (isset($_GET["remove"])) {
   unset($_SESSION["entrada_items"][(int)$_GET["remove"]]);
 }
 
-/* =========================================================
-   Guardar entrada (SIN depender de columna 'type')
-   + Generar recibo y print
-   ========================================================= */
+/* =========================
+   Guardar entrada + imprimir
+========================= */
 $print_receipt = false;
 $receipt = null;
 $receipt_items = [];
@@ -158,13 +156,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
     $supplier = trim((string)($_POST["supplier"] ?? ""));
     $note     = trim((string)($_POST["note"] ?? ""));
 
-    // note final (para que no te falte info)
     $note_final = "";
     if ($supplier !== "") $note_final .= "Suplidor: {$supplier}";
     if ($note !== "") $note_final .= ($note_final ? " | " : "") . "Nota: {$note}";
     if ($note_final === "") $note_final = null;
 
-    // detectar columnas reales de inventory_movements
+    // columnas reales
     $movCols = table_columns($conn, "inventory_movements");
     $colType   = pick_col($movCols, ["type","movement_type","tipo","accion","action","movement"]);
     $colBranch = pick_col($movCols, ["branch_id","sucursal_id","branch","sucursal"]);
@@ -172,55 +169,49 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
     $colDate   = pick_col($movCols, ["created_at","created","fecha","date","created_on"]);
 
     if (!$colBranch) {
-      // sin branch no se puede controlar sede
       die("Config BD: inventory_movements no tiene columna branch_id/sucursal_id.");
     }
 
-    // construir INSERT dinámico
     $fields = [];
     $values = [];
     $params = [];
 
     if ($colType) { $fields[] = $colType; $values[] = "?"; $params[] = "entrada"; }
     $fields[] = $colBranch; $values[] = "?"; $params[] = $branch_id;
-
     if ($colNote) { $fields[] = $colNote; $values[] = "?"; $params[] = $note_final; }
-
     if ($colDate) { $fields[] = $colDate; $values[] = "NOW()"; }
 
     $sqlMov = "INSERT INTO inventory_movements (" . implode(",", $fields) . ") VALUES (" . implode(",", $values) . ")";
+
     $conn->beginTransaction();
 
     $stMov = $conn->prepare($sqlMov);
     $stMov->execute($params);
     $movement_id = (int)$conn->lastInsertId();
 
-    // items: detectar columnas reales
+    // items
     $itemCols = table_columns($conn, "inventory_movement_items");
     $colMovId = pick_col($itemCols, ["movement_id","inventory_movement_id","movimiento_id","entry_id","entrada_id"]);
     $colItem  = pick_col($itemCols, ["item_id","inventory_item_id","product_id","producto_id"]);
     $colQty   = pick_col($itemCols, ["quantity","qty","cantidad"]);
-
     if (!$colMovId || !$colItem || !$colQty) {
       $conn->rollBack();
-      die("Config BD: inventory_movement_items no tiene columnas requeridas (movement_id/item_id/quantity).");
+      die("Config BD: inventory_movement_items no tiene columnas requeridas.");
     }
 
     $sqlIt = "INSERT INTO inventory_movement_items ({$colMovId}, {$colItem}, {$colQty}) VALUES (?, ?, ?)";
     $stIt = $conn->prepare($sqlIt);
 
-    // stock: detectar columnas reales
+    // stock
     $stockCols = table_columns($conn, "inventory_stock");
     $colSItem  = pick_col($stockCols, ["item_id","inventory_item_id","product_id","producto_id"]);
     $colSBranch= pick_col($stockCols, ["branch_id","sucursal_id","branch","sucursal"]);
     $colSQty   = pick_col($stockCols, ["quantity","qty","cantidad"]);
-
     if (!$colSItem || !$colSBranch || !$colSQty) {
       $conn->rollBack();
-      die("Config BD: inventory_stock no tiene columnas requeridas (item_id/branch_id/quantity).");
+      die("Config BD: inventory_stock no tiene columnas requeridas.");
     }
 
-    // upsert (si tu tabla NO tiene unique, esto igual funciona si existe la key)
     $sqlStock = "
       INSERT INTO inventory_stock ({$colSItem}, {$colSBranch}, {$colSQty})
       VALUES (?, ?, ?)
@@ -238,7 +229,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
 
     $conn->commit();
 
-    // construir recibo para imprimir (sin archivos extra)
     $receipt = [
       "movement_id" => $movement_id,
       "branch" => $branch_name,
@@ -247,8 +237,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
       "note" => $note
     ];
 
-    $receipt_items = [];
-    foreach ($_SESSION["entrada_items"] as $item_id => $d) {
+    foreach ($_SESSION["entrada_items"] as $d) {
       $receipt_items[] = [
         "category" => (string)($d["category"] ?? ""),
         "product"  => (string)($d["name"] ?? ""),
@@ -270,93 +259,69 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
   <link rel="stylesheet" href="/assets/css/styles.css?v=30">
 
   <style>
-    /* Para que el contenido quede más centrado como tu estándar */
-    .content .wrap {
-      max-width: 980px;
-      margin: 0 auto;
+    /* Ajustes para que quede EXACTO como tu captura */
+    .content .wrap { max-width: 1180px; margin: 0 auto; }
+    .page-card { padding: 18px 18px 14px; }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
     }
-    /* Recibo impresión */
-    .receipt {
-      display: none;
+    .row-4 {
+      display: grid;
+      grid-template-columns: 220px 1fr 140px 110px;
+      gap: 14px;
+      align-items: end;
     }
-    @media print {
-      body * { visibility: hidden; }
-      .receipt, .receipt * { visibility: visible; }
-      .receipt {
-        display: block;
-        position: absolute;
-        left: 0; top: 0;
-        width: 100%;
-        padding: 16px;
-        background: #fff;
-      }
+    .hint { font-size: 12px; opacity: .7; margin-top: 6px; }
+    .btn-right { display:flex; justify-content:flex-end; margin-top: 12px; }
+
+    .receipt{display:none;}
+    @media print{
+      body *{visibility:hidden;}
+      .receipt,.receipt *{visibility:visible;}
+      .receipt{display:block;position:absolute;left:0;top:0;width:100%;padding:16px;background:#fff;}
     }
   </style>
 </head>
-
 <body>
 
-<!-- NAVBAR (igual dashboard.php) -->
 <div class="navbar">
   <div class="inner">
-    <div class="brand">
-      <span class="dot"></span>
-      <strong>CEVIMEP</strong>
-    </div>
-    <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
-    </div>
+    <div class="brand"><span class="dot"></span><strong>CEVIMEP</strong></div>
+    <div class="nav-right"><a class="btn-pill" href="/logout.php">Salir</a></div>
   </div>
 </div>
 
-<!-- LAYOUT -->
 <div class="layout">
-
-  <!-- SIDEBAR -->
   <aside class="sidebar">
     <h3 class="menu-title">Menú</h3>
     <nav class="menu">
       <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a href="/private/patients/index.php"><span class="ico">🧑‍⚕️</span> Pacientes</a>
-      <a href="/private/citas/index.php"><span class="ico">🗓️</span> Citas</a>
-      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
-      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
       <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="/private/estadisticas/index.php"><span class="ico">📊</span> Estadística</a>
+      <a class="active" href="/private/inventario/entrada.php" style="margin-left:10px;"><span class="ico">➕</span> Entrada</a>
+      <a href="/private/inventario/salida.php" style="margin-left:10px;"><span class="ico">➖</span> Salida</a>
     </nav>
   </aside>
 
-  <!-- CONTENT -->
   <main class="content">
     <div class="wrap">
 
-      <section class="hero">
-        <h1>Entrada</h1>
-        <p class="muted">Registra entrada de inventario (sede actual)</p>
-        <div style="margin-top:10px; display:flex; gap:10px;">
-          <a class="btn" href="/private/inventario/productos.php">Productos</a>
-          <a class="btn" href="/private/inventario/index.php">Volver</a>
-        </div>
-      </section>
+      <div class="card page-card">
+        <h3 style="margin:0;">Entrada</h3>
+        <div class="muted" style="margin-top:4px;">Registra entrada de inventario (sede actual)</div>
 
-      <div class="card">
-        <h3>Entrada</h3>
-        <p class="muted">Sucursal: <strong><?= htmlspecialchars($branch_name) ?></strong></p>
-
-        <form method="post">
-
-          <div class="grid-top" style="margin-top:14px;">
+        <form method="post" style="margin-top:14px;">
+          <div class="grid-2">
             <div>
               <label>Fecha</label>
-              <input type="text" value="<?= date("d/m/Y") ?>" disabled>
+              <input type="date" value="<?= htmlspecialchars($today) ?>" disabled>
             </div>
             <div>
               <label>Suplidor</label>
-              <input type="text" name="supplier" placeholder="Escriba el suplidor...">
+              <input type="text" name="supplier" placeholder="Ej: Almacén, Ministerio, Farmacia, etc.">
             </div>
-          </div>
 
-          <div class="grid-top" style="margin-top:10px;">
             <div>
               <label>Área de destino</label>
               <input type="text" value="<?= htmlspecialchars($branch_name) ?>" disabled>
@@ -367,49 +332,50 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
             </div>
           </div>
 
-          <hr style="opacity:.25; margin:14px 0;">
+          <div style="height:12px;"></div>
 
-          <div class="grid-top" style="gap:12px;">
+          <div class="row-4">
             <div>
               <label>Categoría</label>
-              <select name="category_id" required>
-                <option value="">Seleccione</option>
+              <select name="category_id">
+                <option value="">Todas ...</option>
                 <?php foreach ($categories as $c): ?>
                   <option value="<?= (int)$c["id"] ?>"><?= htmlspecialchars((string)$c["name"]) ?></option>
                 <?php endforeach; ?>
               </select>
             </div>
 
-            <div style="flex:1;">
+            <div>
               <label>Producto</label>
               <select name="item_id" required>
-                <option value="">Seleccione</option>
+                <option value="">-- Seleccionar --</option>
                 <?php foreach ($products as $p): ?>
                   <option value="<?= (int)$p["id"] ?>"><?= htmlspecialchars((string)$p["name"]) ?></option>
                 <?php endforeach; ?>
               </select>
             </div>
 
-            <div style="width:140px;">
+            <div>
               <label>Cantidad</label>
               <input type="number" name="qty" min="1" value="1" required>
             </div>
 
-            <div style="align-self:flex-end;">
+            <div>
               <button class="btn primary" type="submit" name="add_item">Añadir</button>
             </div>
           </div>
 
+          <div class="hint">Al añadir, se mantiene seleccionado el producto y la cantidad.</div>
         </form>
 
-        <div style="margin-top:16px;">
+        <div style="margin-top:14px;">
           <table class="table">
             <thead>
               <tr>
                 <th>Categoría</th>
                 <th>Producto</th>
-                <th style="width:110px;">Cantidad</th>
-                <th style="width:110px;">Acción</th>
+                <th style="width:140px;">Cantidad</th>
+                <th style="width:140px;">Acción</th>
               </tr>
             </thead>
             <tbody>
@@ -427,10 +393,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
           </table>
         </div>
 
-        <form method="post" style="margin-top:14px;">
-          <button class="btn primary" type="submit" name="save_entry">Guardar e imprimir</button>
+        <form method="post" class="btn-right">
+          <button class="btn primary" type="submit" name="save_entry">Guardar e Imprimir</button>
         </form>
+      </div>
 
+      <div class="card" style="margin-top:14px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+          <div>
+            <strong>Historial de Entradas</strong>
+            <div class="muted" style="font-size:12px;">Últimos 50 registros (sede actual)</div>
+          </div>
+          <a class="btn" href="/private/inventario/historial_entradas.php">Ver el historial</a>
+        </div>
       </div>
 
     </div>
@@ -443,52 +418,38 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
   </div>
 </div>
 
-<!-- RECIBO PARA IMPRESIÓN -->
 <?php if ($print_receipt && $receipt): ?>
-  <div class="receipt">
-    <h2 style="margin:0 0 6px 0;">CEVIMEP - Entrada de Inventario</h2>
-    <div><strong>Sucursal:</strong> <?= htmlspecialchars($receipt["branch"]) ?></div>
-    <div><strong>Fecha:</strong> <?= htmlspecialchars($receipt["date"]) ?></div>
-    <div><strong>Movimiento #:</strong> <?= (int)$receipt["movement_id"] ?></div>
-    <?php if ($receipt["supplier"] !== ""): ?>
-      <div><strong>Suplidor:</strong> <?= htmlspecialchars($receipt["supplier"]) ?></div>
-    <?php endif; ?>
-    <?php if ($receipt["note"] !== ""): ?>
-      <div><strong>Nota:</strong> <?= htmlspecialchars($receipt["note"]) ?></div>
-    <?php endif; ?>
-
-    <hr>
-
-    <table style="width:100%; border-collapse:collapse;">
-      <thead>
+<div class="receipt">
+  <h2 style="margin:0 0 6px 0;">CEVIMEP - Entrada de Inventario</h2>
+  <div><strong>Sucursal:</strong> <?= htmlspecialchars($receipt["branch"]) ?></div>
+  <div><strong>Fecha:</strong> <?= htmlspecialchars($receipt["date"]) ?></div>
+  <div><strong>Movimiento #:</strong> <?= (int)$receipt["movement_id"] ?></div>
+  <?php if ($receipt["supplier"] !== ""): ?><div><strong>Suplidor:</strong> <?= htmlspecialchars($receipt["supplier"]) ?></div><?php endif; ?>
+  <?php if ($receipt["note"] !== ""): ?><div><strong>Nota:</strong> <?= htmlspecialchars($receipt["note"]) ?></div><?php endif; ?>
+  <hr>
+  <table style="width:100%; border-collapse:collapse;">
+    <thead>
+      <tr>
+        <th style="text-align:left; border-bottom:1px solid #ccc; padding:6px;">Categoría</th>
+        <th style="text-align:left; border-bottom:1px solid #ccc; padding:6px;">Producto</th>
+        <th style="text-align:right; border-bottom:1px solid #ccc; padding:6px;">Cant.</th>
+      </tr>
+    </thead>
+    <tbody>
+      <?php foreach ($receipt_items as $ri): ?>
         <tr>
-          <th style="text-align:left; border-bottom:1px solid #ccc; padding:6px;">Categoría</th>
-          <th style="text-align:left; border-bottom:1px solid #ccc; padding:6px;">Producto</th>
-          <th style="text-align:right; border-bottom:1px solid #ccc; padding:6px;">Cant.</th>
+          <td style="padding:6px; border-bottom:1px solid #eee;"><?= htmlspecialchars($ri["category"]) ?></td>
+          <td style="padding:6px; border-bottom:1px solid #eee;"><?= htmlspecialchars($ri["product"]) ?></td>
+          <td style="padding:6px; border-bottom:1px solid #eee; text-align:right;"><?= (int)$ri["qty"] ?></td>
         </tr>
-      </thead>
-      <tbody>
-        <?php foreach ($receipt_items as $ri): ?>
-          <tr>
-            <td style="padding:6px; border-bottom:1px solid #eee;"><?= htmlspecialchars($ri["category"]) ?></td>
-            <td style="padding:6px; border-bottom:1px solid #eee;"><?= htmlspecialchars($ri["product"]) ?></td>
-            <td style="padding:6px; border-bottom:1px solid #eee; text-align:right;"><?= (int)$ri["qty"] ?></td>
-          </tr>
-        <?php endforeach; ?>
-      </tbody>
-    </table>
-
-    <p style="margin-top:10px; font-size:12px; opacity:.75;">
-      Generado por CEVIMEP
-    </p>
-  </div>
-
-  <script>
-    // auto imprimir
-    window.addEventListener("load", function () {
-      window.print();
-    });
-  </script>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
+  <p style="margin-top:10px; font-size:12px; opacity:.75;">Generado por CEVIMEP</p>
+</div>
+<script>
+  window.addEventListener("load", function(){ window.print(); });
+</script>
 <?php endif; ?>
 
 </body>
