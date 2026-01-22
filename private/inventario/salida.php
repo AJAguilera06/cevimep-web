@@ -1,14 +1,17 @@
 <?php
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 if (!isset($_SESSION["user"])) {
     header("Location: ../../public/login.php");
     exit;
 }
 
-require_once __DIR__ . "/../../config/db.php";
+require_once __DIR__ . "/../../../config/db.php";
 
 $user = $_SESSION["user"];
-$branch_id = (int)$user["branch_id"];
+$branch_id   = (int)$user["branch_id"];
 $branch_name = $user["branch_name"] ?? "";
 $today = date("Y-m-d");
 
@@ -17,22 +20,21 @@ if (!isset($_SESSION["salida_items"])) {
 }
 
 /* =========================
-   AGREGAR PRODUCTO A SESIÓN
+   AGREGAR PRODUCTO
 ========================= */
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["add_item"])) {
 
-    $item_id = (int)$_POST["item_id"];
+    $item_id  = (int)$_POST["item_id"];
     $category = trim($_POST["category"]);
-    $qty = (int)$_POST["qty"];
+    $qty      = (int)$_POST["qty"];
 
     if ($item_id > 0 && $qty > 0) {
 
-        // Validar producto y stock en esta sede
         $st = $pdo->prepare("
             SELECT i.id, i.name, IFNULL(s.quantity,0) AS stock
             FROM inventory_items i
-            LEFT JOIN inventory_stock s 
-                ON s.item_id = i.id AND s.branch_id = ?
+            LEFT JOIN inventory_stock s
+              ON s.item_id = i.id AND s.branch_id = ?
             WHERE i.id = ? AND i.branch_id = ?
             LIMIT 1
         ");
@@ -49,8 +51,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["add_item"])) {
             } else {
                 $_SESSION["salida_items"][$item_id] = [
                     "category" => $category,
-                    "name" => $item["name"],
-                    "qty" => $qty
+                    "name"     => $item["name"],
+                    "qty"      => $qty
                 ];
             }
         }
@@ -61,8 +63,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["add_item"])) {
    ELIMINAR PRODUCTO
 ========================= */
 if (isset($_GET["remove"])) {
-    $rid = (int)$_GET["remove"];
-    unset($_SESSION["salida_items"][$rid]);
+    unset($_SESSION["salida_items"][(int)$_GET["remove"]]);
 }
 
 /* =========================
@@ -75,16 +76,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_exit"])) {
         $pdo->beginTransaction();
 
         $stMov = $pdo->prepare("
-            INSERT INTO inventory_movements 
-            (type, branch_id, note, created_at)
+            INSERT INTO inventory_movements (type, branch_id, note, created_at)
             VALUES ('salida', ?, ?, NOW())
         ");
-        $stMov->execute([$branch_id, $_POST["note"]]);
+        $stMov->execute([$branch_id, $_POST["note"] ?? null]);
         $movement_id = $pdo->lastInsertId();
 
         $stItem = $pdo->prepare("
-            INSERT INTO inventory_movement_items
-            (movement_id, item_id, quantity)
+            INSERT INTO inventory_movement_items (movement_id, item_id, quantity)
             VALUES (?, ?, ?)
         ");
 
@@ -108,18 +107,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_exit"])) {
 }
 
 /* =========================
-   PRODUCTOS CON STOCK > 0
+   PRODUCTOS CON STOCK
 ========================= */
-$items = $pdo->prepare("
+$st = $pdo->prepare("
     SELECT i.id, i.name
     FROM inventory_items i
-    INNER JOIN inventory_stock s 
-        ON s.item_id = i.id AND s.branch_id = ?
+    INNER JOIN inventory_stock s
+      ON s.item_id = i.id AND s.branch_id = ?
     WHERE i.branch_id = ? AND s.quantity > 0
     ORDER BY i.name
 ");
-$items->execute([$branch_id, $branch_id]);
-$products = $items->fetchAll(PDO::FETCH_ASSOC);
+$st->execute([$branch_id, $branch_id]);
+$products = $st->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <?php include __DIR__ . "/../partials/header.php"; ?>
@@ -139,18 +138,18 @@ $products = $items->fetchAll(PDO::FETCH_ASSOC);
         <input type="date" value="<?= $today ?>" disabled>
     </div>
     <div>
-        <label>Área solicitante</label>
+        <label>Destino</label>
         <input type="text" value="<?= htmlspecialchars($branch_name) ?>" disabled>
     </div>
 </div>
 
 <div class="grid-2">
     <div>
-        <label>Destino</label>
+        <label>Área solicitante</label>
         <input type="text" value="<?= htmlspecialchars($branch_name) ?>" disabled>
     </div>
     <div>
-        <label>Nota (opcional)</label>
+        <label>Nota</label>
         <input type="text" name="note">
     </div>
 </div>
@@ -196,16 +195,14 @@ $products = $items->fetchAll(PDO::FETCH_ASSOC);
 <tbody>
 <?php if (empty($_SESSION["salida_items"])): ?>
 <tr><td colspan="4">No hay productos agregados.</td></tr>
-<?php else: ?>
-<?php foreach ($_SESSION["salida_items"] as $id => $it): ?>
+<?php else: foreach ($_SESSION["salida_items"] as $id => $it): ?>
 <tr>
     <td><?= htmlspecialchars($it["category"]) ?></td>
     <td><?= htmlspecialchars($it["name"]) ?></td>
     <td><?= $it["qty"] ?></td>
     <td><a href="?remove=<?= $id ?>">Eliminar</a></td>
 </tr>
-<?php endforeach; ?>
-<?php endif; ?>
+<?php endforeach; endif; ?>
 </tbody>
 </table>
 
