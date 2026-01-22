@@ -197,9 +197,10 @@ $year = date('Y');
           </form>
 
           <!-- BOTÓN PRINCIPAL -->
-          <a href="/private/patients/create.php" class="btn" style="padding:10px 16px;">
-            Registrar nuevo paciente
-          </a>
+          <a href="/private/patients/create.php" class="btn btn-primary">
+  Registrar nuevo paciente
+</a>
+
 
           <!-- VOLVER -->
           <a href="/private/dashboard.php" class="btn btn-small">
@@ -253,8 +254,13 @@ $year = date('Y');
                   <td><?= $gender !== '' ? '<span class="pill">'.htmlspecialchars($gender).'</span>' : '' ?></td>
                   <td><?= $blood  !== '' ? '<span class="pill">'.htmlspecialchars($blood).'</span>' : '' ?></td>
                   <td class="td-actions">
-                    <a class="btn btn-small" href="/private/patients/view.php?id=<?= $id ?>">Ver</a>
-                    <a class="btn btn-small" href="/private/patients/edit.php?id=<?= $id ?>">Editar</a>
+                    <a href="/private/patients/view.php?id=<?= $row['id'] ?>" class="btn btn-ver">
+  Ver
+</a>
+                    <a href="/private/patients/edit.php?id=<?= $row['id'] ?>" class="btn btn-editar">
+  Editar
+</a>
+
                   </td>
                 </tr>
               <?php endforeach; ?>
