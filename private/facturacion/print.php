@@ -99,7 +99,7 @@ $total    = (float)($inv["total"] ?? 0);
 $year     = date("Y");
 
 /* Logo */
-$logo = "../../public/assets/img/cevimep.png";
+$logo = "../../public/assets/img/CEVIMEP.png";
 ?>
 <!doctype html>
 <html lang="es">
