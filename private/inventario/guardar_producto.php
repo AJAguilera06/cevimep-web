@@ -1,13 +1,13 @@
 <?php
 declare(strict_types=1);
 
-session_start();
-require_once __DIR__ . "/../../config/db.php";
-
-if (empty($_SESSION["user"])) {
-  header("Location: /login.php");
-  exit;
-}
+/**
+ * ✅ MISMO ESTÁNDAR QUE EL RESTO:
+ * - No duplicar session_start
+ * - Usar _guard.php (ahí ya está el $pdo y seguridad)
+ */
+require_once __DIR__ . "/../_guard.php";
+$conn = $pdo;
 
 $year = (int)date("Y");
 
@@ -16,17 +16,23 @@ function wants_json(): bool {
   $xhr = $_SERVER["HTTP_X_REQUESTED_WITH"] ?? "";
   return (stripos($accept, "application/json") !== false) || (strtolower($xhr) === "xmlhttprequest");
 }
+function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8"); }
 
-function h($s): string {
-  return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8");
+$user = $_SESSION["user"] ?? [];
+$userBranchId = (int)($user["branch_id"] ?? 0);
+
+if ($userBranchId <= 0) {
+  http_response_code(400);
+  die("Este usuario no tiene sucursal (branch_id).");
 }
 
 /* ==========================
    GET => FORM
 ========================== */
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
+
   try {
-    $st = $pdo->query("SELECT id, name FROM inventory_categories ORDER BY name ASC");
+    $st = $conn->query("SELECT id, name FROM inventory_categories ORDER BY name ASC");
     $cats = $st ? $st->fetchAll(PDO::FETCH_ASSOC) : [];
   } catch (Throwable $e) {
     $cats = [];
@@ -35,167 +41,155 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
   <!doctype html>
   <html lang="es">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>CEVIMEP | Registrar producto</title>
 
-    <!-- mismo css del dashboard -->
-    <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
-
-
-
-
-
+    <!-- ✅ MISMO CSS QUE dashboard.php -->
+    <link rel="stylesheet" href="/assets/css/styles.css?v=30">
 
     <style>
+      .card{
+        background:#fff;
+        border-radius:16px;
+        box-shadow:0 12px 30px rgba(0,0,0,.08);
+        padding:16px;
+        margin-top:14px;
+      }
       .formGrid{ display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-top:14px; }
       .field{display:flex;flex-direction:column;gap:8px;}
       .field label{font-weight:900;color:#0b2a4a;font-size:13px;}
       .field input, .field select{
-        padding:10px 12px;border-radius:14px;border:1px solid rgba(2,21,44,.12);
-        outline:none;font-weight:800;background:#fff;
+        height:40px;
+        padding:0 12px;
+        border-radius:14px;
+        border:1px solid rgba(2,21,44,.12);
+        outline:none;
+        font-weight:800;
+        background:#fff;
       }
       .field input:focus, .field select:focus{
         border-color:#7fb2ff; box-shadow:0 0 0 3px rgba(127,178,255,.20);
       }
       .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap;}
-      .
-/assets/css/styles.css
 
-
-Link{ text-decoration:none; display:inline-flex; align-items:center; justify-content:center; }
-
-      /* ✅ Asegurar que el botón Guardar se vea SIEMPRE */
-      button.
-/assets/css/styles.css
-
-
--pill{
-        display:inline-flex !important;
-        align-items:center !important;
-        justify-content:center !important;
-        cursor:pointer !important;
+      .btn-ui{
+        height:38px;
+        border:none;
+        border-radius:12px;
+        padding:0 14px;
+        font-weight:900;
+        cursor:pointer;
+        text-decoration:none;
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
       }
-
+      .btn-primary-ui{background:#0b4d87;color:#fff;}
+      .btn-secondary-ui{background:#eef2f6;color:#2b3b4a;}
       @media (max-width: 820px){ .formGrid{grid-template-columns:1fr;} }
     </style>
   </head>
 
   <body>
-    <header class="navbar">
-      <div class="inner">
-        <div></div>
-        <div class="brand"><span class="dot"></span> CEVIMEP</div>
-        <div class="nav-right"><a class="
-/assets/css/styles.css
 
-
--pill" href="/logout.php">Salir</a></div>
+  <!-- NAVBAR (igual dashboard) -->
+  <div class="navbar">
+    <div class="inner">
+      <div class="brand">
+        <span class="dot"></span>
+        <strong>CEVIMEP</strong>
       </div>
-    </header>
+      <div class="nav-right">
+        <a class="btn-pill" href="/logout.php">Salir</a>
+      </div>
+    </div>
+  </div>
 
-    <div class="layout">
-      <aside class="sidebar">
-        <div class="menu-title">Menú</div>
-        <nav class="menu">
-          <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
-          <a href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
-          <a href="javascript:void(0)" style="opacity:.45;cursor:not-allowed;"><span class="ico">🗓️</span> Citas</a>
-          <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
-          <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
-          <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
-          <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
-        </nav>
-      </aside>
+  <div class="layout">
 
-      <main class="content">
-        <section class="hero">
-          <h1>Inventario</h1>
-          <p>Registrar nuevo producto</p>
-        </section>
+    <!-- SIDEBAR (igual dashboard) -->
+    <aside class="sidebar">
+      <h3 class="menu-title">Menú</h3>
 
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
-            <div>
-              <h3 style="margin:0 0 6px;">Registrar nuevo producto</h3>
-              <p class="muted" style="margin:0;">Completa los datos para agregarlo al inventario.</p>
+      <nav class="menu">
+        <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
+        <a href="/private/patients/index.php"><span class="ico">👤</span> Pacientes</a>
+        <a href="/private/citas/index.php"><span class="ico">📅</span> Citas</a>
+        <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
+        <a href="/private/caja/index.php"><span class="ico">💳</span> Caja</a>
+        <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
+        <a href="/private/estadisticas/index.php"><span class="ico">📊</span> Estadísticas</a>
+      </nav>
+    </aside>
+
+    <!-- CONTENT -->
+    <main class="content">
+
+      <section class="hero">
+        <h1>Inventario</h1>
+        <p>Registrar nuevo producto</p>
+      </section>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+          <div>
+            <h3 style="margin:0 0 6px;">Registrar nuevo producto</h3>
+            <p class="muted" style="margin:0;">Completa los datos para agregarlo al inventario.</p>
+          </div>
+          <a class="btn-ui btn-secondary-ui" href="/private/inventario/items.php">Volver</a>
+        </div>
+
+        <form method="POST" action="/private/inventario/guardar_producto.php">
+          <div class="formGrid">
+
+            <div class="field" style="grid-column:1 / -1;">
+              <label>Nombre del producto</label>
+              <input name="nombre" required>
             </div>
-            <a class="
-/assets/css/styles.css
 
+            <div class="field">
+              <label>Categoría</label>
+              <select name="category_id" required>
+                <option value="">Selecciona...</option>
+                <?php foreach ($cats as $c): ?>
+                  <option value="<?= (int)$c["id"] ?>"><?= h($c["name"]) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
 
--pill 
-/assets/css/styles.css
+            <div class="field">
+              <label>Min Stock</label>
+              <!-- ✅ fijo en 3 -->
+              <input type="number" name="min_stock" value="3" readonly>
+            </div>
 
+            <div class="field">
+              <label>Precio compra</label>
+              <input type="number" step="0.01" min="0" name="precio_compra" required>
+            </div>
 
-Link" href="/private/inventario/items.php">Volver</a>
+            <div class="field">
+              <label>Precio venta</label>
+              <input type="number" step="0.01" min="0" name="precio_venta" required>
+            </div>
+
           </div>
 
-          <form method="POST" action="/private/inventario/guardar_producto.php">
-            <div class="formGrid">
+          <div class="actions">
+            <button class="btn-ui btn-primary-ui" type="submit">Guardar</button>
+            <a class="btn-ui btn-secondary-ui" href="/private/inventario/items.php">Cancelar</a>
+          </div>
+        </form>
+      </div>
 
-              <div class="field" style="grid-column:1 / -1;">
-                <label>Nombre del producto</label>
-                <input name="nombre" required>
-              </div>
+    </main>
+  </div>
 
-              <div class="field">
-                <label>Categoría</label>
-                <select name="category_id" required>
-                  <option value="">Selecciona...</option>
-                  <?php foreach ($cats as $c): ?>
-                    <option value="<?= (int)$c["id"] ?>"><?= h($c["name"]) ?></option>
-                  <?php endforeach; ?>
-                </select>
-              </div>
+  <div class="footer">
+    <div class="inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
+  </div>
 
-              <div class="field">
-                <label>Min Stock</label>
-                <!-- ✅ fijo en 3, no editable -->
-                <input type="number" name="min_stock" value="3" readonly>
-              </div>
-
-              <div class="field">
-                <label>Precio compra</label>
-                <input type="number" step="0.01" min="0" name="precio_compra" required>
-              </div>
-
-              <div class="field">
-                <label>Precio venta</label>
-                <input type="number" step="0.01" min="0" name="precio_venta" required>
-              </div>
-
-            </div>
-
-            <div class="actions">
-              <!-- ✅ Guardar visible -->
-              <button class="
-/assets/css/styles.css
-
-
--pill" type="submit">Guardar</button>
-
-              <a class="
-/assets/css/styles.css
-
-
--pill 
-/assets/css/styles.css
-
-
-Link" href="/private/inventario/items.php"
-                 style="background:#eef6ff;border:1px solid rgba(2,21,44,.12);color:#0b2a4a;">
-                Cancelar
-              </a>
-            </div>
-          </form>
-        </div>
-      </main>
-    </div>
-
-    <footer class="footer">
-      <div class="footer-inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
-    </footer>
   </body>
   </html>
   <?php
@@ -210,40 +204,37 @@ $category_id   = (int)($_POST["category_id"] ?? 0);
 $precio_compra = (float)($_POST["precio_compra"] ?? 0);
 $precio_venta  = (float)($_POST["precio_venta"] ?? 0);
 
-/* ✅ Min stock SIEMPRE 3 (aunque manden otro valor) */
+/* ✅ Min stock SIEMPRE 3 */
 $min_stock     = 3;
-
-$userBranchId  = (int)($_SESSION["user"]["branch_id"] ?? 0);
-
-if ($userBranchId <= 0) {
-  $resp = ["ok"=>false, "msg"=>"Este usuario no tiene sede asignada. No se puede registrar productos."];
-  if (wants_json()) { header("Content-Type: application/json"); echo json_encode($resp); exit; }
-  header("Location: /private/inventario/items.php"); exit;
-}
 
 if ($nombre === "" || $category_id <= 0) {
   $resp = ["ok"=>false, "msg"=>"Completa nombre y categoría"];
   if (wants_json()) { header("Content-Type: application/json"); echo json_encode($resp); exit; }
-  header("Location: /private/inventario/items.php"); exit;
+  $_SESSION["flash_error"] = "Completa nombre y categoría.";
+  header("Location: /private/inventario/guardar_producto.php");
+  exit;
 }
 
 try {
   // Validar categoría
-  $stCat = $pdo->prepare("SELECT id, name FROM inventory_categories WHERE id=? LIMIT 1");
+  $stCat = $conn->prepare("SELECT id, name FROM inventory_categories WHERE id=? LIMIT 1");
   $stCat->execute([$category_id]);
   $rowCat = $stCat->fetch(PDO::FETCH_ASSOC);
-  $catName = $rowCat ? $rowCat["name"] : "";
+  if (!$rowCat) {
+    throw new Exception("Categoría inválida");
+  }
+  $catName = (string)$rowCat["name"];
 
   // Insert item
-  $st = $pdo->prepare("
+  $st = $conn->prepare("
     INSERT INTO inventory_items (category_id, name, sku, unit, purchase_price, sale_price, min_stock, is_active)
     VALUES (?, ?, NULL, 'dosis', ?, ?, ?, 1)
   ");
   $st->execute([$category_id, $nombre, $precio_compra, $precio_venta, $min_stock]);
-  $newItemId = (int)$pdo->lastInsertId();
+  $newItemId = (int)$conn->lastInsertId();
 
   // Stock por sucursal
-  $insStock = $pdo->prepare("
+  $insStock = $conn->prepare("
     INSERT INTO inventory_stock (item_id, branch_id, quantity)
     VALUES (?, ?, 0)
     ON DUPLICATE KEY UPDATE quantity = quantity
@@ -251,7 +242,12 @@ try {
   $insStock->execute([$newItemId, $userBranchId]);
 
   $resp = ["ok"=>true, "id"=>$newItemId, "name"=>$nombre, "category_id"=>$category_id, "category_name"=>$catName];
-  if (wants_json()) { header("Content-Type: application/json"); echo json_encode($resp); exit; }
+
+  if (wants_json()) {
+    header("Content-Type: application/json");
+    echo json_encode($resp);
+    exit;
+  }
 
   $_SESSION["flash_success"] = "✅ Producto registrado correctamente";
   header("Location: /private/inventario/items.php");
@@ -260,6 +256,7 @@ try {
 } catch (Throwable $e) {
   $resp = ["ok"=>false, "msg"=>"Error guardando producto"];
   if (wants_json()) { header("Content-Type: application/json"); echo json_encode($resp); exit; }
-  header("Location: /private/inventario/items.php");
+  $_SESSION["flash_error"] = "No se pudo guardar el producto.";
+  header("Location: /private/inventario/guardar_producto.php");
   exit;
 }
