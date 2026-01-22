@@ -102,9 +102,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <section class="cev-auth-card">
 
       <div class="cev-auth-header">
-        <div class="cev-auth-logo">
-          <img src="/assets/img/logo.png" alt="CEVIMEP" onerror="this.style.display='none'">
-        </div>
+        <div class="cev-auth-logo-img">
+  <img src="/assets/img/CEVIMEP.png" alt="CEVIMEP">
+</div>
         <h1 class="cev-auth-title">CEVIMEP</h1>
         <p class="cev-auth-subtitle">Centro de Vacunación y Medicina Preventiva</p>
       </div>
