@@ -1,8 +1,7 @@
 <?php
-session_start();
-if (!isset($_SESSION["user"])) { header("Location: ../../public/login.php"); exit; }
+declare(strict_types=1);
 
-require_once __DIR__ . "/../../config/db.php";
+require_once __DIR__ . "/../_guard.php";
 $conn = $pdo;
 
 $user = $_SESSION["user"];
@@ -30,661 +29,216 @@ try {
   $categories = $stC->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-/* ===== Productos (con stock por sucursal) ===== */
-$products = [];
+/* ===== Items disponibles SOLO por sucursal (inner join stock) ===== */
+$items = [];
 try {
-  $st = $conn->prepare("
-    SELECT 
-      i.id,
-      i.name,
-      COALESCE(c.name,'') AS category,
-      COALESCE(c.id,0) AS category_id,
-      COALESCE(s.quantity,0) AS stock
+  $stI = $conn->prepare("
+    SELECT i.id, i.name, s.stock
     FROM inventory_items i
-    LEFT JOIN inventory_categories c ON c.id = i.category_id
-    LEFT JOIN inventory_stock s 
-      ON s.item_id = i.id AND s.branch_id = ?
-    WHERE i.is_active = 1
-      AND EXISTS (
-        SELECT 1 FROM inventory_movements m2
-        WHERE m2.item_id = i.id AND m2.branch_id = ?
-      )
+    INNER JOIN inventory_stock s ON s.item_id=i.id AND s.branch_id=?
     ORDER BY i.name ASC
   ");
-  $st->execute([$branch_id, $branch_id]);
-  $products = $st->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {
-  $flash_error = "Error cargando productos.";
-}
-
-/* ===== Historial OUT (sede actual) ===== */
-$history_out = [];
-try {
-  $stH = $conn->prepare("
-    SELECT 
-      m.id, m.qty, m.note, m.created_at, m.created_by
-    FROM inventory_movements m
-    WHERE m.branch_id = ? AND m.movement_type = 'OUT'
-    ORDER BY m.id DESC
-    LIMIT 50
-  ");
-  $stH->execute([$branch_id]);
-  $history_out = $stH->fetchAll(PDO::FETCH_ASSOC);
+  $stI->execute([$branch_id]);
+  $items = $stI->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
+/* ===== Guardar salida ===== */
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["action"] === "save_out") {
+  $item_id = (int)($_POST["item_id"] ?? 0);
+  $qty     = (int)($_POST["qty"] ?? 0);
+  $note    = trim((string)($_POST["note"] ?? ""));
 
-/* ===========================
-   IMPRIMIR DETALLE (POST, MISMA RESPUESTA)
-=========================== */
-if (!empty($print_now_batch)) {
-  $batch = $print_now_batch;
-  $_GET["print_batch"] = $batch;
-}
-/* ===========================
-   IMPRIMIR DETALLE (POR LOTE)
-   ?print_batch=XXXX
-=========================== */
-if (isset($_GET["print_batch"]) && $_GET["print_batch"] !== "") {
-  $batch = trim($_GET["print_batch"]);
-  $rows = [];
-  try {
-    $stP = $conn->prepare("
-      SELECT id, item_id, qty, note, created_by, created_at
-      FROM inventory_movements
-      WHERE branch_id=? AND movement_type='OUT' AND note LIKE ?
-      ORDER BY id ASC
-    ");
-    $stP->execute([$branch_id, "%BATCH={$batch}%"]);
-    $rows = $stP->fetchAll(PDO::FETCH_ASSOC);
-  } catch (Exception $e) {}
-
-  if (!$rows || count($rows) === 0) { die("Registro no encontrado."); }
-
-  $ids = array_values(array_unique(array_map(fn($r)=> (int)$r["item_id"], $rows)));
-  $infoMap = [];
-  if (count($ids) > 0) {
-    try {
-      $in = implode(",", array_fill(0, count($ids), "?"));
-      $stInfo = $conn->prepare("SELECT id, name FROM inventory_items WHERE id IN ($in)");
-      $stInfo->execute($ids);
-      foreach ($stInfo->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $infoMap[(int)$r["id"]] = $r["name"];
-      }
-    } catch (Exception $e) {}
-  }
-
-  $created_at = $rows[0]["created_at"] ?? "";
-  header("Content-Type: text/html; charset=utf-8");
-  ?>
-  <!doctype html>
-  <html lang="es">
-  <head>
-    <meta charset="utf-8">
-    <title>Salida de Inventario | <?= htmlspecialchars($batch) ?></title>
-    <style>
-      body{font-family:Arial,Helvetica,sans-serif;margin:24px}
-      h2{margin:0 0 8px}
-      .box{border:1px solid #ddd;border-radius:12px;padding:16px}
-      .muted{color:#666;font-size:13px}
-      table{width:100%;border-collapse:collapse;margin-top:14px}
-      th,td{border-bottom:1px solid #eee;padding:8px 6px;text-align:left;font-size:14px}
-      th{background:#f6f7f8}
-      .right{text-align:right}
-      @media print{ .no-print{display:none} }
-    
-    .
-/assets/css/styles.css
-
-
-.
-/assets/css/styles.css
-
-
--primary{background:linear-gradient(135deg,#0ea5a4,#0b4aa2);border:none;color:#fff}
-    .
-/assets/css/styles.css
-
-
-.
-/assets/css/styles.css
-
-
--primary:hover{filter:brightness(1.03)}
-    .field label{display:block;font-weight:600;font-size:13px;margin-bottom:6px;color:#2b3a4a}
-    table th{text-transform:uppercase;font-size:12px;letter-spacing:.04em}
-  </style>
-  </head>
-  <body onload="window.print(); setTimeout(function(){ window.location.href='salida.php?printed=1'; }, 600);">
-    <div class="box">
-      <h2>Salida de Inventario</h2>
-      <div class="muted">CEVIMEP - <?= htmlspecialchars($branch_name) ?> · Lote: <?= htmlspecialchars($batch) ?></div>
-      <div class="muted">Fecha/Hora: <?= htmlspecialchars($created_at) ?></div>
-
-      <table>
-        <thead>
-          <tr>
-            <th>Producto</th>
-            <th class="right">Cantidad</th>
-            <th>ID Mov.</th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php foreach($rows as $r): 
-            $iid = (int)$r["item_id"];
-            $nm = $infoMap[$iid] ?? ("ID ".$iid);
-          ?>
-            <tr>
-              <td><?= htmlspecialchars($nm) ?></td>
-              <td class="right"><?= (int)$r["qty"] ?></td>
-              <td>#<?= (int)$r["id"] ?></td>
-            </tr>
-          <?php endforeach; ?>
-        </tbody>
-      </table>
-
-      <div class="no-print" style="margin-top:16px">
-        <button onclick="window.print()">Imprimir</button>
-        <button onclick="window.location.href='salida.php'">Volver</button>
-      </div>
-    </div>
-  </body>
-  </html>
-  <?php
-  exit;
-}
-
-/* ===========================
-   GUARDAR SALIDA
-=========================== */
-if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_exit") {
-
-  $fecha = trim($_POST["fecha"] ?? $today);
-  $area_salida = trim($_POST["area_salida"] ?? $branch_name);
-  $area_destino = trim($_POST["area_destino"] ?? "");
-  $hecho_por = trim($_POST["hecho_por"] ?? "");
-
-  if ($area_destino === "") $area_destino = "N/A";
-  if ($hecho_por === "") $hecho_por = "N/A";
-
-  $items_json = $_POST["items_json"] ?? "[]";
-  $items = json_decode($items_json, true);
-  if (!is_array($items)) $items = [];
-
-  if (count($items) === 0) {
-    $flash_error = "No hay productos agregados.";
+  if ($item_id <= 0 || $qty <= 0) {
+    $flash_error = "Debes seleccionar un producto y una cantidad válida.";
   } else {
     try {
       $conn->beginTransaction();
 
-      $ids = [];
-      foreach ($items as $it) {
-        $iid = (int)($it["id"] ?? 0);
-        $q = (int)($it["qty"] ?? 0);
-        if ($iid > 0 && $q > 0) $ids[] = $iid;
-      }
-      $ids = array_values(array_unique($ids));
-      if (count($ids) === 0) throw new Exception("Items inválidos.");
+      // Validar stock actual
+      $stChk = $conn->prepare("SELECT stock FROM inventory_stock WHERE branch_id=? AND item_id=? LIMIT 1");
+      $stChk->execute([$branch_id, $item_id]);
+      $current = (int)($stChk->fetchColumn() ?? 0);
 
-      $in = implode(",", array_fill(0, count($ids), "?"));
+      if ($current < $qty) {
+        $conn->rollBack();
+        $flash_error = "Stock insuficiente. Disponible: {$current}.";
+      } else {
+        $batch = "S" . date("YmdHis") . "-" . $branch_id . "-" . random_int(100, 999);
 
-      $stInfo = $conn->prepare("SELECT id, name FROM inventory_items WHERE id IN ($in)");
-      $stInfo->execute($ids);
-      $infoRows = $stInfo->fetchAll(PDO::FETCH_ASSOC);
-      $infoMap = [];
-      foreach ($infoRows as $r) $infoMap[(int)$r["id"]] = $r;
+        // Insert movimiento
+        $stM = $conn->prepare("
+          INSERT INTO inventory_movements 
+            (branch_id, item_id, type, qty, price, note, created_by, created_at, batch)
+          VALUES
+            (?, ?, 'OUT', ?, 0, ?, ?, NOW(), ?)
+        ");
+        $stM->execute([$branch_id, $item_id, $qty, $note, $created_by, $batch]);
 
-      $stAvail = $conn->prepare("
-        SELECT item_id, quantity
-        FROM inventory_stock
-        WHERE branch_id=? AND item_id IN ($in)
-      ");
-      $stAvail->execute(array_merge([$branch_id], $ids));
-      $availRows = $stAvail->fetchAll(PDO::FETCH_ASSOC);
-      $availMap = [];
-      foreach ($availRows as $r) $availMap[(int)$r["item_id"]] = (int)$r["quantity"];
+        // Resta stock
+        $stS = $conn->prepare("
+          UPDATE inventory_stock 
+          SET stock = stock - ?
+          WHERE branch_id=? AND item_id=?
+        ");
+        $stS->execute([$qty, $branch_id, $item_id]);
 
-      foreach ($items as $it) {
-        $iid = (int)($it["id"] ?? 0);
-        $q = (int)($it["qty"] ?? 0);
-        if ($iid <= 0 || $q <= 0) continue;
+        $conn->commit();
 
-        $available = $availMap[$iid] ?? 0;
-        if ($available < $q) {
-          $pname = $infoMap[$iid]["name"] ?? ("ID ".$iid);
-          throw new Exception("Stock insuficiente para '$pname'. Disponible: $available, solicitado: $q.");
-        }
-      }
-
-      $stStockUpd = $conn->prepare("
-        UPDATE inventory_stock
-        SET quantity = quantity - ?
-        WHERE branch_id=? AND item_id=?
-      ");
-
-      $stMov = $conn->prepare("
-        INSERT INTO inventory_movements (item_id, branch_id, movement_type, qty, note, created_by)
-        VALUES (?, ?, 'OUT', ?, ?, ?)
-      ");
-
-      foreach ($items as $it) {
-        $iid = (int)($it["id"] ?? 0);
-        $q = (int)($it["qty"] ?? 0);
-        if ($iid <= 0 || $q <= 0) continue;
-
-        $pname = $infoMap[$iid]["name"] ?? ("ID ".$iid);
-        $metaNote = "FECHA={$fecha} | SALIDA={$area_salida} | DESTINO={$area_destino} | HECHO_POR={$hecho_por} | ITEM={$pname}";
-
-        $stStockUpd->execute([$q, $branch_id, $iid]);
-        $stMov->execute([$iid, $branch_id, $q, $metaNote, $created_by]);
-      }
-
-      $conn->commit();
-      $flash_success = "Salida guardada correctamente.";
-      if ((int)($_POST["do_print"] ?? 0) === 1) {
+        $flash_success = "Salida registrada correctamente.";
         $print_now_batch = $batch;
       }
     } catch (Exception $e) {
       if ($conn->inTransaction()) $conn->rollBack();
-      $flash_error = "No se pudo guardar la salida: " . $e->getMessage();
+      $flash_error = "No se pudo guardar la salida.";
     }
   }
+}
+
+/* ===== Historial del día ===== */
+$history = [];
+try {
+  $stH = $conn->prepare("
+    SELECT m.created_at, i.name, m.qty, m.note, m.batch
+    FROM inventory_movements m
+    INNER JOIN inventory_items i ON i.id=m.item_id
+    WHERE m.branch_id=? AND m.type='OUT' AND DATE(m.created_at)=?
+    ORDER BY m.created_at DESC
+    LIMIT 200
+  ");
+  $stH->execute([$branch_id, $today]);
+  $history = $stH->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+function h($s): string {
+  return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8");
 }
 ?>
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CEVIMEP | Inventario - Salida</title>
-
-  <!-- IMPORTANTE: mismo CSS y misma versión que el Dashboard -->
-  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
-
-
-
-
-
-
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Salida - Inventario</title>
+  <link rel="stylesheet" href="/assets/css/styles.css?v=60">
   <style>
-    /* Ajustes mínimos para que Entrada/Salida se vean como el Dashboard, sin depender de partials */
-    .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
-    .page-head h1{margin:0}
-    .page-head .muted{margin:0}
-    .card{margin-top:12px}
-    .form-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
-    .field{flex:1;min-width:220px}
-    .field label{display:block;font-size:13px;color:#6b7280;margin-bottom:6px}
-    .input, select.input{width:100%}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:10px 12px;border-bottom:1px solid rgba(0,0,0,.06);text-align:left}
-    th{font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.02em}
-    .actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:14px}
-    .
-/assets/css/styles.css
-
-
-{cursor:pointer}
-    .flash{margin-top:10px;padding:10px 12px;border-radius:12px}
-    .flash.ok{background:#d1fae5;color:#065f46}
-    .flash.err{background:#fee2e2;color:#991b1b}
-  
-    /* ===== Ajuste solicitado: cabecera blanca y centrada ===== */
-    .hero.hero-white{background:transparent !important; padding:0 !important; margin-bottom:16px;}
-    .hero.hero-white .page-head{
-      background:#fff !important;
-      border:1px solid rgba(15,23,42,.08);
-      border-radius:18px;
-      padding:22px 24px;
-      box-shadow:0 10px 30px rgba(2,6,23,.06);
-    }
-    .hero.hero-white .page-head.center{display:flex; justify-content:center; text-align:center;}
-    .hero.hero-white .page-head h1{margin:0; font-size:34px;}
-    .hero.hero-white .page-head .muted{margin:6px 0 0 0;}
-    </style>
+    .content-wrap{padding:22px 24px;}
+    .page-title{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}
+    .page-title h1{margin:0;font-size:30px;font-weight:800;color:#0b2b4a}
+    .subtitle{margin:2px 0 0;color:#5b6b7a;font-size:13px}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
+    .card{background:#fff;border-radius:16px;box-shadow:0 12px 30px rgba(0,0,0,.08);padding:14px 14px;margin-top:12px}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    .input,.select{height:38px;border:1px solid #d8e1ea;border-radius:12px;padding:0 12px;background:#fff;outline:none}
+    .input{min-width:220px}
+    .select{min-width:320px}
+    .btn{height:38px;border:none;border-radius:12px;padding:0 14px;font-weight:800;cursor:pointer}
+    .btn-primary{background:#e8f4ff;color:#0b4d87}
+    .btn-secondary{background:#eef2f6;color:#2b3b4a}
+    .flash-ok{background:#e9fff1;border:1px solid #a7f0bf;color:#0a7a33;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:10px}
+    .flash-err{background:#ffecec;border:1px solid #ffb6b6;color:#a40000;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:10px}
+    table{width:100%;border-collapse:separate;border-spacing:0}
+    th,td{padding:12px 10px;border-bottom:1px solid #eef2f6;font-size:13px}
+    th{color:#0b4d87;text-align:left;font-weight:800;font-size:12px;letter-spacing:.2px}
+    tr:last-child td{border-bottom:none}
+  </style>
 </head>
-
 <body>
 
-<header class="navbar">
-  <div class="inner">
-    <div></div>
-    <div class="brand"><span class="dot"></span> CEVIMEP</div>
-    <div class="nav-right">
-      <a class="
-/assets/css/styles.css
-
-
--pill" href="/logout.php">Salir</a>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><span class="dot"></span><span class="name">CEVIMEP</span></div>
+      <div class="right"><a class="logout" href="/logout.php">Salir</a></div>
     </div>
   </div>
-</header>
 
-<div class="layout">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-title">Menú</div>
+      <nav class="menu">
+        <a class="menu-item" href="/private/dashboard.php">🏠 Panel</a>
+        <a class="menu-item" href="/private/patients/index.php">👤 Pacientes</a>
+        <a class="menu-item" href="/private/citas/index.php">📅 Citas</a>
+        <a class="menu-item" href="/private/facturacion/index.php">🧾 Facturación</a>
+        <a class="menu-item" href="/private/caja/index.php">💵 Caja</a>
+        <a class="menu-item active" href="/private/inventario/index.php">📦 Inventario</a>
+        <a class="menu-item" href="/private/estadisticas/index.php">📊 Estadísticas</a>
+      </nav>
+    </aside>
 
-  <aside class="sidebar">
-    <div class="menu-title">Menú</div>
-    <nav class="menu">
-      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
-      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;"><span class="ico">🗓️</span> Citas</a>
-      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
-      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
-      <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
-    </nav>
-  </aside>
+    <main class="main">
+      <div class="content-wrap">
 
-  <main class="content">
-
-    <section class="hero hero-white">
-      <div class="page-head center">
-        <div>
-          <h1>Salida</h1>
-          <p class="muted">Sucursal: <?= htmlspecialchars($branch_name ?? '') ?></p>
+        <div class="page-title">
+          <div>
+            <h1>Salida</h1>
+            <div class="subtitle">Sucursal: <b><?= h($branch_name ?: "—") ?></b></div>
+          </div>
+          <div class="toolbar">
+            <a class="btn btn-secondary" href="/private/inventario/items.php">Productos</a>
+            <a class="btn btn-secondary" href="/private/inventario/index.php">Volver</a>
+          </div>
         </div>
+
+        <?php if ($flash_success): ?><div class="flash-ok"><?= h($flash_success) ?></div><?php endif; ?>
+        <?php if ($flash_error): ?><div class="flash-err"><?= h($flash_error) ?></div><?php endif; ?>
+
+        <div class="card">
+          <form method="post">
+            <input type="hidden" name="action" value="save_out">
+            <div class="row">
+              <select class="select" name="item_id" required>
+                <option value="">Selecciona un producto...</option>
+                <?php foreach ($items as $it): ?>
+                  <option value="<?= (int)$it["id"] ?>">
+                    <?= h($it["name"]) ?> (Stock: <?= (int)$it["stock"] ?>)
+                  </option>
+                <?php endforeach; ?>
+              </select>
+
+              <input class="input" type="number" name="qty" min="1" placeholder="Cantidad" required>
+              <input class="input" type="text" name="note" placeholder="Nota (opcional)" style="min-width:320px">
+              <button class="btn btn-primary" type="submit">Guardar</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <div style="font-weight:900;color:#0b2b4a;margin-bottom:8px">Historial de hoy (<?= h($today) ?>)</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Hora</th>
+                <th>Producto</th>
+                <th>Cant.</th>
+                <th>Nota</th>
+                <th>Batch</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php if (!$history): ?>
+                <tr><td colspan="5">Sin registros hoy.</td></tr>
+              <?php else: ?>
+                <?php foreach ($history as $r): ?>
+                  <tr>
+                    <td><?= h(date("h:i A", strtotime((string)$r["created_at"]))) ?></td>
+                    <td><b><?= h($r["name"]) ?></b></td>
+                    <td><?= (int)$r["qty"] ?></td>
+                    <td><?= h($r["note"]) ?></td>
+                    <td><?= h($r["batch"]) ?></td>
+                  </tr>
+                <?php endforeach; ?>
+              <?php endif; ?>
+            </tbody>
+          </table>
+        </div>
+
       </div>
-    </section>
-
-    <section class="card">
-      <div class="title">Salida</div>
-      <div class="muted">Registra salida de inventario (sede actual)</div>
-
-      <?php if ($flash_success): ?>
-        <div class="flash ok"><?= htmlspecialchars($flash_success) ?></div>
-      <?php endif; ?>
-      <?php if ($flash_error): ?>
-        <div class="flash err"><?= htmlspecialchars($flash_error) ?></div>
-      <?php endif; ?>
-
-      <div class="form-row" style="margin-top:12px">
-        <div class="field">
-          <label>Fecha</label>
-          <input class="input" type="date" id="fecha" value="<?= htmlspecialchars($today) ?>">
-        </div>
-
-        <div class="field">
-          <label>Área de salida</label>
-          <input class="input" type="text" id="area_salida" value="<?= htmlspecialchars($branch_name) ?>" readonly>
-        </div>
-
-        <div class="field">
-          <label>Área de destino</label>
-          <input class="input" type="text" id="area_destino" placeholder="Ej: Dirección Provincial, Consultorio, etc.">
-        </div>
-
-        <div class="field">
-          <label>Hecho por</label>
-          <input class="input" type="text" id="hecho_por" placeholder="Nombre del responsable">
-        </div>
-
-        <div class="field">
-          <label>Categoría</label>
-          <select class="input" id="selCat">
-            <option value="0">-- Todas --</option>
-            <?php foreach ($categories as $c): ?>
-              <option value="<?= (int)$c["id"] ?>"><?= htmlspecialchars($c["name"]) ?></option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-
-        <div class="field">
-          <label>Producto</label>
-          <select class="input" id="selItem">
-            <option value="0" data-cat-id="0" data-cat-name="">-- Seleccionar --</option>
-            <?php foreach ($products as $p): ?>
-              <option
-                value="<?= (int)$p["id"] ?>"
-                data-cat-id="<?= (int)$p["category_id"] ?>"
-                data-cat-name="<?= htmlspecialchars($p["category"]) ?>"
-              >
-                <?= htmlspecialchars($p["name"]) ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-
-        <div class="field">
-          <label>Cantidad</label>
-          <input class="input" type="number" id="qty" min="1" value="1">
-        </div>
-
-        <div class="field" style="flex:0 0 auto;min-width:auto">
-          <button type="button" class="
-/assets/css/styles.css
-
-
- 
-/assets/css/styles.css
-
-
--primary" id="
-/assets/css/styles.css
-
-
-Add">Añadir</button>
-        </div>
-      </div>
-
-      <table>
-        <thead>
-          <tr>
-            <th>Categoría</th>
-            <th>Producto</th>
-            <th class="right">Cantidad</th>
-            <th class="right">Acción</th>
-          </tr>
-        </thead>
-        <tbody id="tbodyItems">
-          <tr id="emptyRow"><td colspan="4" class="muted">No hay productos agregados.</td></tr>
-        </tbody>
-      </table>
-
-      <div style="display:flex;justify-content:flex-end;margin-top:14px;gap:10px;flex-wrap:wrap">
-        <button type="button" class="
-/assets/css/styles.css
-
-
- 
-/assets/css/styles.css
-
-
--soft" id="
-/assets/css/styles.css
-
-
-ToggleHist">Ver el historial</button>
-        <button type="button" class="
-/assets/css/styles.css
-
-
- 
-/assets/css/styles.css
-
-
--primary" id="
-/assets/css/styles.css
-
-
-Save">Guardar e Imprimir</button>
-      </div>
-
-      <div id="histWrap" style="display:none;margin-top:16px">
-        <div class="title" style="font-size:16px">Historial de Salidas</div>
-        <div class="muted">Últimos 50 registros (sede actual)</div>
-
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Cantidad</th>
-              <th>Nota</th>
-              <th>Fecha</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php if (count($history_out) === 0): ?>
-              <tr><td colspan="4" class="muted">No hay registros.</td></tr>
-            <?php else: ?>
-              <?php foreach ($history_out as $h): ?>
-                <tr>
-                  <td>#<?= (int)$h["id"] ?></td>
-                  <td><?= (int)$h["qty"] ?></td>
-                  <td><?= htmlspecialchars($h["note"]) ?></td>
-                  <td><?= htmlspecialchars($h["created_at"]) ?></td>
-                </tr>
-              <?php endforeach; ?>
-            <?php endif; ?>
-          </tbody>
-        </table>
-      </div>
-
-      <form id="frmSave" method="post" style="display:none">
-        <input type="hidden" name="action" value="save_exit">
-        <input type="hidden" name="fecha" id="f_fecha">
-        <input type="hidden" name="area_salida" id="f_area_salida">
-        <input type="hidden" name="area_destino" id="f_area_destino">
-        <input type="hidden" name="hecho_por" id="f_hecho_por">
-        <input type="hidden" name="items_json" id="f_items">
-        <input type="hidden" name="do_print" id="f_do_print" value="1">
-      </form>
-    </section>
-
-  </main>
-</div>
-
-<footer class="footer">
-  <div class="footer-inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
-</footer>
-
-<script>
-(function(){
-  const selCat = document.getElementById('selCat');
-  const selItem = document.getElementById('selItem');
-  const qty = document.getElementById('qty');
-  const 
-/assets/css/styles.css
-
-
- = document.getElementById('
-/assets/css/styles.css
-
-
-Add');
-  const tbody = document.getElementById('tbodyItems');
-
-  const 
-/assets/css/styles.css
-
-
-Toggle = document.getElementById('
-/assets/css/styles.css
-
-
-ToggleHist');
-  const histWrap = document.getElementById('histWrap');
-  
-/assets/css/styles.css
-
-
-Toggle.addEventListener('click', () => {
-    const open = histWrap.style.display === 'block';
-    histWrap.style.display = open ? 'none' : 'block';
-    
-/assets/css/styles.css
-
-
-Toggle.textContent = open ? 'Ver el historial' : 'Ocultar historial';
-  });
-
-  let items = [];
-
-  function filterProducts(){
-    const catId = parseInt(selCat.value||"0",10);
-    for (const opt of selItem.options) {
-      const oc = parseInt(opt.getAttribute('data-cat-id')||"0",10);
-      if (opt.value === "0") { opt.hidden = false; continue; }
-      opt.hidden = (catId !== 0 && oc !== catId);
-    }
-    const cur = selItem.options[selItem.selectedIndex];
-    if (cur && cur.hidden) selItem.value = "0";
-  }
-  selCat.addEventListener('change', filterProducts);
-  filterProducts();
-
-  function render(){
-    tbody.innerHTML = '';
-    if (items.length === 0) {
-      tbody.innerHTML = '<tr id="emptyRow"><td colspan="4" class="muted">No hay productos agregados.</td></tr>';
-      return;
-    }
-    for (const it of items) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${it.category || ''}</td>
-        <td>${it.name}</td>
-        <td class="right">${it.qty}</td>
-        <td class="right"><button type="button" class="
-/assets/css/styles.css
-
-
- 
-/assets/css/styles.css
-
-
--soft" data-del="${it.id}">Quitar</button></td>
-      `;
-      tbody.appendChild(tr);
-    }
-  }
-
-  
-/assets/css/styles.css
-
-
-.addEventListener('click', () => {
-    const id = parseInt(selItem.value||"0",10);
-    const q = parseInt(qty.value||"0",10);
-    if (!id || q <= 0) return;
-
-    const opt = selItem.options[selItem.selectedIndex];
-    const name = opt ? opt.textContent.trim() : ('ID '+id);
-    const catName = opt ? (opt.getAttribute('data-cat-name')||'') : '';
-
-    const existing = items.find(x => x.id === id);
-    if (existing) existing.qty += q;
-    else items.push({id, name, qty:q, category:catName});
-
-    render();
-    selItem.focus();
-  });
-
-  tbody.addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-del]');
-    if (!b) return;
-    const id = parseInt(b.getAttribute('data-del'),10);
-    items = items.filter(x => x.id !== id);
-    render();
-  });
-
-  document.getElementById('
-/assets/css/styles.css
-
-
-Save').addEventListener('click', () => {
-    if (items.length === 0) return;
-
-    document.getElementById('f_fecha').value = document.getElementById('fecha').value;
-    document.getElementById('f_area_salida').value = document.getElementById('area_salida').value;
-    document.getElementById('f_area_destino').value = document.getElementById('area_destino').value;
-    document.getElementById('f_hecho_por').value = document.getElementById('hecho_por').value;
-    document.getElementById('f_items').value = JSON.stringify(items);
-    document.getElementById('f_do_print').value = '1';
-
-    document.getElementById('frmSave').submit();
-  });
-
-})();
-</script>
+    </main>
+  </div>
+
+  <footer class="footer">
+    © <?= (int)date("Y") ?> CEVIMEP. Todos los derechos reservados.
+  </footer>
 
 </body>
 </html>

@@ -1,13 +1,10 @@
 <?php
 declare(strict_types=1);
 
-session_start();
-require_once __DIR__ . "/../../config/db.php";
+require_once __DIR__ . "/../_guard.php";
+$conn = $pdo;
 
-if (empty($_SESSION["user"])) {
-  header("Location: /login.php");
-  exit;
-}
+$user = $_SESSION["user"];
 
 $year = (int)date("Y");
 
@@ -21,251 +18,187 @@ $success = "";
 /**
  * Helpers BD (para evitar 500 si cambia el esquema)
  */
-function table_has_column(PDO $pdo, string $table, string $column): bool {
+function table_has_column(PDO $conn, string $table, string $column): bool {
   try {
-    $st = $pdo->prepare("
-      SELECT COUNT(*) 
-      FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = :t
-        AND COLUMN_NAME = :c
-      LIMIT 1
-    ");
-    $st->execute(["t" => $table, "c" => $column]);
-    return ((int)$st->fetchColumn()) > 0;
-  } catch (Throwable $e) {
-    // Si Railway restringe INFORMATION_SCHEMA, asumimos que no existe para no romper.
+    $stmt = $conn->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
+    $stmt->execute([$column]);
+    return (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+  } catch (Exception $e) {
     return false;
   }
 }
 
-$hasIsActive = table_has_column($pdo, "inventory_categories", "is_active");
+$has_branch = table_has_column($conn, "inventory_categories", "branch_id");
+$branch_id = (int)($user["branch_id"] ?? 0);
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
-  $action = $_POST["action"] ?? "";
-  $name   = trim($_POST["name"] ?? "");
-  $id     = (int)($_POST["id"] ?? 0);
-
-  try {
-    if ($action === "create") {
-      if ($name === "") throw new Exception("Nombre requerido.");
-
-      // Si existe is_active, intentamos reactivar si ya existe por nombre (opcional)
-      // y si no, insert normal.
-      $pdo->beginTransaction();
-
-      // Insert simple
-      $st = $pdo->prepare("INSERT INTO inventory_categories (name" . ($hasIsActive ? ", is_active" : "") . ") VALUES (:n" . ($hasIsActive ? ", 1" : "") . ")");
-      $st->execute(["n" => $name]);
-
-      $pdo->commit();
-      $success = "Categoría creada.";
-    }
-
-    if ($action === "delete") {
-      if ($id <= 0) throw new Exception("ID inválido.");
-
-      if ($hasIsActive) {
-        $st = $pdo->prepare("UPDATE inventory_categories SET is_active = 0 WHERE id = :id");
-        $st->execute(["id" => $id]);
+/* Crear categoría */
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["action"] === "create") {
+  $name = trim((string)($_POST["name"] ?? ""));
+  if ($name === "") {
+    $error = "Debes escribir el nombre de la categoría.";
+  } else {
+    try {
+      if ($has_branch) {
+        $st = $conn->prepare("INSERT INTO inventory_categories (name, branch_id) VALUES (?, ?)");
+        $st->execute([$name, $branch_id]);
       } else {
-        // Fallback: delete real si no existe is_active
-        $st = $pdo->prepare("DELETE FROM inventory_categories WHERE id = :id");
-        $st->execute(["id" => $id]);
+        $st = $conn->prepare("INSERT INTO inventory_categories (name) VALUES (?)");
+        $st->execute([$name]);
       }
-
-      $success = "Categoría eliminada.";
+      $success = "Categoría creada.";
+    } catch (Exception $e) {
+      $error = "No se pudo crear la categoría.";
     }
-  } catch (Throwable $e) {
-    if ($pdo->inTransaction()) $pdo->rollBack();
-    $error = $e->getMessage();
   }
 }
 
-/**
- * Obtener categorías sin romper si is_active no existe
- */
+/* Eliminar categoría */
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["action"] === "delete") {
+  $id = (int)($_POST["id"] ?? 0);
+  if ($id > 0) {
+    try {
+      $st = $conn->prepare("DELETE FROM inventory_categories WHERE id=?");
+      $st->execute([$id]);
+      $success = "Categoría eliminada.";
+    } catch (Exception $e) {
+      $error = "No se pudo eliminar la categoría (puede estar en uso).";
+    }
+  }
+}
+
+/* Listado categorías */
 try {
-  if ($hasIsActive) {
-    $st = $pdo->query("SELECT id, name FROM inventory_categories WHERE is_active = 1 ORDER BY name ASC");
+  if ($has_branch) {
+    $st = $conn->prepare("SELECT id, name FROM inventory_categories WHERE branch_id=? ORDER BY name ASC");
+    $st->execute([$branch_id]);
   } else {
-    $st = $pdo->query("SELECT id, name FROM inventory_categories ORDER BY name ASC");
+    $st = $conn->query("SELECT id, name FROM inventory_categories ORDER BY name ASC");
   }
   $cats = $st ? $st->fetchAll(PDO::FETCH_ASSOC) : [];
-} catch (Throwable $e) {
-  // Último fallback para evitar 500
+} catch (Exception $e) {
   $cats = [];
-  $error = $error ?: "Error cargando categorías.";
 }
 ?>
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CEVIMEP | Categorías</title>
-
-  <!-- EXACTO igual que dashboard.php -->
-  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
-
-
-
-
-
-
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Categorías - Inventario</title>
+  <link rel="stylesheet" href="/assets/css/styles.css?v=60">
   <style>
-    /* Tabs internos (sin sidebar extra) */
-    .invTabs{ display:flex; gap:10px; flex-wrap:wrap; margin:10px 0 16px; }
-    .invTabs a{
-      display:inline-flex; align-items:center; gap:8px;
-      padding:10px 12px; border-radius:14px;
-      border:1px solid rgba(2,21,44,.12);
-      background:#fff; color:#0b2a4a;
-      text-decoration:none; font-weight:900;
-    }
-    .invTabs a.active{
-      background:rgba(127,178,255,.18);
-      border-color:rgba(127,178,255,.45);
-    }
-
-    .msg{ margin:10px 0 0; padding:10px 12px; border-radius:14px; font-weight:900; font-size:13px; }
-    .ok{ background:#eafff7; border:1px solid rgba(20,184,166,.35); color:#065f46; }
-    .err{ background:#ffe8e8; border:1px solid #ffb2b2; color:#7a1010; }
-
-    .input{
-      width:100%; padding:11px 12px; border-radius:14px;
-      border:1px solid rgba(2,21,44,.12);
-      font-size:14px; font-weight:800;
-      outline:none;
-    }
-    .input:focus{
-      border-color:#7fb2ff;
-      box-shadow:0 0 0 3px rgba(127,178,255,.20);
-    }
-
-    table{ width:100%; border-collapse:separate; border-spacing:0 10px; }
-    .row{
-      background:#fff; border:1px solid rgba(2,21,44,.12);
-      border-radius:18px; overflow:hidden;
-    }
-    .row td{ padding:12px; font-weight:800; }
-    .
-/assets/css/styles.css
-
-
-Danger{ background:linear-gradient(135deg,#ef4444,#991b1b) !important; }
+    .content-wrap{padding:22px 24px;}
+    .page-title{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}
+    .page-title h1{margin:0;font-size:30px;font-weight:800;color:#0b2b4a}
+    .subtitle{margin:2px 0 0;color:#5b6b7a;font-size:13px}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
+    .input{height:38px;border:1px solid #d8e1ea;border-radius:12px;padding:0 12px;background:#fff;outline:none;min-width:260px}
+    .btn{height:38px;border:none;border-radius:12px;padding:0 14px;font-weight:800;cursor:pointer}
+    .btn-primary{background:#e8f4ff;color:#0b4d87}
+    .btn-secondary{background:#eef2f6;color:#2b3b4a}
+    .card{background:#fff;border-radius:16px;box-shadow:0 12px 30px rgba(0,0,0,.08);padding:14px 14px;margin-top:12px}
+    table{width:100%;border-collapse:separate;border-spacing:0}
+    th,td{padding:12px 10px;border-bottom:1px solid #eef2f6;font-size:13px}
+    th{color:#0b4d87;text-align:left;font-weight:800;font-size:12px;letter-spacing:.2px}
+    tr:last-child td{border-bottom:none}
+    .flash-ok{background:#e9fff1;border:1px solid #a7f0bf;color:#0a7a33;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:10px}
+    .flash-err{background:#ffecec;border:1px solid #ffb6b6;color:#a40000;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:10px}
+    .btn-mini{height:32px;border-radius:10px;padding:0 10px;font-size:12px}
+    .btn-danger{background:#ffecec;color:#a40000}
   </style>
 </head>
-
 <body>
 
-<header class="navbar">
-  <div class="inner">
-    <div></div>
-    <div class="brand"><span class="dot"></span> CEVIMEP</div>
-    <div class="nav-right">
-      <a class="
-/assets/css/styles.css
-
-
--pill" href="/logout.php">Salir</a>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="dot"></span>
+        <span class="name">CEVIMEP</span>
+      </div>
+      <div class="right">
+        <a class="logout" href="/logout.php">Salir</a>
+      </div>
     </div>
   </div>
-</header>
 
-<div class="layout">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-title">Menú</div>
+      <nav class="menu">
+        <a class="menu-item" href="/private/dashboard.php">🏠 Panel</a>
+        <a class="menu-item" href="/private/patients/index.php">👤 Pacientes</a>
+        <a class="menu-item" href="/private/citas/index.php">📅 Citas</a>
+        <a class="menu-item" href="/private/facturacion/index.php">🧾 Facturación</a>
+        <a class="menu-item" href="/private/caja/index.php">💵 Caja</a>
+        <a class="menu-item active" href="/private/inventario/index.php">📦 Inventario</a>
+        <a class="menu-item" href="/private/estadisticas/index.php">📊 Estadísticas</a>
+      </nav>
+    </aside>
 
-  <!-- Sidebar EXACTO igual al dashboard.php -->
-  <aside class="sidebar">
-    <div class="menu-title">Menú</div>
+    <main class="main">
+      <div class="content-wrap">
 
-    <nav class="menu">
-      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
-      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;">
-        <span class="ico">🗓️</span> Citas
-      </a>
-      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
-      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
+        <div class="page-title">
+          <div>
+            <h1>Categorías</h1>
+            <div class="subtitle">Gestiona tus categorías de inventario.</div>
+          </div>
+          <div class="toolbar">
+            <a class="btn btn-secondary" href="/private/inventario/items.php">Volver a productos</a>
+          </div>
+        </div>
 
-      <!-- Inventario activo -->
-      <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
+        <?php if ($success): ?>
+          <div class="flash-ok"><?= h($success) ?></div>
+        <?php endif; ?>
+        <?php if ($error): ?>
+          <div class="flash-err"><?= h($error) ?></div>
+        <?php endif; ?>
 
-      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
-    </nav>
-  </aside>
+        <div class="card">
+          <form method="post" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <input type="hidden" name="action" value="create">
+            <input class="input" type="text" name="name" placeholder="Nombre de la categoría...">
+            <button class="btn btn-primary" type="submit">Guardar</button>
+          </form>
 
-  <main class="content">
+          <div style="height:12px"></div>
 
-    <section class="hero">
-      <h1>Inventario</h1>
-      <p>Categorías</p>
-    </section>
+          <table>
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th style="text-align:right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php if (!$cats): ?>
+                <tr><td colspan="2">No hay categorías registradas.</td></tr>
+              <?php else: ?>
+                <?php foreach ($cats as $c): ?>
+                  <tr>
+                    <td><b><?= h($c["name"]) ?></b></td>
+                    <td style="text-align:right">
+                      <form method="post" onsubmit="return confirm('¿Eliminar esta categoría?')" style="display:inline">
+                        <input type="hidden" name="action" value="delete">
+                        <input type="hidden" name="id" value="<?= (int)$c["id"] ?>">
+                        <button class="btn-mini btn-danger" type="submit">Eliminar</button>
+                      </form>
+                    </td>
+                  </tr>
+                <?php endforeach; ?>
+              <?php endif; ?>
+            </tbody>
+          </table>
+        </div>
 
-    
-    <h3>Categorías</h3>
-      <p class="muted">Ej: Vacunas, Productos, Insumos…</p>
-
-      <?php if ($success): ?><div class="msg ok"><?= h($success) ?></div><?php endif; ?>
-      <?php if ($error): ?><div class="msg err"><?= h($error) ?></div><?php endif; ?>
-
-      <form method="post" style="margin-top:12px;">
-  <input type="hidden" name="action" value="create">
-
-  <div style="display:flex; gap:10px; align-items:center;">
-    <input class="input" name="name" placeholder="Nueva categoría..." required style="flex:1;">
-    <button class="
-/assets/css/styles.css
-
-
--pill" type="submit">Añadir</button>
+      </div>
+    </main>
   </div>
-</form>
 
-
-
-      <table style="margin-top:12px;">
-        <thead>
-          <tr>
-            <th style="text-align:left;">Nombre</th>
-            <th style="width:140px; text-align:right;">Acción</th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php foreach ($cats as $c): ?>
-            <tr class="row">
-              <td><b><?= h($c["name"]) ?></b></td>
-              <td style="text-align:right;">
-                <form method="post" onsubmit="return confirm('¿Eliminar categoría?');" style="display:inline;">
-                  <input type="hidden" name="action" value="delete">
-                  <input type="hidden" name="id" value="<?= (int)$c["id"] ?>">
-                  <button class="
-/assets/css/styles.css
-
-
--pill 
-/assets/css/styles.css
-
-
-Danger" type="submit">Eliminar</button>
-                </form>
-              </td>
-            </tr>
-          <?php endforeach; ?>
-
-          <?php if (count($cats) === 0): ?>
-            <tr><td colspan="2" class="muted">No hay categorías.</td></tr>
-          <?php endif; ?>
-        </tbody>
-      </table>
-    </div>
-
-  </main>
-</div>
-
-<footer class="footer">
-  <div class="footer-inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
-</footer>
+  <footer class="footer">
+    © <?= (int)$year ?> CEVIMEP. Todos los derechos reservados.
+  </footer>
 
 </body>
 </html>

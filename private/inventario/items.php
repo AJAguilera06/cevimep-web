@@ -8,21 +8,7 @@ declare(strict_types=1);
  * - Footer centrado estándar
  */
 
-session_set_cookie_params([
-  'lifetime' => 0,
-  'path' => '/',
-  'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
-  'httponly' => true,
-  'samesite' => 'Lax',
-]);
-session_start();
-
-if (empty($_SESSION['user'])) {
-  header('Location: /login.php');
-  exit;
-}
-
-require_once __DIR__ . "/../../config/db.php";
+require_once __DIR__ . "/../_guard.php";
 $conn = $pdo;
 
 $user = $_SESSION["user"];
@@ -58,24 +44,23 @@ if ($branch_id > 0) {
     SELECT 
       i.id,
       i.name,
-      i.purchase_price,
-      i.sale_price,
-      i.min_stock,
+      i.description,
       i.category_id,
       c.name AS category_name,
-      COALESCE(s.quantity, 0) AS existencia
+      s.stock,
+      s.min_stock,
+      s.price
     FROM inventory_items i
-    LEFT JOIN inventory_categories c ON c.id = i.category_id
     INNER JOIN inventory_stock s 
-      ON s.item_id = i.id
-     AND s.branch_id = ?
-    WHERE i.is_active = 1
+      ON s.item_id = i.id AND s.branch_id = ?
+    LEFT JOIN inventory_categories c
+      ON c.id = i.category_id
   ";
 
   $params = [$branch_id];
 
   if ($filter_category_id > 0) {
-    $sql .= " AND i.category_id = ? ";
+    $sql .= " WHERE i.category_id = ? ";
     $params[] = $filter_category_id;
   }
 
@@ -85,259 +70,177 @@ if ($branch_id > 0) {
   $st->execute($params);
   $items = $st->fetchAll(PDO::FETCH_ASSOC);
 } else {
-  // Si entra alguien sin sede asignada, no mostramos nada (para respetar tu regla)
   $items = [];
+}
+
+function h($s): string {
+  return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8");
+}
+
+/* Datos sucursal (para header) */
+$branch_name = "";
+if ($branch_id > 0) {
+  try {
+    $stB = $conn->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
+    $stB->execute([$branch_id]);
+    $branch_name = (string)($stB->fetchColumn() ?: "");
+  } catch (Exception $e) {}
 }
 ?>
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CEVIMEP | Inventario</title>
-
-  <!-- IMPORTANTE: mismo CSS y misma versión que los demás módulos -->
-  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
-
-
-
-
-
-
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inventario - Productos</title>
+  <link rel="stylesheet" href="/assets/css/styles.css?v=60">
   <style>
-    .
-/assets/css/styles.css
-
-
-.small{
-      padding:6px 12px;
-      border-radius:999px;
-      font-weight:900;
-      font-size:12px;
-      border:1px solid rgba(2,21,44,.12);
-      background:#eef6ff;
-      cursor:pointer;
-    }
-    .
-/assets/css/styles.css
-
-
-.small.danger{
-      background:#dc3545;
-      color:#fff;
-      border-color:#dc3545;
-    }
-    .low-stock{ color:#d00000; font-weight:900; }
-
-    .alert-success{
-      margin-top:14px;
-      padding:12px 14px;
-      border-radius:14px;
-      background:#ecfff3;
-      border:1px solid #b7f3c9;
-      color:#0f5132;
-      font-weight:900;
-      display:flex;
-      align-items:center;
-      gap:10px;
-    }
-
-    .alert-warn{
-      margin-top:14px;
-      padding:12px 14px;
-      border-radius:14px;
-      background:#fff7e6;
-      border:1px solid #ffe2a8;
-      color:#7a4b00;
-      font-weight:900;
-    }
-
-    .header-filter{
-      margin-left:10px;
-      padding:6px 10px;
-      border-radius:12px;
-      border:1px solid #dbe7f3;
-      background:#fff;
-      font-weight:800;
-      outline:none;
-    }
-    .th-flex{
-      display:flex;
-      align-items:center;
-      gap:10px;
-      white-space:nowrap;
-    }
+    .content-wrap{padding:22px 24px;}
+    .page-title{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}
+    .page-title h1{margin:0;font-size:30px;font-weight:800;color:#0b2b4a}
+    .subtitle{margin:2px 0 0;color:#5b6b7a;font-size:13px}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
+    .select, .input{height:38px;border:1px solid #d8e1ea;border-radius:12px;padding:0 12px;background:#fff;outline:none}
+    .btn{height:38px;border:none;border-radius:12px;padding:0 14px;font-weight:700;cursor:pointer}
+    .btn-primary{background:#e8f4ff;color:#0b4d87}
+    .btn-secondary{background:#eef2f6;color:#2b3b4a}
+    .card{background:#fff;border-radius:16px;box-shadow:0 12px 30px rgba(0,0,0,.08);padding:14px 14px;margin-top:12px}
+    table{width:100%;border-collapse:separate;border-spacing:0}
+    th,td{padding:12px 10px;border-bottom:1px solid #eef2f6;font-size:13px}
+    th{color:#0b4d87;text-align:left;font-weight:800;font-size:12px;letter-spacing:.2px}
+    tr:last-child td{border-bottom:none}
+    .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;font-weight:800;font-size:12px}
+    .pill-ok{background:#e9fff1;color:#0a7a33}
+    .pill-low{background:#fff2e8;color:#8a3b00}
+    .pill-zero{background:#ffecec;color:#a40000}
+    .actions{display:flex;gap:8px}
+    .btn-mini{height:32px;border-radius:10px;padding:0 10px;font-size:12px}
+    .btn-ver{background:#e8f7ff;color:#0b4d87}
+    .btn-editar{background:#eef2f6;color:#2b3b4a}
+    .warn{background:#fff7e6;border:1px solid #ffe0a3;color:#7a4b00;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:10px}
+    .flash{background:#e9fff1;border:1px solid #a7f0bf;color:#0a7a33;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:10px}
   </style>
 </head>
-
 <body>
 
-<header class="navbar">
-  <div class="inner">
-    <div></div>
-    <div class="brand"><span class="dot"></span> CEVIMEP</div>
-    <div class="nav-right">
-      <a class="
-/assets/css/styles.css
-
-
--pill" href="/logout.php">Salir</a>
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="dot"></span>
+        <span class="name">CEVIMEP</span>
+      </div>
+      <div class="right">
+        <a class="logout" href="/logout.php">Salir</a>
+      </div>
     </div>
   </div>
-</header>
 
-<div class="layout">
+  <div class="layout">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="sidebar-title">Menú</div>
+      <nav class="menu">
+        <a class="menu-item" href="/private/dashboard.php">🏠 Panel</a>
+        <a class="menu-item" href="/private/patients/index.php">👤 Pacientes</a>
+        <a class="menu-item" href="/private/citas/index.php">📅 Citas</a>
+        <a class="menu-item" href="/private/facturacion/index.php">🧾 Facturación</a>
+        <a class="menu-item" href="/private/caja/index.php">💵 Caja</a>
+        <a class="menu-item active" href="/private/inventario/index.php">📦 Inventario</a>
+        <a class="menu-item" href="/private/estadisticas/index.php">📊 Estadísticas</a>
+      </nav>
+    </aside>
 
-  <aside class="sidebar">
-    <div class="menu-title">Menú</div>
+    <!-- MAIN -->
+    <main class="main">
+      <div class="content-wrap">
 
-    <nav class="menu">
-      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
-      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;"><span class="ico">🗓️</span> Citas</a>
-      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
-      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
-      <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
-    </nav>
-  </aside>
+        <div class="page-title">
+          <div>
+            <h1>Inventario</h1>
+            <div class="subtitle">Productos por sucursal (automático). <?= $branch_name ? "Sucursal: <b>".h($branch_name)."</b>" : "" ?></div>
+          </div>
 
-  <main class="content">
+          <div class="toolbar">
+            <form method="get" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <select class="select" name="category_id">
+                <option value="0">Todas las categorías</option>
+                <?php foreach ($categories as $c): ?>
+                  <option value="<?= (int)$c["id"] ?>" <?= ($filter_category_id === (int)$c["id"]) ? "selected" : "" ?>>
+                    <?= h($c["name"]) ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
+              <button class="btn btn-secondary" type="submit">Filtrar</button>
+            </form>
 
-    <section class="hero">
-      <h1>Inventario</h1>
-      <p>Stock por sucursal (entradas - salidas)</p>
-    </section>
-
-    <section class="card">
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
-        <div>
-          <h2 style="margin:0 0 6px;">Listado de productos</h2>
-          <p class="muted" style="margin:0;">Gestiona precios, categorías y existencia</p>
+            <a class="btn btn-primary" href="/private/inventario/entrada.php">Entrada</a>
+            <a class="btn btn-secondary" href="/private/inventario/salida.php">Salida</a>
+            <a class="btn btn-secondary" href="/private/inventario/categorias.php">Categorías</a>
+            <a class="btn btn-secondary" href="/private/inventario/index.php">Volver</a>
+          </div>
         </div>
 
-        <a class="
-/assets/css/styles.css
+        <?php if ($branch_warning): ?>
+          <div class="warn"><?= h($branch_warning) ?></div>
+        <?php endif; ?>
 
+        <?php if ($flash_success): ?>
+          <div class="flash"><?= h($flash_success) ?></div>
+        <?php endif; ?>
 
-" href="guardar_producto.php" style="text-decoration:none;">Registrar nuevo producto</a>
-      </div>
-
-      <?php if ($flash_success): ?>
-        <div class="alert-success" id="flashSuccess"><?php echo htmlspecialchars($flash_success); ?></div>
-      <?php endif; ?>
-
-      <?php if ($branch_warning): ?>
-        <div class="alert-warn"><?php echo htmlspecialchars($branch_warning); ?></div>
-      <?php endif; ?>
-
-      <div style="margin-top:18px; overflow:auto;">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Producto</th>
-
-              <th>
-                <div class="th-flex">
-                  <span>Categoría</span>
-
-                  <form id="filterForm" method="GET" action="items.php" style="margin:0;">
-                    <select class="header-filter" name="category_id" onchange="document.getElementById('filterForm').submit()">
-                      <option value="0" <?php echo $filter_category_id === 0 ? "selected" : ""; ?>>Todas</option>
-                      <?php foreach ($categories as $cat): ?>
-                        <option value="<?php echo (int)$cat['id']; ?>"
-                          <?php echo ((int)$cat['id'] === $filter_category_id) ? "selected" : ""; ?>
-                        >
-                          <?php echo htmlspecialchars($cat['name']); ?>
-                        </option>
-                      <?php endforeach; ?>
-                    </select>
-                  </form>
-                </div>
-              </th>
-
-              <th>Compra</th>
-              <th>Venta</th>
-              <th>Existencia</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            <?php if (empty($items)): ?>
+        <div class="card">
+          <table>
+            <thead>
               <tr>
-                <td colspan="6" class="muted">No hay productos para ese filtro</td>
+                <th>Producto</th>
+                <th>Categoría</th>
+                <th>Stock</th>
+                <th>Mínimo</th>
+                <th>Precio</th>
+                <th style="text-align:right">Acciones</th>
               </tr>
-            <?php else: ?>
-              <?php foreach ($items as $item):
-                $existencia = (int)($item["existencia"] ?? 0);
-                $min_stock = (int)($item["min_stock"] ?? 0);
-                $low = ($existencia <= $min_stock);
-              ?>
-                <tr>
-                  <td><?php echo htmlspecialchars($item["name"]); ?></td>
-                  <td><?php echo htmlspecialchars($item["category_name"] ?? ""); ?></td>
-                  <td><?php echo number_format((float)$item["purchase_price"], 2); ?></td>
-                  <td><?php echo number_format((float)$item["sale_price"], 2); ?></td>
-                  <td class="<?php echo $low ? "low-stock" : ""; ?>"><?php echo $existencia; ?></td>
+            </thead>
+            <tbody>
+              <?php if (!$items): ?>
+                <tr><td colspan="6">No hay productos cargados para esta sucursal.</td></tr>
+              <?php else: ?>
+                <?php foreach ($items as $it): ?>
+                  <?php
+                    $stock = (int)($it["stock"] ?? 0);
+                    $min  = (int)($it["min_stock"] ?? 0);
 
-                  <td style="display:flex; gap:10px; align-items:center;">
-                    <button class="
-/assets/css/styles.css
+                    $pillClass = "pill-ok";
+                    $pillText  = "OK";
+                    if ($stock <= 0) { $pillClass="pill-zero"; $pillText="Agotado"; }
+                    else if ($min > 0 && $stock <= $min) { $pillClass="pill-low"; $pillText="Bajo"; }
+                  ?>
+                  <tr>
+                    <td><b><?= h($it["name"]) ?></b></td>
+                    <td><?= h($it["category_name"] ?? "") ?></td>
+                    <td><span class="pill <?= $pillClass ?>"><?= $stock ?> • <?= $pillText ?></span></td>
+                    <td><?= $min ?></td>
+                    <td><?= number_format((float)($it["price"] ?? 0), 2) ?></td>
+                    <td style="text-align:right">
+                      <div class="actions" style="justify-content:flex-end">
+                        <a class="btn-mini btn-ver" href="/private/inventario/entrada.php?item_id=<?= (int)$it["id"] ?>">Entrada</a>
+                        <a class="btn-mini btn-editar" href="/private/inventario/guardar_producto.php?id=<?= (int)$it["id"] ?>">Editar</a>
+                      </div>
+                    </td>
+                  </tr>
+                <?php endforeach; ?>
+              <?php endif; ?>
+            </tbody>
+          </table>
+        </div>
 
-
- small" type="button" onclick="editItem(<?php echo (int)$item['id']; ?>)">Editar</button>
-                    <button class="
-/assets/css/styles.css
-
-
- small danger" type="button" onclick="deleteItem(<?php echo (int)$item['id']; ?>)">Eliminar</button>
-                  </td>
-                </tr>
-              <?php endforeach; ?>
-            <?php endif; ?>
-          </tbody>
-        </table>
       </div>
-    </section>
+    </main>
+  </div>
 
-  </main>
-</div>
-
-<footer class="footer">
-  <div class="footer-inner">© <?php echo $year; ?> CEVIMEP. Todos los derechos reservados.</div>
-</footer>
-
-<script>
-function editItem(id){
-  window.location.href = "edit_item.php?id=" + encodeURIComponent(id);
-}
-
-async function deleteItem(id){
-  if(!confirm("¿Seguro que deseas eliminar este producto?")) return;
-
-  try{
-    const res = await fetch("delete_item.php", {
-      method: "POST",
-      headers: {"Content-Type":"application/x-www-form-urlencoded"},
-      body: "id=" + encodeURIComponent(id)
-    });
-
-    const data = await res.json();
-    if(data.ok){
-      location.reload();
-    }else{
-      alert(data.msg || "No se pudo eliminar");
-    }
-  }catch(e){
-    alert("Error al eliminar");
-  }
-}
-
-/* Auto-hide flash */
-const flash = document.getElementById("flashSuccess");
-if (flash) setTimeout(() => flash.style.display = "none", 2500);
-</script>
+  <footer class="footer">
+    © <?= (int)$year ?> CEVIMEP. Todos los derechos reservados.
+  </footer>
 
 </body>
 </html>
