@@ -38,13 +38,17 @@ $filter_category_id = isset($_GET["category_id"]) ? (int)$_GET["category_id"] : 
 /* ===== ITEMS VISIBLES POR SEDE =====
    IMPORTANTE: usar INNER JOIN a inventory_stock para que SOLO aparezcan
    productos creados/activados para esa sede.
+/* ===== ITEMS VISIBLES POR SEDE =====
+   IMPORTANTE: usar INNER JOIN a inventory_stock para que SOLO aparezcan
+   productos creados/activados para esa sede.
 */
+$items = [];
+
 if ($branch_id > 0) {
   $sql = "
     SELECT 
       i.id,
       i.name,
-      i.description,
       i.category_id,
       c.name AS category_name,
       s.stock,
@@ -69,7 +73,8 @@ if ($branch_id > 0) {
   $st = $conn->prepare($sql);
   $st->execute($params);
   $items = $st->fetchAll(PDO::FETCH_ASSOC);
-} else {
+}
+ else {
   $items = [];
 }
 
