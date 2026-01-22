@@ -84,8 +84,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
 
         $conn->commit();
         $_SESSION["flash_success"] = "Salida registrada correctamente.";
-        header("Location: /private/inventario/salida.php");
-        exit;
+        header("Location: /private/inventario/acuse.php?batch=" . urlencode($batch));
+      exit;
       }
 
     } catch (Exception $e) {
@@ -122,59 +122,24 @@ unset($_SESSION["flash_success"]);
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Salida - Inventario</title>
   <link rel="stylesheet" href="/assets/css/styles.css?v=60">
-  <style>
-    .content-wrap{padding:22px 24px;}
-    .header{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
-    .header h1{margin:0;font-size:30px;font-weight:900;color:#0b2b4a;}
-    .subtitle{color:#5b6b7a;font-size:13px;margin-top:3px;}
-    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end;}
-    .btn{height:38px;border:none;border-radius:12px;padding:0 14px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
-    .btn-primary{background:#e8f4ff;color:#0b4d87;}
-    .btn-secondary{background:#eef2f6;color:#2b3b4a;}
-    .card{background:#fff;border-radius:16px;box-shadow:0 12px 30px rgba(0,0,0,.08);padding:14px;margin-top:12px;}
-    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
-    .input,.select{height:38px;border:1px solid #d8e1ea;border-radius:12px;padding:0 12px;background:#fff;outline:none;}
-    .select{min-width:280px;}
-    .input{min-width:160px;}
-    table{width:100%;border-collapse:separate;border-spacing:0;}
-    th,td{padding:12px 10px;border-bottom:1px solid #eef2f6;font-size:13px;}
-    th{color:#0b4d87;text-align:left;font-weight:900;font-size:12px;}
-    tr:last-child td{border-bottom:none;}
-    .flash-ok{background:#e9fff1;border:1px solid #a7f0bf;color:#0a7a33;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:10px;}
-    .flash-err{background:#ffecec;border:1px solid #ffb6b6;color:#a40000;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:10px;}
-  </style>
 </head>
 <body>
+<?php require_once __DIR__ . "/../_topbar.php"; ?>
+<?php require_once __DIR__ . "/../_sidebar.php"; ?>
 
-  <div class="topbar">
-    <div class="topbar-inner">
-      <div class="brand"><span class="dot"></span><span class="name">CEVIMEP</span></div>
-      <div class="right"><a class="logout" href="/logout.php">Salir</a></div>
+<main class="content">
+  <div class="page-header">
+    <div>
+      <h2>Salida</h2>
+      <p class="muted">Sucursal: <b><?= h($branch_name ?: "—") ?></b></p>
+    </div>
+    <div class="page-actions">
+      <a class="btn btn-light" href="/private/inventario/items.php">Productos</a>
+      <a class="btn btn-light" href="/private/inventario/index.php">Volver</a>
     </div>
   </div>
 
-  <div class="layout">
-    <aside class="sidebar">
-      <div class="sidebar-title">Menú</div>
-      <nav class="menu">
-        <a class="menu-item" href="/private/dashboard.php">🏠 Panel</a>
-        <a class="menu-item" href="/private/patients/index.php">👤 Pacientes</a>
-        <a class="menu-item" href="/private/citas/index.php">📅 Citas</a>
-        <a class="menu-item" href="/private/facturacion/index.php">🧾 Facturación</a>
-        <a class="menu-item" href="/private/caja/index.php">💵 Caja</a>
-        <a class="menu-item active" href="/private/inventario/index.php">📦 Inventario</a>
-        <a class="menu-item" href="/private/estadisticas/index.php">📊 Estadísticas</a>
-      </nav>
-    </aside>
-
-    <main class="main">
-      <div class="content-wrap">
-
-        <div class="header">
-          <div>
-            <h1>Salida</h1>
-            <div class="subtitle">Sucursal: <b><?= h($branch_name ?: "—") ?></b></div>
-          </div>
+  </div>
           <div class="toolbar">
             <a class="btn btn-secondary" href="/private/inventario/items.php">Productos</a>
             <a class="btn btn-secondary" href="/private/inventario/index.php">Volver</a>
@@ -237,13 +202,7 @@ unset($_SESSION["flash_success"]);
           </table>
         </div>
 
-      </div>
-    </main>
-  </div>
-
-  <footer class="footer">
-    © <?= $year ?> CEVIMEP. Todos los derechos reservados.
-  </footer>
-
+  <footer class="footer-bar">© <?= (int)$year ?> CEVIMEP. Todos los derechos reservados.</footer>
+</main>
 </body>
 </html>
