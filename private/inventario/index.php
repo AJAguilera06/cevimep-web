@@ -1,31 +1,18 @@
 <?php
-session_set_cookie_params([
-  'lifetime' => 0,
-  'path' => '/',
-  'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
-  'httponly' => true,
-  'samesite' => 'Lax',
-]);
-session_start();
+declare(strict_types=1);
 
-if (empty($_SESSION["user"])) {
-  header("Location: /login.php");
-  exit;
-}
+require_once __DIR__ . "/../_guard.php";
 
 $year = (int)date("Y");
 ?>
+
 <!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Inventario</title>
-  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
-
-
-
-
+  <link rel="stylesheet" href="/assets/css/styles.css?v=60">
 
   <style>
     html,body{height:100%;}

@@ -1,8 +1,7 @@
 <?php
-session_start();
-if (!isset($_SESSION["user"])) { header("Location: ../../public/login.php"); exit; }
+declare(strict_types=1);
+require_once __DIR__ . "/../_guard.php";
 
-require_once __DIR__ . "/../../config/db.php";
 $conn = $pdo;
 
 $user = $_SESSION["user"];
@@ -45,12 +44,7 @@ if ($branch_id > 0) {
   <title>CEVIMEP | Facturación</title>
 
   <!-- ✅ MISMO CSS QUE DASHBOARD (ruta absoluta) -->
-  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
-
-
-
-
-
+  <link rel="stylesheet" href="/assets/css/styles.css?v=60">
 
   <style>
     /* ✅ Asegura layout estable como los otros módulos */
