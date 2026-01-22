@@ -10,10 +10,19 @@ $conn = $pdo;
 
 $user = $_SESSION["user"];
 $branch_id   = (int)($user["branch_id"] ?? 0);
-$branch_name = $user["branch_name"] ?? "CEVIMEP";
+
+/* Nombre de sucursal (session si existe, si no, consulta branches) */
+$branch_name = (string)($user["branch_name"] ?? "");
+if ($branch_name === "" && $branch_id > 0) {
+    $stB = $conn->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
+    $stB->execute([$branch_id]);
+    $branch_name = (string)($stB->fetchColumn() ?? "");
+}
+if ($branch_name === "") $branch_name = "CEVIMEP";
+
 $today = date("Y-m-d");
 
-if (!isset($_SESSION["entrada_items"])) {
+if (!isset($_SESSION["entrada_items"]) || !is_array($_SESSION["entrada_items"])) {
     $_SESSION["entrada_items"] = [];
 }
 
@@ -22,32 +31,35 @@ if (!isset($_SESSION["entrada_items"])) {
 ========================= */
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["add_item"])) {
 
-    $item_id  = (int)$_POST["item_id"];
-    $category = trim($_POST["category"]);
-    $qty      = (int)$_POST["qty"];
+    $item_id  = (int)($_POST["item_id"] ?? 0);
+    $category = trim((string)($_POST["category"] ?? ""));
+    $qty      = (int)($_POST["qty"] ?? 0);
 
     if ($item_id > 0 && $qty > 0) {
 
+        /* Validar que el producto esté registrado en esta sede:
+           en tu BD la sede vive en inventory_stock (NO en inventory_items) */
         $st = $conn->prepare("
-    SELECT i.id, i.name
-    FROM inventory_items i
-    INNER JOIN inventory_stock s
-        ON s.item_id = i.id
-    WHERE s.branch_id = ?
-    GROUP BY i.id
-    ORDER BY i.name
-");
-$st->execute([$branch_id]);
-$products = $st->fetchAll(PDO::FETCH_ASSOC);
-
+            SELECT i.id, i.name
+            FROM inventory_items i
+            INNER JOIN inventory_stock s
+                ON s.item_id = i.id
+            WHERE i.id = ? AND s.branch_id = ?
+            LIMIT 1
+        ");
+        $st->execute([$item_id, $branch_id]);
+        $item = $st->fetch(PDO::FETCH_ASSOC);
 
         if ($item) {
             if (isset($_SESSION["entrada_items"][$item_id])) {
                 $_SESSION["entrada_items"][$item_id]["qty"] += $qty;
+                if ($category !== "") {
+                    $_SESSION["entrada_items"][$item_id]["category"] = $category;
+                }
             } else {
                 $_SESSION["entrada_items"][$item_id] = [
                     "category" => $category,
-                    "name"     => $item["name"],
+                    "name"     => (string)$item["name"],
                     "qty"      => $qty
                 ];
             }
@@ -69,32 +81,37 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
 
     if (!empty($_SESSION["entrada_items"])) {
 
-        $pdo->beginTransaction();
+        $note = trim((string)($_POST["note"] ?? ""));
 
-        $stMov = $pdo->prepare("
+        $conn->beginTransaction();
+
+        $stMov = $conn->prepare("
             INSERT INTO inventory_movements (type, branch_id, note, created_at)
             VALUES ('entrada', ?, ?, NOW())
         ");
-        $stMov->execute([$branch_id, $_POST["note"] ?? null]);
-        $movement_id = $pdo->lastInsertId();
+        $stMov->execute([$branch_id, ($note === "" ? null : $note)]);
+        $movement_id = (int)$conn->lastInsertId();
 
-        $stItem = $pdo->prepare("
+        $stItem = $conn->prepare("
             INSERT INTO inventory_movement_items (movement_id, item_id, quantity)
             VALUES (?, ?, ?)
         ");
 
-        $stStock = $pdo->prepare("
+        $stStock = $conn->prepare("
             INSERT INTO inventory_stock (item_id, branch_id, quantity)
             VALUES (?, ?, ?)
             ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
         ");
 
         foreach ($_SESSION["entrada_items"] as $item_id => $data) {
-            $stItem->execute([$movement_id, $item_id, $data["qty"]]);
-            $stStock->execute([$item_id, $branch_id, $data["qty"]]);
+            $q = (int)($data["qty"] ?? 0);
+            if ($q <= 0) continue;
+
+            $stItem->execute([$movement_id, (int)$item_id, $q]);
+            $stStock->execute([(int)$item_id, $branch_id, $q]);
         }
 
-        $pdo->commit();
+        $conn->commit();
         $_SESSION["entrada_items"] = [];
 
         header("Location: entrada.php?ok=1");
@@ -103,13 +120,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
 }
 
 /* =========================
-   PRODUCTOS DE LA SEDE
+   PRODUCTOS DE LA SEDE (registrados en inventory_stock)
 ========================= */
-$st = $pdo->prepare("
-    SELECT id, name
-    FROM inventory_items
-    WHERE branch_id = ?
-    ORDER BY name
+$st = $conn->prepare("
+    SELECT i.id, i.name
+    FROM inventory_items i
+    INNER JOIN inventory_stock s
+        ON s.item_id = i.id
+    WHERE s.branch_id = ?
+    GROUP BY i.id, i.name
+    ORDER BY i.name
 ");
 $st->execute([$branch_id]);
 $products = $st->fetchAll(PDO::FETCH_ASSOC);
@@ -123,6 +143,10 @@ $products = $st->fetchAll(PDO::FETCH_ASSOC);
 
 <h2>Entrada</h2>
 <p><strong>Sucursal:</strong> <?= htmlspecialchars($branch_name) ?></p>
+
+<?php if (isset($_GET["ok"])): ?>
+  <div class="alert success">Entrada guardada correctamente.</div>
+<?php endif; ?>
 
 <form method="post">
 
@@ -143,8 +167,8 @@ $products = $st->fetchAll(PDO::FETCH_ASSOC);
         <input type="text" value="<?= htmlspecialchars($branch_name) ?>" disabled>
     </div>
     <div>
-        <label>Nota</label>
-        <input type="text" name="note">
+        <label>Nota (opcional)</label>
+        <input type="text" name="note" value="">
     </div>
 </div>
 
@@ -160,7 +184,7 @@ $products = $st->fetchAll(PDO::FETCH_ASSOC);
         <select name="item_id" required>
             <option value="">Seleccione</option>
             <?php foreach ($products as $p): ?>
-                <option value="<?= $p["id"] ?>"><?= htmlspecialchars($p["name"]) ?></option>
+                <option value="<?= (int)$p["id"] ?>"><?= htmlspecialchars((string)$p["name"]) ?></option>
             <?php endforeach; ?>
         </select>
     </div>
@@ -191,10 +215,10 @@ $products = $st->fetchAll(PDO::FETCH_ASSOC);
 <tr><td colspan="4">No hay productos agregados.</td></tr>
 <?php else: foreach ($_SESSION["entrada_items"] as $id => $it): ?>
 <tr>
-    <td><?= htmlspecialchars($it["category"]) ?></td>
-    <td><?= htmlspecialchars($it["name"]) ?></td>
-    <td><?= $it["qty"] ?></td>
-    <td><a href="?remove=<?= $id ?>">Eliminar</a></td>
+    <td><?= htmlspecialchars((string)($it["category"] ?? "")) ?></td>
+    <td><?= htmlspecialchars((string)($it["name"] ?? "")) ?></td>
+    <td><?= (int)($it["qty"] ?? 0) ?></td>
+    <td><a href="?remove=<?= (int)$id ?>">Eliminar</a></td>
 </tr>
 <?php endforeach; endif; ?>
 </tbody>
