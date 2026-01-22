@@ -1,17 +1,50 @@
 <?php
 declare(strict_types=1);
 
-session_set_cookie_params([
-  'lifetime' => 0,
-  'path' => '/',
-  'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
-  'httponly' => true,
-  'samesite' => 'Lax',
-]);
-session_start();
+/* ===============================
+   Sesión (sin warnings)
+   =============================== */
+if (session_status() !== PHP_SESSION_ACTIVE) {
+  session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+    'httponly' => true,
+    'samesite' => 'Lax',
+  ]);
+  session_start();
+}
 
-if (empty($_SESSION["user"])) { header("Location: /login.php"); exit; }
-require_once __DIR__ . "/../../config/db.php";
+if (empty($_SESSION['user'])) {
+  header('Location: /login.php');
+  exit;
+}
+
+/* ===============================
+   DB (ruta robusta)
+   =============================== */
+$db_candidates = [
+  __DIR__ . "/../../config/db.php",
+  __DIR__ . "/../../db.php",
+  __DIR__ . "/../config/db.php",
+  __DIR__ . "/../db.php",
+];
+
+$loaded = false;
+foreach ($db_candidates as $p) {
+  if (is_file($p)) {
+    require_once $p;
+    $loaded = true;
+    break;
+  }
+}
+
+if (!$loaded || !isset($pdo) || !($pdo instanceof PDO)) {
+  http_response_code(500);
+  echo "Error crítico: no se pudo cargar la conexión a la base de datos.";
+  exit;
+}
+
 
 $isAdmin  = (($_SESSION["user"]["role"] ?? "") === "admin");
 $branchId = $_SESSION["user"]["branch_id"] ?? null;
@@ -59,12 +92,7 @@ $year = (int)date("Y");
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Ver paciente</title>
 
-  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
-
-
-
-
-
+  <link rel="stylesheet" href="/assets/css/styles.css?v=60">
 
   <style>
     .card-form{
