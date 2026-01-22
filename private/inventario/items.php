@@ -5,7 +5,9 @@ require_once __DIR__ . "/../_guard.php";
 $conn = $pdo;
 
 $user = $_SESSION["user"];
-$year = (int)date("Y");
+$year = date("Y");
+$today = date("Y-m-d");
+$now_dt = date("Y-m-d H:i:s");
 $branch_id = (int)($user["branch_id"] ?? 0);
 
 function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8"); }
@@ -47,7 +49,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "delet
     try {
       $stD = $conn->prepare("DELETE FROM inventory_stock WHERE branch_id=? AND item_id=?");
       $stD->execute([$branch_id, $item_id]);
-
       $_SESSION["flash_success"] = "Producto removido de esta sucursal.";
     } catch (Exception $e) {
       $_SESSION["flash_error"] = "No se pudo eliminar el producto de la sucursal.";
@@ -68,7 +69,9 @@ try {
       i.name,
       i.category_id,
       c.name AS category_name,
-      s.quantity AS stock
+      s.quantity AS stock,
+      i.purchase_price,
+      i.sale_price
     FROM inventory_items i
     INNER JOIN inventory_stock s
       ON s.item_id = i.id AND s.branch_id = ?
@@ -145,7 +148,6 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
     }
     .btn-primary-ui{background:#0b4d87;color:#fff;}
     .btn-secondary-ui{background:#eef2f6;color:#2b3b4a;}
-    .btn-danger-ui{background:#ffecec;color:#a40000;}
 
     .table-card{
       background:#fff;
@@ -160,8 +162,25 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
     th{color:#0b4d87;text-align:left;font-weight:900;font-size:12px;}
     tr:last-child td{border-bottom:none;}
 
-    .actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
-    .btn-mini{height:32px;border-radius:10px;padding:0 10px;font-size:12px;font-weight:900;border:none;cursor:pointer}
+    .actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+
+    .btn-action{
+      height:34px;
+      padding:0 12px;
+      border-radius:12px;
+      font-size:12px;
+      font-weight:900;
+      border:1px solid transparent;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      text-decoration:none;
+    }
+    .btn-edit{background:#eef5ff;color:#0b4d87;border-color:#cfe3ff;}
+    .btn-del{background:#ffecec;color:#a40000;border-color:#ffb6b6;}
+    .btn-action:hover{filter:brightness(.98);}
+
     .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;font-weight:900;font-size:12px}
     .pill-ok{background:#e9fff1;color:#0a7a33}
     .pill-low{background:#fff2e8;color:#8a3b00}
@@ -248,13 +267,15 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
           <tr>
             <th>Producto</th>
             <th>Categoría</th>
+            <th>Compra</th>
+            <th>Venta</th>
             <th>Stock</th>
             <th style="text-align:right;">Acciones</th>
           </tr>
         </thead>
         <tbody>
         <?php if (!$items): ?>
-          <tr><td colspan="4">No hay productos cargados para esta sucursal.</td></tr>
+          <tr><td colspan="6">No hay productos cargados para esta sucursal.</td></tr>
         <?php else: ?>
           <?php foreach ($items as $it): ?>
             <?php
@@ -267,16 +288,18 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
             <tr>
               <td><b><?= h($it["name"] ?? "") ?></b></td>
               <td><?= h($it["category_name"] ?? "") ?></td>
+              <td style="white-space:nowrap;font-weight:900;">RD$ <?= number_format((float)($it["purchase_price"] ?? 0), 2) ?></td>
+              <td style="white-space:nowrap;font-weight:900;">RD$ <?= number_format((float)($it["sale_price"] ?? 0), 2) ?></td>
               <td><span class="pill <?= $pillClass ?>"><?= $stock ?> • <?= $pillText ?></span></td>
 
               <td style="text-align:right;">
                 <div class="actions">
-                  <a class="btn-mini btn-secondary-ui" href="<?= h($edit_url_base . (int)$it["id"]) ?>">Editar</a>
+                  <a class="btn-action btn-edit" href="<?= h($edit_url_base . (int)$it["id"]) ?>">✏️ Editar</a>
 
                   <form method="post" style="display:inline" onsubmit="return confirm('¿Quitar este producto de esta sucursal?')">
                     <input type="hidden" name="action" value="delete_from_branch">
                     <input type="hidden" name="item_id" value="<?= (int)$it["id"] ?>">
-                    <button class="btn-mini btn-danger-ui" type="submit">Eliminar</button>
+                    <button class="btn-action btn-del" type="submit">🗑️ Eliminar</button>
                   </form>
                 </div>
               </td>
