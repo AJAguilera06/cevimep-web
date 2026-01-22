@@ -89,7 +89,7 @@ try {
     .btn{height:38px;border:none;border-radius:12px;padding:0 14px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
     .btn-primary{background:#e8f4ff;color:#0b4d87;}
     .btn-secondary{background:#eef2f6;color:#2b3b4a;}
-    .card{background:#fff;border-radius:16px;box-shadow:0 12px 30px rgba(0,0,0,.08);padding:14px;margin-top:12px;}
+    .card{background:#fff;border-radius:16px;box-shadow:0 12px 30px rgba(0,0,0,.08);padding:14px;margin-top:14px;}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
     .select{height:38px;border:1px solid #d8e1ea;border-radius:12px;padding:0 12px;background:#fff;outline:none;min-width:260px;}
     table{width:100%;border-collapse:separate;border-spacing:0;}
@@ -134,20 +134,14 @@ try {
       <div class="content-wrap">
 
         <div class="header">
-          <div>
-            <h1>Inventario</h1>
-            <div class="subtitle">
-              Productos por sucursal (automático). Sucursal: <b><?= h($branch_name ?: "—") ?></b>
-            </div>
-          </div>
+  <div>
+    <h1>Inventario</h1>
+    <div class="subtitle">
+      Productos por sucursal (automático). Sucursal: <b><?= h($branch_name ?: "—") ?></b>
+    </div>
+  </div>
+</div>
 
-          <div class="toolbar">
-            <a class="btn btn-secondary" href="/private/inventario/entrada.php">Entrada</a>
-            <a class="btn btn-secondary" href="/private/inventario/salida.php">Salida</a>
-            <a class="btn btn-secondary" href="/private/inventario/categorias.php">Categorías</a>
-            <a class="btn btn-secondary" href="/private/inventario/index.php">Volver</a>
-          </div>
-        </div>
 
         <?php if ($flash_ok): ?>
           <div class="flash-ok"><?= h($flash_ok) ?></div>
