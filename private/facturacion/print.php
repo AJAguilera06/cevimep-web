@@ -27,7 +27,7 @@ function colExists(PDO $conn, string $table, string $col): bool {
 }
 
 /* =========================
-   Elegir columna de nombre en patients
+   Elegir columna nombre paciente (patients)
 ========================= */
 $patientNameExpr = "''";
 if (colExists($conn, "patients", "full_name")) {
@@ -36,17 +36,17 @@ if (colExists($conn, "patients", "full_name")) {
   $patientNameExpr = "p.name";
 } elseif (colExists($conn, "patients", "nombre")) {
   $patientNameExpr = "p.nombre";
-} elseif (colExists($conn, "patients", "first_name") && colExists($conn, "patients", "last_name")) {
-  $patientNameExpr = "CONCAT(p.first_name,' ',p.last_name)";
 } elseif (colExists($conn, "patients", "nombres") && colExists($conn, "patients", "apellidos")) {
   $patientNameExpr = "CONCAT(p.nombres,' ',p.apellidos)";
+} elseif (colExists($conn, "patients", "first_name") && colExists($conn, "patients", "last_name")) {
+  $patientNameExpr = "CONCAT(p.first_name,' ',p.last_name)";
 }
 
 /* =========================
-   FACTURA (cabecera)
+   CABECERA FACTURA (invoices)
 ========================= */
 $sql = "
-SELECT i.*,
+SELECT i.id, i.invoice_date, i.payment_method, i.subtotal, i.total,
        {$patientNameExpr} AS patient_name,
        b.name AS branch_name
 FROM invoices i
@@ -64,97 +64,118 @@ if (!$inv) {
 }
 
 /* =========================
-   ITEMS
+   ITEMS (invoice_items -> inventory_items)
+   invoice_items: item_id, qty, unit_price, line_total
 ========================= */
-$stI = $conn->prepare("
-  SELECT product_name, quantity
-  FROM invoice_items
-  WHERE invoice_id = ?
-  ORDER BY id ASC
-");
+$itemNameExpr = "it.name";
+if (!colExists($conn, "inventory_items", "name")) {
+  // fallback por si tu inventory_items usa otro nombre
+  if (colExists($conn, "inventory_items", "product_name")) $itemNameExpr = "it.product_name";
+  elseif (colExists($conn, "inventory_items", "nombre")) $itemNameExpr = "it.nombre";
+}
+
+$sqlItems = "
+SELECT {$itemNameExpr} AS item_name,
+       ii.qty,
+       ii.unit_price,
+       ii.line_total
+FROM invoice_items ii
+LEFT JOIN inventory_items it ON it.id = ii.item_id
+WHERE ii.invoice_id = ?
+ORDER BY ii.id ASC
+";
+$stI = $conn->prepare($sqlItems);
 $stI->execute([$id]);
 $items = $stI->fetchAll(PDO::FETCH_ASSOC);
 
 /* =========================
    DATOS
 ========================= */
-$fecha    = (string)($inv["created_at"] ?? $inv["invoice_date"] ?? "");
+$fecha    = (string)($inv["invoice_date"] ?? "");
 $paciente = (string)($inv["patient_name"] ?? "");
 $sucursal = (string)($inv["branch_name"] ?? "");
 $pago     = strtoupper((string)($inv["payment_method"] ?? "EFECTIVO"));
 $total    = (float)($inv["total"] ?? 0);
+$year     = date("Y");
 
-$year = date("Y");
+/* Logo */
 $logo = "../../public/assets/img/cevimep.png";
 ?>
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8">
 <title>Factura #<?= (int)$id ?></title>
 
 <style>
-@page{ size:80mm auto; margin:2mm; }
-body{ margin:0; font-family: Arial, Helvetica, sans-serif; font-size:12px; color:#000; background:#fff; }
-.ticket{ width:80mm; margin:auto; }
-.center{text-align:center;}
-.bold{font-weight:700;}
-.divider{ border-top:1px dashed #000; margin:2mm 0; }
-.logo{ max-width:46mm; display:block; margin:2mm auto 1mm auto; filter: grayscale(100%); }
-.item{ margin:1mm 0; }
-.total{ font-size:14px; font-weight:900; display:flex; justify-content:space-between; margin-top:1mm; }
-.footer{ font-size:10px; text-align:center; margin-top:2mm; opacity:.85; }
-@media print{ button{display:none;} }
+  @page{ size:80mm auto; margin:2mm; }
+  html,body{ margin:0; padding:0; background:#fff; color:#000; font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:1.25; }
+  .ticket{ width:80mm; margin:0 auto; }
+  .center{text-align:center;}
+  .right{text-align:right;}
+  .bold{font-weight:700;}
+  .divider{ border-top:1px dashed #000; margin:2mm 0; }
+  .logo{ max-width:46mm; display:block; margin:2mm auto 1mm auto; filter:grayscale(100%); }
+  .title{ font-size:16px; font-weight:900; letter-spacing:.5px; margin:0; }
+  .subtitle{ font-size:10px; margin:.5mm 0 0 0; }
+  .branch{ font-size:12px; font-weight:900; margin-top:2mm; }
+  .item{ margin:1.2mm 0; }
+  .item-name{ font-weight:900; text-transform:uppercase; }
+  .item-meta{ margin-top:.4mm; }
+  .total{ font-size:14px; font-weight:900; display:flex; justify-content:space-between; margin-top:1mm; }
+  .footer{ font-size:10px; text-align:center; margin-top:2mm; opacity:.85; }
+  .btn{ margin-top:8px; border:1px solid #000; background:#fff; padding:6px 10px; border-radius:8px; font-weight:800; cursor:pointer; }
+  @media print{ .btn{ display:none !important; } }
 </style>
 </head>
 
 <body>
 <div class="ticket">
 
-<img src="<?= h($logo) ?>" class="logo" alt="CEVIMEP">
+  <img src="<?= h($logo) ?>" class="logo" alt="CEVIMEP">
 
-<div class="center bold" style="font-size:16px;">CEVIMEP</div>
-<div class="center" style="font-size:10px;">CENTRO DE VACUNACIÓN INTEGRAL</div>
-<div class="center" style="font-size:10px;">Y MEDICINA PREVENTIVA</div>
+  <div class="center title">CEVIMEP</div>
+  <div class="center subtitle">CENTRO DE VACUNACIÓN INTEGRAL</div>
+  <div class="center subtitle">Y MEDICINA PREVENTIVA</div>
+  <div class="center branch"><?= h($sucursal) ?></div>
 
-<div class="center bold"><?= h($sucursal) ?></div>
-
-<div class="divider"></div>
-
-<div><b>Factura:</b> #<?= (int)$id ?></div>
-<div><b>Fecha:</b> <?= h($fecha) ?></div>
-<div><b>Paciente:</b> <?= h($paciente) ?></div>
-<?php if($rep !== ""): ?>
-  <div><b>Representante:</b> <?= h($rep) ?></div>
-<?php endif; ?>
-<div><b>Pago:</b> <?= h($pago) ?></div>
-
-<div class="divider"></div>
-
-<?php if (!$items): ?>
-  <div class="center">Sin items.</div>
   <div class="divider"></div>
-<?php else: ?>
-  <?php foreach($items as $it): ?>
-    <div class="item">
-      <div class="bold"><?= h($it["product_name"] ?? "") ?></div>
-      <div>Cantidad: <?= (int)($it["quantity"] ?? 0) ?></div>
-    </div>
+
+  <div><span class="bold">Factura:</span> #<?= (int)$id ?></div>
+  <div><span class="bold">Fecha:</span> <?= h($fecha) ?></div>
+  <div><span class="bold">Paciente:</span> <?= h($paciente) ?></div>
+
+  <?php if ($rep !== ""): ?>
+    <div><span class="bold">Representante:</span> <?= h($rep) ?></div>
+  <?php endif; ?>
+
+  <div><span class="bold">Pago:</span> <?= h($pago) ?></div>
+
+  <div class="divider"></div>
+
+  <?php if (!$items): ?>
+    <div class="center">Sin items.</div>
     <div class="divider"></div>
-  <?php endforeach; ?>
-<?php endif; ?>
+  <?php else: ?>
+    <?php foreach ($items as $it): ?>
+      <div class="item">
+        <div class="item-name"><?= h($it["item_name"] ?? "") ?></div>
+        <div class="item-meta"><span class="bold">Cantidad:</span> <?= (int)($it["qty"] ?? 0) ?></div>
+      </div>
+      <div class="divider"></div>
+    <?php endforeach; ?>
+  <?php endif; ?>
 
-<div class="total">
-  <span>TOTAL A PAGAR</span>
-  <span><?= money($total) ?></span>
-</div>
+  <div class="total">
+    <span>TOTAL A PAGAR</span>
+    <span><?= money($total) ?></span>
+  </div>
 
-<div class="divider"></div>
+  <div class="divider"></div>
 
-<div class="footer">© <?= h($year) ?> CEVIMEP. Todos los derechos reservados.</div>
+  <div class="footer">© <?= h($year) ?> CEVIMEP. Todos los derechos reservados.</div>
 
-<button onclick="window.print()">Imprimir</button>
-
+  <button class="btn" onclick="window.print()">Imprimir</button>
 </div>
 </body>
 </html>
