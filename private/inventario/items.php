@@ -94,7 +94,7 @@ try {
 
 /* Links */
 $new_product_url = "/private/inventario/guardar_producto.php";
-$edit_url_base   = "/private/inventario/guardar_producto.php?edit_id=";
+$edit_url_base   = "/private/inventario/edit_item.php?id=";
 ?>
 <!doctype html>
 <html lang="es">

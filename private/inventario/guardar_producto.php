@@ -7,6 +7,11 @@ declare(strict_types=1);
  * - Usar _guard.php (ahí ya está el $pdo y seguridad)
  */
 require_once __DIR__ . "/../_guard.php";
+if (isset($_GET["edit_id"])) {
+  $id = (int)$_GET["edit_id"];
+  header("Location: /private/inventario/edit_item.php?id=" . $id);
+  exit;
+}
 $conn = $pdo;
 
 $year = (int)date("Y");
