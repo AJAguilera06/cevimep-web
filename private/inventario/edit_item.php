@@ -1,42 +1,33 @@
 <?php
-session_start();
+declare(strict_types=1);
 
-if (!isset($_SESSION["user"])) {
-  header("Location: ../../public/login.php");
-  exit;
-}
-
-require_once __DIR__ . "/../../config/db.php";
+require_once __DIR__ . "/../_guard.php";
 $conn = $pdo;
 
 $year = date("Y");
 
 /* ID */
 $id = (int)($_GET["id"] ?? 0);
-if ($id <= 0) {
-  die("ID inválido");
-}
+if ($id <= 0) { die("ID inválido"); }
 
 /* Cargar categorías */
 $categories = [];
-$qc = $conn->query("SELECT id, name FROM inventory_categories ORDER BY name ASC");
-if ($qc) {
-  $categories = $qc->fetchAll(PDO::FETCH_ASSOC);
-}
+try {
+  $qc = $conn->query("SELECT id, name FROM inventory_categories ORDER BY name ASC");
+  if ($qc) $categories = $qc->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
 
 /* Cargar item */
 $st = $conn->prepare("
   SELECT id, name, category_id, purchase_price, sale_price, min_stock
   FROM inventory_items
-  WHERE id = ? AND is_active = 1
+  WHERE id = ? AND (is_active = 1 OR is_active IS NULL)
   LIMIT 1
 ");
 $st->execute([$id]);
 $item = $st->fetch(PDO::FETCH_ASSOC);
 
-if (!$item) {
-  die("Producto no encontrado.");
-}
+if (!$item) { die("Producto no encontrado."); }
 
 $flash_error = "";
 
@@ -58,16 +49,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if ($category_id > 0) {
       $stc = $conn->prepare("SELECT id FROM inventory_categories WHERE id=?");
       $stc->execute([$category_id]);
-      if (!$stc->fetchColumn()) {
-        $flash_error = "Categoría inválida.";
-      }
+      if (!$stc->fetchColumn()) $flash_error = "Categoría inválida.";
     }
 
     if ($flash_error === "") {
       $up = $conn->prepare("
         UPDATE inventory_items
         SET name = ?, category_id = ?, purchase_price = ?, sale_price = ?, min_stock = ?
-        WHERE id = ? AND is_active = 1
+        WHERE id = ? AND (is_active = 1 OR is_active IS NULL)
       ");
 
       $cat_val = ($category_id > 0) ? $category_id : null;
@@ -76,7 +65,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
       if ($ok) {
         $_SESSION["flash_success"] = "✅ Producto actualizado correctamente";
-        header("Location: items.php");
+        header("Location: /private/inventario/items.php");
         exit;
       } else {
         $flash_error = "No se pudo guardar. Intenta de nuevo.";
@@ -96,201 +85,74 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CEVIMEP | Editar producto</title>
-
-  <link rel="stylesheet" href="../../assets/css/styles.css">
-
+  <title>Editar producto</title>
+  <link rel="stylesheet" href="/assets/css/styles.css?v=120">
   <style>
-    .form-grid{
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap:14px;
-      margin-top:18px;
-    }
-    .field{
-      display:flex;
-      flex-direction:column;
-      gap:8px;
-    }
-    .field label{
-      font-weight:900;
-      color:#0b2a4a;
-      font-size:13px;
-    }
-    .input, .select{
-      padding:10px 12px;
-      border-radius:14px;
-      border:1px solid #dbe7f3;
-      outline:none;
-      font-weight:700;
-      background:#fff;
-    }
-    .actions{
-      display:flex;
-      gap:10px;
-      margin-top:16px;
-      align-items:center;
-    }
-    .
-/assets/css/styles.css
-
-
-.secondary{
-      background:#eef6ff;
-      border:1px solid rgba(2,21,44,.12);
-      color:#0b2a4a;
-    }
-    .alert-error{
-      margin-top:14px;
-      padding:12px 14px;
-      border-radius:14px;
-      background:#ffecec;
-      border:1px solid #ffb7b7;
-      color:#7a1010;
-      font-weight:900;
-    }
+    .wrap{max-width:900px;margin:20px auto;padding:0 16px;}
+    .card{background:#fff;border-radius:16px;box-shadow:0 12px 30px rgba(0,0,0,.08);padding:16px;}
+    label{font-weight:800;color:#0b2b4a;font-size:13px;}
+    input,select{width:100%;height:40px;border:1px solid #d8e1ea;border-radius:12px;padding:0 12px;outline:none;margin-top:6px;}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+    .btn{height:40px;border:none;border-radius:12px;padding:0 14px;font-weight:900;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+    .btn-primary{background:#0b4d87;color:#fff;}
+    .btn-secondary{background:#eef2f6;color:#2b3b4a;}
+    .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;justify-content:flex-end}
+    .err{background:#ffecec;border:1px solid #ffb6b6;color:#a40000;border-radius:12px;padding:10px 12px;font-size:13px;margin-bottom:12px;}
+    @media(max-width:720px){.grid{grid-template-columns:1fr;}}
   </style>
 </head>
-
 <body>
 
-<header class="navbar">
-  <div class="inner">
-    <div></div>
+<div class="wrap">
+  <h2 style="margin:0 0 10px;font-weight:900;color:#0b2b4a;">Editar producto</h2>
 
-    <div class="brand">
-      <span class="dot"></span>
-      CEVIMEP
-    </div>
+  <?php if ($flash_error): ?>
+    <div class="err"><?= h($flash_error) ?></div>
+  <?php endif; ?>
 
-    <div class="nav-right">
-      <a href="../../public/logout.php">Salir</a>
-    </div>
-  </div>
-</header>
-
-<main class="app">
-
-  <!-- SIDEBAR (Inventario NO activo aquí, pero SIEMPRE manda a index.php) -->
-  <aside class="sidebar">
-    <div class="title">Menú</div>
-
-    <nav class="menu">
-      <a href="../dashboard.php">
-        <span class="ico">🏠</span> Panel
-      </a>
-
-      <a href="../patients/index.php">
-        <span class="ico">🧑‍🤝‍🧑</span> Pacientes
-      </a>
-
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;">
-        <span class="ico">📅</span> Citas
-      </a>
-
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;">
-        <span class="ico">🧾</span> Facturación
-      </a>
-
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;">
-        <span class="ico">💳</span> Caja
-      </a>
-
-      <a href="index.php">
-        <span class="ico">📦</span> Inventario
-      </a>
-
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;">
-        <span class="ico">⏳</span> Coming Soon
-      </a>
-    </nav>
-  </aside>
-
-  <section class="main">
-    <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
-        <div>
-          <h2 style="margin:0 0 6px;">Editar producto</h2>
-          <p class="muted" style="margin:0;">ID: <?php echo (int)$item["id"]; ?></p>
-        </div>
-
-        <a class="
-/assets/css/styles.css
-
-
- secondary" href="items.php" style="text-decoration:none;">Volver</a>
+  <div class="card">
+    <form method="post">
+      <div style="margin-bottom:12px;">
+        <label>Nombre</label>
+        <input name="name" value="<?= h($item["name"] ?? "") ?>" required>
       </div>
 
-      <?php if ($flash_error): ?>
-        <div class="alert-error"><?php echo htmlspecialchars($flash_error); ?></div>
-      <?php endif; ?>
-
-      <form method="POST" action="">
-        <div class="form-grid">
-
-          <div class="field" style="grid-column:1 / -1;">
-            <label>Producto</label>
-            <input class="input" name="name" value="<?php echo htmlspecialchars($item["name"]); ?>" required>
-          </div>
-
-          <div class="field">
-            <label>Categoría</label>
-            <select class="select" name="category_id">
-              <option value="0">Seleccionar...</option>
-              <?php foreach ($categories as $cat): ?>
-                <option value="<?php echo (int)$cat["id"]; ?>"
-                  <?php echo ((int)($item["category_id"] ?? 0) === (int)$cat["id"]) ? "selected" : ""; ?>
-                >
-                  <?php echo htmlspecialchars($cat["name"]); ?>
-                </option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-
-          <div class="field">
-            <label>Min Stock</label>
-            <input class="input" type="number" name="min_stock" min="0"
-              value="<?php echo (int)($item["min_stock"] ?? 0); ?>">
-          </div>
-
-          <div class="field">
-            <label>Precio compra</label>
-            <input class="input" type="number" step="0.01" min="0" name="purchase_price"
-              value="<?php echo (float)($item["purchase_price"] ?? 0); ?>">
-          </div>
-
-          <div class="field">
-            <label>Precio venta</label>
-            <input class="input" type="number" step="0.01" min="0" name="sale_price"
-              value="<?php echo (float)($item["sale_price"] ?? 0); ?>">
-          </div>
-
+      <div class="grid">
+        <div>
+          <label>Categoría</label>
+          <select name="category_id">
+            <option value="0">— Sin categoría —</option>
+            <?php foreach ($categories as $c): ?>
+              <option value="<?= (int)$c["id"] ?>" <?= ((int)$item["category_id"] === (int)$c["id"]) ? "selected" : "" ?>>
+                <?= h($c["name"]) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
         </div>
 
-        <div class="actions">
-          <button class="
-/assets/css/styles.css
-
-
-" type="submit">Guardar cambios</button>
-          <a class="
-/assets/css/styles.css
-
-
- secondary" href="items.php" style="text-decoration:none;">Cancelar</a>
+        <div>
+          <label>Min Stock</label>
+          <input type="number" name="min_stock" value="<?= h($item["min_stock"] ?? 0) ?>" min="0">
         </div>
-      </form>
 
-    </div>
-  </section>
+        <div>
+          <label>Precio compra</label>
+          <input type="number" step="0.01" name="purchase_price" value="<?= h($item["purchase_price"] ?? 0) ?>" min="0">
+        </div>
 
-</main>
+        <div>
+          <label>Precio venta</label>
+          <input type="number" step="0.01" name="sale_price" value="<?= h($item["sale_price"] ?? 0) ?>" min="0">
+        </div>
+      </div>
 
-<footer class="footer">
-  <div class="inner">
-    © <?php echo $year; ?> CEVIMEP. Todos los derechos reservados.
+      <div class="row">
+        <a class="btn btn-secondary" href="/private/inventario/items.php">Volver</a>
+        <button class="btn btn-primary" type="submit">Guardar cambios</button>
+      </div>
+    </form>
   </div>
-</footer>
+</div>
 
 </body>
 </html>
