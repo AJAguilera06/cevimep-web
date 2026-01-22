@@ -28,14 +28,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["add_item"])) {
 
     if ($item_id > 0 && $qty > 0) {
 
-        $st = $pdo->prepare("
-            SELECT id, name
-            FROM inventory_items
-            WHERE id = ? AND branch_id = ?
-            LIMIT 1
-        ");
-        $st->execute([$item_id, $branch_id]);
-        $item = $st->fetch(PDO::FETCH_ASSOC);
+        $st = $conn->prepare("
+    SELECT i.id, i.name
+    FROM inventory_items i
+    INNER JOIN inventory_stock s
+        ON s.item_id = i.id
+    WHERE s.branch_id = ?
+    GROUP BY i.id
+    ORDER BY i.name
+");
+$st->execute([$branch_id]);
+$products = $st->fetchAll(PDO::FETCH_ASSOC);
+
 
         if ($item) {
             if (isset($_SESSION["entrada_items"][$item_id])) {
