@@ -105,8 +105,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="cev-auth-logo-img">
   <img src="/assets/img/CEVIMEP.png" alt="CEVIMEP">
 </div>
-        <h1 class="cev-auth-title">CEVIMEP</h1>
-        <p class="cev-auth-subtitle">Centro de Vacunación y Medicina Preventiva</p>
+        <h1 class="cev-auth-title"></h1>
+        <p class="cev-auth-subtitle">Amamos la prevención,cuidamos tu salud.</p>
       </div>
 
       <?php if ($error): ?>
