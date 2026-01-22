@@ -5,19 +5,11 @@ require_once __DIR__ . "/../_guard.php";
 $conn = $pdo;
 
 $user = $_SESSION["user"];
-
 $year = (int)date("Y");
+$branch_id = (int)($user["branch_id"] ?? 0);
 
-function h($s): string {
-  return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8");
-}
+function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8"); }
 
-$error = "";
-$success = "";
-
-/**
- * Helpers BD (para evitar 500 si cambia el esquema)
- */
 function table_has_column(PDO $conn, string $table, string $column): bool {
   try {
     $stmt = $conn->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
@@ -29,10 +21,12 @@ function table_has_column(PDO $conn, string $table, string $column): bool {
 }
 
 $has_branch = table_has_column($conn, "inventory_categories", "branch_id");
-$branch_id = (int)($user["branch_id"] ?? 0);
 
-/* Crear categoría */
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["action"] === "create") {
+$success = "";
+$error = "";
+
+/* Crear */
+if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "create") {
   $name = trim((string)($_POST["name"] ?? ""));
   if ($name === "") {
     $error = "Debes escribir el nombre de la categoría.";
@@ -52,8 +46,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
   }
 }
 
-/* Eliminar categoría */
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["action"] === "delete") {
+/* Eliminar */
+if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "delete") {
   $id = (int)($_POST["id"] ?? 0);
   if ($id > 0) {
     try {
@@ -61,12 +55,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
       $st->execute([$id]);
       $success = "Categoría eliminada.";
     } catch (Exception $e) {
-      $error = "No se pudo eliminar la categoría (puede estar en uso).";
+      $error = "No se pudo eliminar (puede estar en uso).";
     }
   }
 }
 
-/* Listado categorías */
+/* Listar */
+$cats = [];
 try {
   if ($has_branch) {
     $st = $conn->prepare("SELECT id, name FROM inventory_categories WHERE branch_id=? ORDER BY name ASC");
@@ -88,36 +83,31 @@ try {
   <link rel="stylesheet" href="/assets/css/styles.css?v=60">
   <style>
     .content-wrap{padding:22px 24px;}
-    .page-title{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}
-    .page-title h1{margin:0;font-size:30px;font-weight:800;color:#0b2b4a}
-    .subtitle{margin:2px 0 0;color:#5b6b7a;font-size:13px}
-    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
-    .input{height:38px;border:1px solid #d8e1ea;border-radius:12px;padding:0 12px;background:#fff;outline:none;min-width:260px}
-    .btn{height:38px;border:none;border-radius:12px;padding:0 14px;font-weight:800;cursor:pointer}
-    .btn-primary{background:#e8f4ff;color:#0b4d87}
-    .btn-secondary{background:#eef2f6;color:#2b3b4a}
-    .card{background:#fff;border-radius:16px;box-shadow:0 12px 30px rgba(0,0,0,.08);padding:14px 14px;margin-top:12px}
-    table{width:100%;border-collapse:separate;border-spacing:0}
-    th,td{padding:12px 10px;border-bottom:1px solid #eef2f6;font-size:13px}
-    th{color:#0b4d87;text-align:left;font-weight:800;font-size:12px;letter-spacing:.2px}
-    tr:last-child td{border-bottom:none}
-    .flash-ok{background:#e9fff1;border:1px solid #a7f0bf;color:#0a7a33;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:10px}
-    .flash-err{background:#ffecec;border:1px solid #ffb6b6;color:#a40000;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:10px}
-    .btn-mini{height:32px;border-radius:10px;padding:0 10px;font-size:12px}
-    .btn-danger{background:#ffecec;color:#a40000}
+    .header{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
+    .header h1{margin:0;font-size:30px;font-weight:900;color:#0b2b4a;}
+    .subtitle{color:#5b6b7a;font-size:13px;margin-top:3px;}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end;}
+    .btn{height:38px;border:none;border-radius:12px;padding:0 14px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+    .btn-primary{background:#e8f4ff;color:#0b4d87;}
+    .btn-secondary{background:#eef2f6;color:#2b3b4a;}
+    .btn-danger{background:#ffecec;color:#a40000;}
+    .card{background:#fff;border-radius:16px;box-shadow:0 12px 30px rgba(0,0,0,.08);padding:14px;margin-top:12px;}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+    .input{height:38px;border:1px solid #d8e1ea;border-radius:12px;padding:0 12px;background:#fff;outline:none;min-width:280px;}
+    table{width:100%;border-collapse:separate;border-spacing:0;}
+    th,td{padding:12px 10px;border-bottom:1px solid #eef2f6;font-size:13px;}
+    th{color:#0b4d87;text-align:left;font-weight:900;font-size:12px;}
+    tr:last-child td{border-bottom:none;}
+    .flash-ok{background:#e9fff1;border:1px solid #a7f0bf;color:#0a7a33;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:10px;}
+    .flash-err{background:#ffecec;border:1px solid #ffb6b6;color:#a40000;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:10px;}
   </style>
 </head>
 <body>
 
   <div class="topbar">
     <div class="topbar-inner">
-      <div class="brand">
-        <span class="dot"></span>
-        <span class="name">CEVIMEP</span>
-      </div>
-      <div class="right">
-        <a class="logout" href="/logout.php">Salir</a>
-      </div>
+      <div class="brand"><span class="dot"></span><span class="name">CEVIMEP</span></div>
+      <div class="right"><a class="logout" href="/logout.php">Salir</a></div>
     </div>
   </div>
 
@@ -138,7 +128,7 @@ try {
     <main class="main">
       <div class="content-wrap">
 
-        <div class="page-title">
+        <div class="header">
           <div>
             <h1>Categorías</h1>
             <div class="subtitle">Gestiona tus categorías de inventario.</div>
@@ -148,27 +138,25 @@ try {
           </div>
         </div>
 
-        <?php if ($success): ?>
-          <div class="flash-ok"><?= h($success) ?></div>
-        <?php endif; ?>
-        <?php if ($error): ?>
-          <div class="flash-err"><?= h($error) ?></div>
-        <?php endif; ?>
+        <?php if ($success): ?><div class="flash-ok"><?= h($success) ?></div><?php endif; ?>
+        <?php if ($error): ?><div class="flash-err"><?= h($error) ?></div><?php endif; ?>
 
         <div class="card">
-          <form method="post" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <form method="post">
             <input type="hidden" name="action" value="create">
-            <input class="input" type="text" name="name" placeholder="Nombre de la categoría...">
-            <button class="btn btn-primary" type="submit">Guardar</button>
+            <div class="row">
+              <input class="input" type="text" name="name" placeholder="Nombre de la categoría..." required>
+              <button class="btn btn-primary" type="submit">Guardar</button>
+            </div>
           </form>
+        </div>
 
-          <div style="height:12px"></div>
-
+        <div class="card">
           <table>
             <thead>
               <tr>
                 <th>Nombre</th>
-                <th style="text-align:right">Acciones</th>
+                <th style="text-align:right;">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -178,11 +166,13 @@ try {
                 <?php foreach ($cats as $c): ?>
                   <tr>
                     <td><b><?= h($c["name"]) ?></b></td>
-                    <td style="text-align:right">
-                      <form method="post" onsubmit="return confirm('¿Eliminar esta categoría?')" style="display:inline">
+                    <td style="text-align:right;">
+                      <form method="post" style="display:inline;" onsubmit="return confirm('¿Eliminar esta categoría?')">
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="id" value="<?= (int)$c["id"] ?>">
-                        <button class="btn-mini btn-danger" type="submit">Eliminar</button>
+                        <button class="btn btn-danger" type="submit" style="height:32px;border-radius:10px;padding:0 10px;font-size:12px;">
+                          Eliminar
+                        </button>
                       </form>
                     </td>
                   </tr>
@@ -197,7 +187,7 @@ try {
   </div>
 
   <footer class="footer">
-    © <?= (int)$year ?> CEVIMEP. Todos los derechos reservados.
+    © <?= $year ?> CEVIMEP. Todos los derechos reservados.
   </footer>
 
 </body>

@@ -1,7 +1,6 @@
 <?php
-session_start();
-require_once __DIR__ . "/../../config/db.php";
-require_once __DIR__ . "/caja_lib.php";
+declare(strict_types=1);
+require_once __DIR__ . "/../_guard.php";
 
 if (!isset($_SESSION["user"])) { header("Location: ../../public/login.php"); exit; }
 
