@@ -1,93 +1,202 @@
 <?php
-session_start();
-if (!isset($_SESSION["user"])) {
-  header("Location: ../../public/login.php");
-  exit;
-}
+declare(strict_types=1);
 
-require_once __DIR__ . "/../../config/db.php";
+require_once __DIR__ . "/../_guard.php";
 $conn = $pdo;
 
 $user = $_SESSION["user"];
-$branch_id = (int)$user["branch_id"];
-$branch_name = $user["branch_name"] ?? "Sucursal";
+$year = (int)date("Y");
 $today = date("Y-m-d");
-$year = date("Y");
+$branch_id = (int)($user["branch_id"] ?? 0);
+$created_by = (int)($user["id"] ?? 0);
+
+function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8"); }
+
+if ($branch_id <= 0) {
+  http_response_code(400);
+  die("Sucursal inválida (branch_id).");
+}
+
+/* Nombre sucursal */
+$branch_name = "";
+try {
+  $stB = $conn->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
+  $stB->execute([$branch_id]);
+  $branch_name = (string)($stB->fetchColumn() ?: "");
+} catch (Exception $e) {}
+
+/* Productos disponibles para la sucursal (según inventory_stock) */
+$items = [];
+try {
+  $stI = $conn->prepare("
+    SELECT i.id, i.name, s.quantity
+    FROM inventory_items i
+    INNER JOIN inventory_stock s ON s.item_id=i.id AND s.branch_id=?
+    ORDER BY i.name ASC
+  ");
+  $stI->execute([$branch_id]);
+  $items = $stI->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {}
+
+$flash_ok = "";
+$flash_err = "";
+
+/* Guardar Entrada */
+if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_in") {
+  $item_id = (int)($_POST["item_id"] ?? 0);
+  $qty     = (int)($_POST["qty"] ?? 0);
+  $note    = trim((string)($_POST["note"] ?? ""));
+
+  if ($item_id <= 0 || $qty <= 0) {
+    $flash_err = "Debes seleccionar un producto y una cantidad válida.";
+  } else {
+    try {
+      $conn->beginTransaction();
+
+      // Genera batch
+      $batch = "E" . date("YmdHis") . "-" . $branch_id . "-" . random_int(100, 999);
+
+      // Si existe inventory_movements, registra; si no, no rompe: (try/catch)
+      try {
+        $stM = $conn->prepare("
+          INSERT INTO inventory_movements
+            (branch_id, item_id, type, qty, note, created_by, created_at, batch)
+          VALUES
+            (?, ?, 'IN', ?, ?, ?, NOW(), ?)
+        ");
+        $stM->execute([$branch_id, $item_id, $qty, $note, $created_by, $batch]);
+      } catch (Exception $e) {
+        // Si tu tabla movements no tiene esas columnas exactas, luego me dices y la ajusto.
+      }
+
+      // Actualiza stock (TU columna es quantity)
+      $stS = $conn->prepare("
+        UPDATE inventory_stock
+        SET quantity = quantity + ?
+        WHERE branch_id=? AND item_id=?
+      ");
+      $stS->execute([$qty, $branch_id, $item_id]);
+
+      $conn->commit();
+      $_SESSION["flash_success"] = "Entrada registrada correctamente.";
+      header("Location: /private/inventario/acuse.php?batch=" . urlencode($batch));
+      exit;
+
+    } catch (Exception $e) {
+      if ($conn->inTransaction()) $conn->rollBack();
+      $flash_err = "No se pudo guardar la entrada.";
+    }
+  }
+}
+
+/* Historial del día (si existe inventory_movements) */
+$history = [];
+try {
+  $stH = $conn->prepare("
+    SELECT m.created_at, i.name, m.qty, m.note, m.batch
+    FROM inventory_movements m
+    INNER JOIN inventory_items i ON i.id=m.item_id
+    WHERE m.branch_id=? AND m.type='IN' AND DATE(m.created_at)=?
+    ORDER BY m.created_at DESC
+    LIMIT 200
+  ");
+  $stH->execute([$branch_id, $today]);
+  $history = $stH->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+  $history = [];
+}
+
+$flash_ok = $_SESSION["flash_success"] ?? $flash_ok;
+unset($_SESSION["flash_success"]);
 ?>
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<title>Entrada | CEVIMEP</title>
-<link rel="stylesheet" href="/public/assets/css/styles.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entrada - Inventario</title>
+  <link rel="stylesheet" href="/assets/css/styles.css?v=60">
 </head>
 <body>
+<?php require_once __DIR__ . "/../_topbar.php"; ?>
+<?php require_once __DIR__ . "/../_sidebar.php"; ?>
 
-<!-- TOP BAR -->
-<div style="background:linear-gradient(180deg,#0b3b86,#062a63);padding:12px 20px;color:#fff;display:flex;justify-content:space-between;align-items:center;">
-  <div style="font-weight:800;letter-spacing:.5px;">
-    <span style="display:inline-block;width:8px;height:8px;background:#22c3b8;border-radius:50%;margin-right:8px;"></span>
-    CEVIMEP
-  </div>
-  <a href="/public/logout.php" style="color:#fff;text-decoration:none;border:1px solid rgba(255,255,255,.35);padding:6px 14px;border-radius:20px;font-weight:700;">
-    Salir
-  </a>
-</div>
-
-<div style="display:flex;min-height:calc(100vh - 56px);">
-
-<!-- SIDEBAR -->
-<aside style="width:230px;background:#fff;border-right:1px solid rgba(0,0,0,.08);padding:14px;">
-  <h4 style="margin-bottom:12px;color:#0b3b86;">Menú</h4>
-  <nav style="display:flex;flex-direction:column;gap:6px;">
-    <a href="/private/dashboard.php">🏠 Panel</a>
-    <a href="/private/patients/index.php">👤 Pacientes</a>
-    <a href="/private/citas/index.php">📅 Citas</a>
-    <a href="/private/facturacion/index.php">🧾 Facturación</a>
-    <a href="/private/caja/index.php">💵 Caja</a>
-    <a href="/private/inventario/index.php" style="background:#ffe9d6;border-radius:10px;padding:6px;">📦 Inventario</a>
-    <a href="/private/estadisticas/index.php">📊 Estadísticas</a>
-  </nav>
-</aside>
-
-<!-- CONTENT -->
-<main style="flex:1;padding:24px;">
-
-  <h2>Entrada</h2>
-  <p class="muted">Sucursal: <?= htmlspecialchars($branch_name) ?></p>
-
-  <!-- FORM -->
-  <form method="post" action="guardar_entrada.php" class="card">
-    <div class="grid grid-2">
-      <div>
-        <label>Fecha</label>
-        <input type="date" name="fecha" value="<?= $today ?>" required>
-      </div>
-      <div>
-        <label>Suplidor</label>
-        <input type="text" name="suplidor" placeholder="Ej: Almacén, Ministerio">
-      </div>
-    </div>
-
+<main class="content">
+  <div class="page-header">
     <div>
-      <label>Nota (opcional)</label>
-      <input type="text" name="nota" placeholder="Observación...">
+      <h2>Entrada</h2>
+      <p class="muted">Sucursal: <b><?= h($branch_name ?: "—") ?></b></p>
     </div>
-
-    <!-- Aquí va tu lógica actual de productos / cantidades -->
-    <!-- NO la toqué, solo el layout -->
-
-    <div style="margin-top:20px;text-align:right;">
-      <button type="submit" class="btn btn-primary">Guardar e imprimir</button>
+    <div class="page-actions">
+      <a class="btn btn-light" href="/private/inventario/items.php">Productos</a>
+      <a class="btn btn-light" href="/private/inventario/index.php">Volver</a>
     </div>
-  </form>
+  </div>
 
-  <footer style="margin-top:30px;text-align:center;color:#666;">
-    © <?= $year ?> CEVIMEP. Todos los derechos reservados.
-  </footer>
+  </div>
+          <div class="toolbar">
+            <a class="btn btn-secondary" href="/private/inventario/items.php">Productos</a>
+            <a class="btn btn-secondary" href="/private/inventario/index.php">Volver</a>
+          </div>
+        </div>
 
+        <?php if ($flash_ok): ?><div class="flash-ok"><?= h($flash_ok) ?></div><?php endif; ?>
+        <?php if ($flash_err): ?><div class="flash-err"><?= h($flash_err) ?></div><?php endif; ?>
+
+        <div class="card">
+          <form method="post">
+            <input type="hidden" name="action" value="save_in">
+            <div class="row">
+              <select class="select" name="item_id" required>
+                <option value="">Selecciona un producto...</option>
+                <?php foreach ($items as $it): ?>
+                  <option value="<?= (int)$it["id"] ?>">
+                    <?= h($it["name"]) ?> (Stock: <?= (int)$it["quantity"] ?>)
+                  </option>
+                <?php endforeach; ?>
+              </select>
+
+              <input class="input" type="number" name="qty" min="1" placeholder="Cantidad" required>
+              <input class="input" type="text" name="note" placeholder="Nota (opcional)" style="min-width:280px">
+              <button class="btn btn-primary" type="submit">Guardar</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <div style="font-weight:900;color:#0b2b4a;margin-bottom:8px;">
+            Historial de hoy (<?= h($today) ?>)
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Hora</th>
+                <th>Producto</th>
+                <th>Cant.</th>
+                <th>Nota</th>
+                <th>Batch</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php if (!$history): ?>
+                <tr><td colspan="5">Sin registros hoy.</td></tr>
+              <?php else: ?>
+                <?php foreach ($history as $r): ?>
+                  <tr>
+                    <td><?= h(date("h:i A", strtotime((string)$r["created_at"]))) ?></td>
+                    <td><b><?= h($r["name"]) ?></b></td>
+                    <td><?= (int)$r["qty"] ?></td>
+                    <td><?= h($r["note"]) ?></td>
+                    <td><?= h($r["batch"]) ?></td>
+                  </tr>
+                <?php endforeach; ?>
+              <?php endif; ?>
+            </tbody>
+          </table>
+        </div>
+
+  <footer class="footer-bar">© <?= (int)$year ?> CEVIMEP. Todos los derechos reservados.</footer>
 </main>
-</div>
-
 </body>
 </html>
