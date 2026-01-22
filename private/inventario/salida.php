@@ -124,8 +124,50 @@ unset($_SESSION["flash_success"]);
   <link rel="stylesheet" href="/assets/css/styles.css?v=60">
 </head>
 <body>
-<?php require_once __DIR__ . "/../_topbar.php"; ?>
-<?php require_once __DIR__ . "/../_sidebar.php"; ?>
+<!-- TOP BAR (inline, sin _topbar.php) -->
+<style>
+  .cev-topbar{position:sticky;top:0;z-index:50;background:linear-gradient(180deg,#0b3b86 0%, #062a63 100%);color:#fff}
+  .cev-topbar .inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:12px 18px}
+  .cev-brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.4px}
+  .cev-dot{width:8px;height:8px;border-radius:50%;background:#22c3b8;display:inline-block}
+  .cev-btn{border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.10);color:#fff;padding:6px 12px;border-radius:999px;font-weight:700;text-decoration:none}
+  .cev-btn:hover{background:rgba(255,255,255,.18)}
+  .cev-shell{display:flex;min-height:calc(100vh - 56px);}
+  .cev-sidebar{width:240px;flex:0 0 240px;background:#fff;border-right:1px solid rgba(0,0,0,.08)}
+  .cev-sidebar .box{padding:14px}
+  .cev-sidebar h4{margin:8px 0 12px 0;font-size:14px;color:#0b3b86}
+  .cev-nav{display:flex;flex-direction:column;gap:6px}
+  .cev-nav a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;color:#0b1f3a;text-decoration:none;font-weight:700}
+  .cev-nav a:hover{background:rgba(11,59,134,.07)}
+  .cev-nav a.active{background:rgba(255,153,51,.14);border:1px solid rgba(255,153,51,.25)}
+  .cev-content{flex:1;min-width:0}
+  body{background:radial-gradient(circle at 20% 10%, rgba(34,195,184,.18) 0%, rgba(255,255,255,0) 35%),
+               radial-gradient(circle at 80% 0%, rgba(11,59,134,.20) 0%, rgba(255,255,255,0) 45%),
+               #f6f8fb;}
+  @media (max-width: 780px){ .cev-sidebar{display:none} }
+</style>
+<header class="cev-topbar">
+  <div class="inner">
+    <div class="cev-brand"><span class="cev-dot"></span><span>CEVIMEP</span></div>
+    <div><a class="cev-btn" href="/public/logout.php">Salir</a></div>
+  </div>
+</header>
+<div class="cev-shell">
+  <aside class="cev-sidebar">
+    <div class="box">
+      <h4>Menú</h4>
+      <nav class="cev-nav">
+        <a href="/private/dashboard.php">🏠 Panel</a>
+        <a href="/private/patients/index.php">👤 Pacientes</a>
+        <a href="/private/citas/index.php">📅 Citas</a>
+        <a href="/private/facturacion/index.php">🧾 Facturación</a>
+        <a href="/private/caja/index.php">💵 Caja</a>
+        <a class="active" href="/private/inventario/index.php">📦 Inventario</a>
+        <a href="/private/estadisticas/index.php">📊 Estadísticas</a>
+      </nav>
+    </div>
+  </aside>
+  <div class="cev-content">
 
 <main class="content">
   <div class="page-header">
@@ -204,5 +246,7 @@ unset($_SESSION["flash_success"]);
 
   <footer class="footer-bar">© <?= (int)$year ?> CEVIMEP. Todos los derechos reservados.</footer>
 </main>
+  </div><!-- cev-content -->
+</div><!-- cev-shell -->
 </body>
 </html>
