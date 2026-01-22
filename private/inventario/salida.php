@@ -1,22 +1,20 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+declare(strict_types=1);
 
-if (!isset($_SESSION["user"])) {
-    header("Location: ../../public/login.php");
-    exit;
-}
+/* ===============================
+   Bootstrap / Auth / DB
+   =============================== */
+require_once __DIR__ . "/../_guard.php";
 
-require_once __DIR__ . "/../../../config/db.php";
+$conn = $pdo;
 
 $user = $_SESSION["user"];
-$branch_id   = (int)$user["branch_id"];
-$branch_name = $user["branch_name"] ?? "";
+$branch_id   = (int)($user["branch_id"] ?? 0);
+$branch_name = $user["branch_name"] ?? "CEVIMEP";
 $today = date("Y-m-d");
 
-if (!isset($_SESSION["salida_items"])) {
-    $_SESSION["salida_items"] = [];
+if (!isset($_SESSION["entrada_items"])) {
+    $_SESSION["entrada_items"] = [];
 }
 
 /* =========================
