@@ -91,8 +91,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     $invoice_date = $_POST["invoice_date"] ?? $today;
     $payment_method = strtoupper(trim($_POST["payment_method"] ?? "EFECTIVO"));
+    if (!in_array($payment_method, ["EFECTIVO","TARJETA","TRANSFERENCIA"], true)) { $payment_method = "EFECTIVO"; }
     $cash_received = isset($_POST["cash_received"]) && $_POST["cash_received"] !== "" ? (float)$_POST["cash_received"] : null;
-
+    if ($payment_method !== "EFECTIVO") { $cash_received = null; }
     // ✅ Cobertura (seguro): monto que cubre el seguro
     $coverage_amount = isset($_POST["coverage_amount"]) && $_POST["coverage_amount"] !== "" ? (float)$_POST["coverage_amount"] : 0.0;
     $representative = trim((string)($_POST["representative"] ?? ""));
@@ -549,6 +550,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     lblTotal.textContent = money(total);
 
     const isCash = (payment.value === "EFECTIVO");
+    // Mostrar/ocultar y desactivar "Efectivo recibido" si NO es efectivo
+    const cashField = cashReceived && cashReceived.closest ? cashReceived.closest('.field') : null;
+    if (cashField) cashField.style.display = isCash ? '' : 'none';
+    if (cashReceived) {
+      cashReceived.disabled = !isCash;
+      cashReceived.readOnly = !isCash;
+      if (!isCash) cashReceived.value = "0.00";
+    }
+
+    // Mostrar cambio solo si es efectivo
     cashBox.style.display = isCash ? 'flex' : 'none';
 
     if (isCash) {
