@@ -1,7 +1,8 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . "/_guard.php";
+require_once __DIR__ . "/../_guard.php";
+
 
 header("Location: /private/dashboard.php");
 exit;
