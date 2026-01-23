@@ -1,6 +1,32 @@
 <?php
-require_once __DIR__ . '/../private/config/db.php';
-require_once __DIR__ . '/../private/bootstrap.php';
+// ==========================
+//  CEVIMEP - LOGIN (PUBLIC)
+// ==========================
+
+// DB (esto sí debe existir)
+$dbPath = __DIR__ . '/../private/config/db.php';
+if (!file_exists($dbPath)) {
+    die("Error: No se encontró db.php en: " . htmlspecialchars($dbPath));
+}
+require_once $dbPath;
+
+// Bootstrap (si existe lo carga; si no, no rompe)
+$bootstrapPath = __DIR__ . '/../private/bootstrap.php';
+if (file_exists($bootstrapPath)) {
+    require_once $bootstrapPath;
+} else {
+    // Fallback mínimo para Railway
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+}
+
+// Helper seguro (por si bootstrap no lo trae)
+if (!function_exists('h')) {
+    function h($v) {
+        return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+    }
+}
 
 $error = null;
 
@@ -35,10 +61,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
-
-function h($v) {
-    return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
-}
 ?>
 <!doctype html>
 <html lang="es">
@@ -47,37 +69,26 @@ function h($v) {
     <title>CEVIMEP | Iniciar sesión</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <!-- CSS del login -->
-    <link rel="stylesheet" href="/assets/css/auth.css?v=1">
+    <link rel="stylesheet" href="/assets/css/auth.css?v=2">
 </head>
 
 <body class="auth-ui">
 
-    <!-- CONTENIDO PRINCIPAL -->
     <div class="auth-page">
         <div class="auth-card">
 
-            <!-- LOGO -->
             <div class="auth-logo">
                 <img src="/assets/img/CEVIMEP.png" alt="CEVIMEP">
             </div>
 
-            <!-- TITULOS -->
             <h1 class="auth-title">CEVIMEP</h1>
-            <p class="auth-subtitle">
-                Centro de Vacunación Integral y Medicina Preventiva
-            </p>
+            <p class="auth-subtitle">Amamos la prevención, cuidamos tu salud.</p>
 
-            <!-- ERROR -->
             <?php if ($error): ?>
-                <div class="auth-alert error">
-                    <?= h($error) ?>
-                </div>
+                <div class="auth-alert error"><?= h($error) ?></div>
             <?php endif; ?>
 
-            <!-- FORMULARIO -->
             <form method="post" action="/login.php" autocomplete="on">
-
                 <div class="form-group">
                     <label for="email">Correo</label>
                     <input
@@ -103,17 +114,14 @@ function h($v) {
                     >
                 </div>
 
-                <button type="submit" class="btn btn-primary">
-                    Ingresar
-                </button>
+                <button type="submit" class="btn btn-primary">Ingresar</button>
             </form>
 
         </div>
     </div>
 
-    <!-- FOOTER -->
     <div class="auth-footer">
-        © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
+        © <?= (int)date('Y') ?> CEVIMEP — Todos los derechos reservados.
     </div>
 
 </body>
