@@ -2,27 +2,40 @@
    CEVIMEP - AUTH (LOGIN)
 ========================= */
 
-.auth-ui, .auth-ui * {
-  box-sizing: border-box;
-}
+/* Quita márgenes del navegador y evita scroll raro */
+html, body { margin: 0; padding: 0; height: 100%; }
+
+.auth-ui, .auth-ui * { box-sizing: border-box; }
 
 .auth-ui{
   min-height: 100vh;
   font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
   background: #ffffff;
   color: #1f2937;
+
+  /* Layout */
   display: flex;
   flex-direction: column;
-  overflow-x: hidden; /* 🔑 clave */
+
+  /* Evita scroll horizontal sí o sí */
+  overflow-x: hidden;
 }
 
-/* Centro */
+/* Área del login:
+   - ocupa todo el alto disponible
+   - si la pantalla es pequeña, permite scroll vertical
+   - deja espacio para el footer fijo
+*/
 .auth-ui .auth-page{
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+
   padding: 20px;
+  padding-bottom: 86px; /* espacio para el footer fijo */
+
+  overflow-y: auto;
 }
 
 /* Card */
@@ -39,6 +52,7 @@
 .auth-ui .auth-logo img{
   width: 130px;
   margin-bottom: 10px;
+  height: auto;
 }
 
 /* Títulos */
@@ -75,10 +89,10 @@
   border-radius: 10px;
   border: 1px solid #d1d5db;
   font-size: 14px;
+  outline: none;
 }
 
 .auth-ui .input:focus{
-  outline: none;
   border-color: #1aa6a0;
 }
 
@@ -116,21 +130,23 @@
   color: #991b1b;
 }
 
-/* Footer azul oscuro */
+/* Footer azul oscuro: FULL WIDTH REAL + FIXED sin causar scroll */
 .auth-ui .auth-footer{
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  width: 100%;
   background: #0b3c7a;
   color: #ffffff;
   text-align: center;
 
-  /* tamaño */
-  padding: 18px 12px;
+  /* Más grande */
+  padding: 22px 12px;
   font-size: 14px;
   font-weight: 700;
 
-  /* ancho completo real */
-  width: 100vw;
-  margin-left: calc(-50vw + 50%);
-  
-  /* fijada abajo sin causar scroll */
-  flex-shrink: 0;
+  /* Encima de todo */
+  z-index: 999;
 }

@@ -81,7 +81,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <img src="/assets/img/CEVIMEP.png" alt="CEVIMEP">
             </div>
 
-            <h1 class="auth-title">CEVIMEP</h1>
             <p class="auth-subtitle">Amamos la prevención, cuidamos tu salud.</p>
 
             <?php if ($error): ?>
