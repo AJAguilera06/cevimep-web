@@ -1,25 +1,11 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . "/../_guard.php";
-$conn = $pdo;
+require_once __DIR__ . "/_guard.php";
 
-function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8"); }
+header("Location: /private/dashboard.php");
+exit;
 
-$user = $_SESSION["user"] ?? [];
-$year = (int)date("Y");
-$branch_id = (int)($user["branch_id"] ?? 0);
-
-if ($branch_id <= 0) {
-  http_response_code(400);
-  die("Sucursal inválida (branch_id).");
-}
-
-$patient_id = (int)($_GET["patient_id"] ?? 0);
-if ($patient_id <= 0) {
-  header("Location: /private/facturacion/index.php");
-  exit;
-}
 
 /* Nombre sucursal */
 $branch_name = "";
