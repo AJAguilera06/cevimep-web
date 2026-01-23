@@ -21,9 +21,9 @@ if (!isset($_SESSION["entrada_items"]) || !is_array($_SESSION["entrada_items"]))
   $_SESSION["entrada_items"] = [];
 }
 
-/* =========================================================
-   Helpers: detectar columnas reales (para no romper por BD)
-   ========================================================= */
+/* =========================
+   Helpers BD (no romper por columnas)
+========================= */
 function table_columns(PDO $conn, string $table): array {
   $db = (string)$conn->query("SELECT DATABASE()")->fetchColumn();
   $st = $conn->prepare("
@@ -82,14 +82,19 @@ function get_categories(PDO $conn, int $branch_id): array {
 $categories = get_categories($conn, $branch_id);
 
 /* =========================
-   Productos SOLO de la sede
+   Productos SOLO de la sede + categoria_id (si existe)
 ========================= */
+$itemCols = table_columns($conn, "inventory_items");
+$itemCatCol = pick_col($itemCols, ["category_id","inventory_category_id","categoria_id","cat_id"]);
+
+$selectCat = $itemCatCol ? "i.{$itemCatCol} AS category_id" : "0 AS category_id";
+
 $st = $conn->prepare("
-  SELECT i.id, i.name
+  SELECT i.id, i.name, {$selectCat}
   FROM inventory_items i
   INNER JOIN inventory_stock s ON s.item_id=i.id
   WHERE s.branch_id=?
-  GROUP BY i.id, i.name
+  GROUP BY i.id, i.name " . ($itemCatCol ? ", i.{$itemCatCol}" : "") . "
   ORDER BY i.name
 ");
 $st->execute([$branch_id]);
@@ -143,7 +148,7 @@ if (isset($_GET["remove"])) {
 }
 
 /* =========================
-   Guardar entrada + imprimir
+   Guardar entrada + imprimir (sin depender de type)
 ========================= */
 $print_receipt = false;
 $receipt = null;
@@ -161,7 +166,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
     if ($note !== "") $note_final .= ($note_final ? " | " : "") . "Nota: {$note}";
     if ($note_final === "") $note_final = null;
 
-    // columnas reales
     $movCols = table_columns($conn, "inventory_movements");
     $colType   = pick_col($movCols, ["type","movement_type","tipo","accion","action","movement"]);
     $colBranch = pick_col($movCols, ["branch_id","sucursal_id","branch","sucursal"]);
@@ -189,11 +193,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
     $stMov->execute($params);
     $movement_id = (int)$conn->lastInsertId();
 
-    // items
-    $itemCols = table_columns($conn, "inventory_movement_items");
-    $colMovId = pick_col($itemCols, ["movement_id","inventory_movement_id","movimiento_id","entry_id","entrada_id"]);
-    $colItem  = pick_col($itemCols, ["item_id","inventory_item_id","product_id","producto_id"]);
-    $colQty   = pick_col($itemCols, ["quantity","qty","cantidad"]);
+    $itemCols2 = table_columns($conn, "inventory_movement_items");
+    $colMovId = pick_col($itemCols2, ["movement_id","inventory_movement_id","movimiento_id","entry_id","entrada_id"]);
+    $colItem  = pick_col($itemCols2, ["item_id","inventory_item_id","product_id","producto_id"]);
+    $colQty   = pick_col($itemCols2, ["quantity","qty","cantidad"]);
     if (!$colMovId || !$colItem || !$colQty) {
       $conn->rollBack();
       die("Config BD: inventory_movement_items no tiene columnas requeridas.");
@@ -202,7 +205,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
     $sqlIt = "INSERT INTO inventory_movement_items ({$colMovId}, {$colItem}, {$colQty}) VALUES (?, ?, ?)";
     $stIt = $conn->prepare($sqlIt);
 
-    // stock
     $stockCols = table_columns($conn, "inventory_stock");
     $colSItem  = pick_col($stockCols, ["item_id","inventory_item_id","product_id","producto_id"]);
     $colSBranch= pick_col($stockCols, ["branch_id","sucursal_id","branch","sucursal"]);
@@ -256,23 +258,29 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Entrada</title>
+
+  <!-- CSS ABSOLUTO (Railway + /private) -->
   <link rel="stylesheet" href="/assets/css/styles.css?v=30">
 
   <style>
-    /* Ajustes para que quede EXACTO como tu captura */
+    /* Layout como tu ejemplo: ancho, ordenado, y fila de producto completa */
     .content .wrap { max-width: 1180px; margin: 0 auto; }
-    .page-card { padding: 18px 18px 14px; }
-    .grid-2 {
-      display: grid;
+
+    .form-grid-2{
+      display:grid;
       grid-template-columns: 1fr 1fr;
       gap: 14px;
+      margin-top: 14px;
     }
-    .row-4 {
-      display: grid;
-      grid-template-columns: 220px 1fr 140px 110px;
+
+    .row-4{
+      display:grid;
+      grid-template-columns: 220px 1fr 140px 120px;
       gap: 14px;
-      align-items: end;
+      align-items:end;
+      margin-top: 12px;
     }
+
     .hint { font-size: 12px; opacity: .7; margin-top: 6px; }
     .btn-right { display:flex; justify-content:flex-end; margin-top: 12px; }
 
@@ -286,6 +294,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
 </head>
 <body>
 
+<!-- NAVBAR (igual dashboard) -->
 <div class="navbar">
   <div class="inner">
     <div class="brand"><span class="dot"></span><strong>CEVIMEP</strong></div>
@@ -294,25 +303,36 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
 </div>
 
 <div class="layout">
+
+  <!-- SIDEBAR igual dashboard + submenú inventario -->
   <aside class="sidebar">
     <h3 class="menu-title">Menú</h3>
+
     <nav class="menu">
       <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
+      <a href="/private/patients/index.php"><span class="ico">👤</span> Pacientes</a>
+      <a href="/private/citas/index.php"><span class="ico">📅</span> Citas</a>
+      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
+      <a href="/private/caja/index.php"><span class="ico">💳</span> Caja</a>
+
       <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a class="active" href="/private/inventario/entrada.php" style="margin-left:10px;"><span class="ico">➕</span> Entrada</a>
-      <a href="/private/inventario/salida.php" style="margin-left:10px;"><span class="ico">➖</span> Salida</a>
+      <a class="active" href="/private/inventario/entrada.php" style="margin-left:14px;"><span class="ico">➕</span> Entrada</a>
+      <a href="/private/inventario/salida.php" style="margin-left:14px;"><span class="ico">➖</span> Salida</a>
+
+      <a href="/private/estadisticas/index.php"><span class="ico">📊</span> Estadísticas</a>
     </nav>
   </aside>
 
   <main class="content">
     <div class="wrap">
 
-      <div class="card page-card">
+      <div class="card">
         <h3 style="margin:0;">Entrada</h3>
         <div class="muted" style="margin-top:4px;">Registra entrada de inventario (sede actual)</div>
 
-        <form method="post" style="margin-top:14px;">
-          <div class="grid-2">
+        <form method="post" id="frmEntrada">
+
+          <div class="form-grid-2">
             <div>
               <label>Fecha</label>
               <input type="date" value="<?= htmlspecialchars($today) ?>" disabled>
@@ -332,12 +352,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
             </div>
           </div>
 
-          <div style="height:12px;"></div>
-
           <div class="row-4">
             <div>
               <label>Categoría</label>
-              <select name="category_id">
+              <select name="category_id" id="categorySelect">
                 <option value="">Todas ...</option>
                 <?php foreach ($categories as $c): ?>
                   <option value="<?= (int)$c["id"] ?>"><?= htmlspecialchars((string)$c["name"]) ?></option>
@@ -347,10 +365,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
 
             <div>
               <label>Producto</label>
-              <select name="item_id" required>
+              <select name="item_id" id="productSelect" required>
                 <option value="">-- Seleccionar --</option>
                 <?php foreach ($products as $p): ?>
-                  <option value="<?= (int)$p["id"] ?>"><?= htmlspecialchars((string)$p["name"]) ?></option>
+                  <option
+                    value="<?= (int)$p["id"] ?>"
+                    data-cat="<?= (int)($p["category_id"] ?? 0) ?>"
+                  >
+                    <?= htmlspecialchars((string)$p["name"]) ?>
+                  </option>
                 <?php endforeach; ?>
               </select>
             </div>
@@ -451,6 +474,55 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
   window.addEventListener("load", function(){ window.print(); });
 </script>
 <?php endif; ?>
+
+<script>
+/* ==========================================
+   FILTRO: Categoría -> Productos
+   (si inventory_items no tiene category_id, data-cat=0 y no filtra)
+========================================== */
+(function(){
+  const cat = document.getElementById("categorySelect");
+  const prod = document.getElementById("productSelect");
+  if(!cat || !prod) return;
+
+  const all = Array.from(prod.options).map(o => ({
+    value: o.value,
+    text: o.text,
+    cat: (o.dataset && o.dataset.cat) ? o.dataset.cat : ""
+  }));
+
+  function rebuild(){
+    const selectedCat = cat.value || "";
+    const currentValue = prod.value;
+
+    prod.innerHTML = "";
+    const def = document.createElement("option");
+    def.value = "";
+    def.textContent = "-- Seleccionar --";
+    prod.appendChild(def);
+
+    all.forEach(opt => {
+      if(opt.value === "") return; // ya tenemos el default
+      if(selectedCat === "" || opt.cat === "" || opt.cat === "0" || opt.cat === selectedCat){
+        const o = document.createElement("option");
+        o.value = opt.value;
+        o.textContent = opt.text;
+        o.dataset.cat = opt.cat;
+        prod.appendChild(o);
+      }
+    });
+
+    // intenta mantener selección si aún existe
+    if(currentValue){
+      const exists = Array.from(prod.options).some(o => o.value === currentValue);
+      if(exists) prod.value = currentValue;
+    }
+  }
+
+  cat.addEventListener("change", rebuild);
+  rebuild();
+})();
+</script>
 
 </body>
 </html>
