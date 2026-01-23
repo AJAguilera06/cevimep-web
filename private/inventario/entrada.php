@@ -302,7 +302,7 @@ if (isset($_GET["success"]) && $_GET["success"] == "1" && isset($_GET["batch"]))
         </div>
 
         <div style="display:flex; justify-content:flex-end;">
-          <button class="btn" type="submit" style="min-width:120px;">Añadir</button>
+          <button class="btn" type="submit" style="min-width:110px;">Añadir</button>
         </div>
       </form>
 

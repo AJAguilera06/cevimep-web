@@ -342,3 +342,44 @@ a{ text-decoration:none; color:inherit; }
 
 /* En pantallas grandes, evitar que la card se vea demasiado alta */
 .content{ padding-top: 14px; }
+/* ===== Ajuste final Entrada (compacto y premium) ===== */
+
+/* Menos aire general arriba */
+.content{ padding-top: 10px; }
+
+/* Header más pegado y más compacto */
+.page-head-center{ 
+  margin: 0 0 8px !important; 
+}
+.page-head-center h1{
+  font-size: 32px !important;
+}
+.page-head-center .sub,
+.page-head-center .branch{
+  margin-top: 4px !important;
+}
+
+/* Form arriba: menos separación */
+.form-row-4{
+  margin-top: 6px !important;
+  gap: 12px !important;
+  grid-template-columns: 200px 1fr 120px 120px; /* mejor proporción */
+}
+
+/* Botón Añadir más “normal” */
+.form-row-4 button.btn{
+  min-width: 110px !important;
+  padding-left: 14px !important;
+  padding-right: 14px !important;
+}
+
+/* Cards internas: menos padding para que no se vea vacío */
+.section-card{
+  margin-top: 12px !important;
+  padding-top: 10px !important;
+}
+
+/* Suplidor + Guardar e imprimir: más alineado */
+.supplier-row{
+  grid-template-columns: 1fr 240px !important;
+}
