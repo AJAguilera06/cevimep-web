@@ -21,7 +21,9 @@ if (!isset($_SESSION["salida_items"]) || !is_array($_SESSION["salida_items"])) {
   $_SESSION["salida_items"] = [];
 }
 
-/* Helpers */
+/* =========================
+   Helpers BD (no romper por columnas)
+========================= */
 function table_columns(PDO $conn, string $table): array {
   $db = (string)$conn->query("SELECT DATABASE()")->fetchColumn();
   $st = $conn->prepare("
@@ -39,13 +41,18 @@ function pick_col(array $cols, array $candidates): ?string {
   return null;
 }
 
+/* =========================
+   Categorías (autodetect)
+========================= */
 function get_categories(PDO $conn, int $branch_id): array {
   $db = (string)$conn->query("SELECT DATABASE()")->fetchColumn();
   $candidates = ["inventory_categories","categories","categorias"];
   $table = null;
+
   foreach ($candidates as $t) {
     $st = $conn->prepare("
-      SELECT COUNT(*) FROM information_schema.tables
+      SELECT COUNT(*)
+      FROM information_schema.tables
       WHERE table_schema=? AND table_name=?
     ");
     $st->execute([$db, $t]);
@@ -59,6 +66,7 @@ function get_categories(PDO $conn, int $branch_id): array {
   if (!$idCol || !$nameCol) return [];
 
   $branchCol = pick_col($cols, ["branch_id","sucursal_id","branch","sucursal"]);
+
   if ($branchCol) {
     $sql = "SELECT {$idCol} AS id, {$nameCol} AS name FROM {$table} WHERE {$branchCol}=? ORDER BY {$nameCol}";
     $st = $conn->prepare($sql);
@@ -68,30 +76,43 @@ function get_categories(PDO $conn, int $branch_id): array {
     $st = $conn->prepare($sql);
     $st->execute();
   }
+
   return $st->fetchAll(PDO::FETCH_ASSOC);
 }
 $categories = get_categories($conn, $branch_id);
 
-/* Productos SOLO de la sede con stock > 0 */
+/* =========================
+   Productos SOLO de la sede (con stock > 0) + category_id
+========================= */
+$itemCols = table_columns($conn, "inventory_items");
+$itemCatCol = pick_col($itemCols, ["category_id","inventory_category_id","categoria_id","cat_id"]);
+$selectCat = $itemCatCol ? "i.{$itemCatCol} AS category_id" : "0 AS category_id";
+
 $st = $conn->prepare("
-  SELECT i.id, i.name, s.quantity
+  SELECT i.id, i.name, {$selectCat}, s.quantity AS stock_qty
   FROM inventory_items i
   INNER JOIN inventory_stock s ON s.item_id=i.id
-  WHERE s.branch_id=? AND s.quantity>0
+  WHERE s.branch_id=? AND s.quantity > 0
   ORDER BY i.name
 ");
 $st->execute([$branch_id]);
 $products = $st->fetchAll(PDO::FETCH_ASSOC);
 
-/* Agregar item */
+/* =========================
+   Agregar item
+========================= */
+$errorMsg = "";
+
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["add_item"])) {
   $category_id = (int)($_POST["category_id"] ?? 0);
   $item_id     = (int)($_POST["item_id"] ?? 0);
   $qty         = (int)($_POST["qty"] ?? 0);
 
   if ($item_id > 0 && $qty > 0) {
+
+    // Validar que el producto pertenece a la sede y tenga stock
     $st = $conn->prepare("
-      SELECT i.id, i.name, IFNULL(s.quantity,0) AS stock
+      SELECT i.id, i.name, s.quantity AS stock_qty
       FROM inventory_items i
       INNER JOIN inventory_stock s ON s.item_id=i.id
       WHERE i.id=? AND s.branch_id=?
@@ -100,134 +121,173 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["add_item"])) {
     $st->execute([$item_id, $branch_id]);
     $it = $st->fetch(PDO::FETCH_ASSOC);
 
-    if ($it) {
-      $stock = (int)$it["stock"];
-      $current = (int)($_SESSION["salida_items"][$item_id]["qty"] ?? 0);
+    if (!$it) {
+      $errorMsg = "El producto seleccionado no pertenece a esta sede.";
+    } else {
+      $stock = (int)($it["stock_qty"] ?? 0);
+
+      // Cantidad acumulada si ya está agregado
+      $current = isset($_SESSION["salida_items"][$item_id]) ? (int)$_SESSION["salida_items"][$item_id]["qty"] : 0;
       $newQty = $current + $qty;
 
-      if ($newQty <= $stock) {
+      if ($newQty > $stock) {
+        $errorMsg = "Stock insuficiente. Disponible: {$stock}.";
+      } else {
         $catName = "";
         foreach ($categories as $c) {
           if ((int)$c["id"] === $category_id) { $catName = (string)$c["name"]; break; }
         }
+
         $_SESSION["salida_items"][$item_id] = [
           "category_id" => $category_id,
-          "category" => $catName,
-          "name" => (string)$it["name"],
-          "qty" => $newQty,
-          "stock" => $stock,
+          "category"    => $catName,
+          "name"        => (string)$it["name"],
+          "qty"         => $newQty
         ];
       }
     }
   }
 }
 
-/* Eliminar item */
+/* =========================
+   Eliminar item
+========================= */
 if (isset($_GET["remove"])) {
   unset($_SESSION["salida_items"][(int)$_GET["remove"]]);
 }
 
-/* Guardar salida + imprimir */
+/* =========================
+   Guardar salida + imprimir (sin depender de type)
+========================= */
 $print_receipt = false;
 $receipt = null;
 $receipt_items = [];
 
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_exit"])) {
+
   if (!empty($_SESSION["salida_items"])) {
 
-    $note = trim((string)($_POST["note"] ?? ""));
-    $note_final = ($note === "") ? null : "Nota: {$note}";
+    $destination = trim((string)($_POST["destination"] ?? "")); // a quién/para dónde
+    $note        = trim((string)($_POST["note"] ?? ""));
 
+    $note_final = "";
+    if ($destination !== "") $note_final .= "Destino: {$destination}";
+    if ($note !== "") $note_final .= ($note_final ? " | " : "") . "Nota: {$note}";
+    if ($note_final === "") $note_final = null;
+
+    // Detectar columnas de inventory_movements
     $movCols = table_columns($conn, "inventory_movements");
     $colType   = pick_col($movCols, ["type","movement_type","tipo","accion","action","movement"]);
     $colBranch = pick_col($movCols, ["branch_id","sucursal_id","branch","sucursal"]);
     $colNote   = pick_col($movCols, ["note","nota","descripcion","observacion","obs","comment"]);
     $colDate   = pick_col($movCols, ["created_at","created","fecha","date","created_on"]);
 
-    if (!$colBranch) die("Config BD: inventory_movements no tiene columna branch_id/sucursal_id.");
+    if (!$colBranch) {
+      die("Config BD: inventory_movements no tiene columna branch_id/sucursal_id.");
+    }
 
-    $itemCols = table_columns($conn, "inventory_movement_items");
-    $colMovId = pick_col($itemCols, ["movement_id","inventory_movement_id","movimiento_id","entry_id","salida_id"]);
-    $colItem  = pick_col($itemCols, ["item_id","inventory_item_id","product_id","producto_id"]);
-    $colQty   = pick_col($itemCols, ["quantity","qty","cantidad"]);
-    if (!$colMovId || !$colItem || !$colQty) die("Config BD: inventory_movement_items no tiene columnas requeridas.");
+    // Columnas de movement_items
+    $itemCols2 = table_columns($conn, "inventory_movement_items");
+    $colMovId = pick_col($itemCols2, ["movement_id","inventory_movement_id","movimiento_id","exit_id","salida_id"]);
+    $colItem  = pick_col($itemCols2, ["item_id","inventory_item_id","product_id","producto_id"]);
+    $colQty   = pick_col($itemCols2, ["quantity","qty","cantidad"]);
+    if (!$colMovId || !$colItem || !$colQty) {
+      die("Config BD: inventory_movement_items no tiene columnas requeridas.");
+    }
 
+    // Columnas stock
     $stockCols = table_columns($conn, "inventory_stock");
-    $colSItem  = pick_col($stockCols, ["item_id","inventory_item_id","product_id","producto_id"]);
-    $colSBranch= pick_col($stockCols, ["branch_id","sucursal_id","branch","sucursal"]);
-    $colSQty   = pick_col($stockCols, ["quantity","qty","cantidad"]);
-    if (!$colSItem || !$colSBranch || !$colSQty) die("Config BD: inventory_stock no tiene columnas requeridas.");
+    $colSItem   = pick_col($stockCols, ["item_id","inventory_item_id","product_id","producto_id"]);
+    $colSBranch = pick_col($stockCols, ["branch_id","sucursal_id","branch","sucursal"]);
+    $colSQty    = pick_col($stockCols, ["quantity","qty","cantidad"]);
+    if (!$colSItem || !$colSBranch || !$colSQty) {
+      die("Config BD: inventory_stock no tiene columnas requeridas.");
+    }
 
     $conn->beginTransaction();
 
-    // lock stock
-    $stCheck = $conn->prepare("
-      SELECT {$colSQty}
-      FROM inventory_stock
-      WHERE {$colSItem}=? AND {$colSBranch}=?
-      LIMIT 1 FOR UPDATE
-    ");
-    foreach ($_SESSION["salida_items"] as $item_id => $d) {
-      $q = (int)($d["qty"] ?? 0);
-      if ($q <= 0) continue;
-      $stCheck->execute([(int)$item_id, $branch_id]);
-      $cur = (int)($stCheck->fetchColumn() ?? 0);
-      if ($cur < $q) {
-        $conn->rollBack();
-        header("Location: salida.php?err=stock");
-        exit;
+    try {
+      // 1) Validar stock para todos
+      $stCheck = $conn->prepare("
+        SELECT {$colSQty} AS qty
+        FROM inventory_stock
+        WHERE {$colSItem}=? AND {$colSBranch}=?
+        LIMIT 1
+      ");
+
+      foreach ($_SESSION["salida_items"] as $item_id => $d) {
+        $need = (int)($d["qty"] ?? 0);
+        if ($need <= 0) continue;
+
+        $stCheck->execute([(int)$item_id, $branch_id]);
+        $have = (int)($stCheck->fetchColumn() ?? 0);
+
+        if ($have < $need) {
+          throw new RuntimeException("Stock insuficiente para '{$d["name"]}'. Disponible: {$have}, solicitado: {$need}.");
+        }
       }
-    }
 
-    // movement insert
-    $fields = [];
-    $values = [];
-    $params = [];
-    if ($colType) { $fields[] = $colType; $values[] = "?"; $params[] = "salida"; }
-    $fields[] = $colBranch; $values[] = "?"; $params[] = $branch_id;
-    if ($colNote) { $fields[] = $colNote; $values[] = "?"; $params[] = $note_final; }
-    if ($colDate) { $fields[] = $colDate; $values[] = "NOW()"; }
+      // 2) Insert movimiento
+      $fields = [];
+      $values = [];
+      $params = [];
 
-    $sqlMov = "INSERT INTO inventory_movements (" . implode(",", $fields) . ") VALUES (" . implode(",", $values) . ")";
-    $stMov = $conn->prepare($sqlMov);
-    $stMov->execute($params);
-    $movement_id = (int)$conn->lastInsertId();
+      if ($colType) { $fields[] = $colType; $values[] = "?"; $params[] = "salida"; }
+      $fields[] = $colBranch; $values[] = "?"; $params[] = $branch_id;
+      if ($colNote) { $fields[] = $colNote; $values[] = "?"; $params[] = $note_final; }
+      if ($colDate) { $fields[] = $colDate; $values[] = "NOW()"; }
 
-    $sqlIt = "INSERT INTO inventory_movement_items ({$colMovId}, {$colItem}, {$colQty}) VALUES (?, ?, ?)";
-    $stIt = $conn->prepare($sqlIt);
+      $sqlMov = "INSERT INTO inventory_movements (" . implode(",", $fields) . ") VALUES (" . implode(",", $values) . ")";
+      $stMov = $conn->prepare($sqlMov);
+      $stMov->execute($params);
 
-    $sqlStock = "
-      UPDATE inventory_stock
-      SET {$colSQty} = {$colSQty} - ?
-      WHERE {$colSItem}=? AND {$colSBranch}=?
-    ";
-    $stStock = $conn->prepare($sqlStock);
+      $movement_id = (int)$conn->lastInsertId();
 
-    foreach ($_SESSION["salida_items"] as $item_id => $d) {
-      $q = (int)($d["qty"] ?? 0);
-      if ($q <= 0) continue;
-      $stIt->execute([$movement_id, (int)$item_id, $q]);
-      $stStock->execute([$q, (int)$item_id, $branch_id]);
-    }
+      // 3) Insert movement items
+      $sqlIt = "INSERT INTO inventory_movement_items ({$colMovId}, {$colItem}, {$colQty}) VALUES (?, ?, ?)";
+      $stIt = $conn->prepare($sqlIt);
 
-    $conn->commit();
+      // 4) Descontar stock
+      $stUpd = $conn->prepare("
+        UPDATE inventory_stock
+        SET {$colSQty} = {$colSQty} - ?
+        WHERE {$colSItem}=? AND {$colSBranch}=?
+        LIMIT 1
+      ");
 
-    $receipt = [
-      "movement_id" => $movement_id,
-      "branch" => $branch_name,
-      "date" => date("d/m/Y H:i"),
-      "note" => $note,
-    ];
-    foreach ($_SESSION["salida_items"] as $d) {
-      $receipt_items[] = [
-        "category" => (string)($d["category"] ?? ""),
-        "product"  => (string)($d["name"] ?? ""),
-        "qty"      => (int)($d["qty"] ?? 0),
+      foreach ($_SESSION["salida_items"] as $item_id => $d) {
+        $q = (int)($d["qty"] ?? 0);
+        if ($q <= 0) continue;
+
+        $stIt->execute([$movement_id, (int)$item_id, $q]);
+        $stUpd->execute([$q, (int)$item_id, $branch_id]);
+      }
+
+      $conn->commit();
+
+      $receipt = [
+        "movement_id" => $movement_id,
+        "branch" => $branch_name,
+        "date" => date("d/m/Y H:i"),
+        "destination" => $destination,
+        "note" => $note
       ];
-    }
 
-    $_SESSION["salida_items"] = [];
-    $print_receipt = true;
+      foreach ($_SESSION["salida_items"] as $d) {
+        $receipt_items[] = [
+          "category" => (string)($d["category"] ?? ""),
+          "product"  => (string)($d["name"] ?? ""),
+          "qty"      => (int)($d["qty"] ?? 0),
+        ];
+      }
+
+      $_SESSION["salida_items"] = [];
+      $print_receipt = true;
+
+    } catch (Throwable $e) {
+      $conn->rollBack();
+      $errorMsg = $e->getMessage();
+    }
   }
 }
 ?>
@@ -237,14 +297,38 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_exit"])) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Salida</title>
+
+  <!-- CSS ABSOLUTO -->
   <link rel="stylesheet" href="/assets/css/styles.css?v=30">
+
   <style>
     .content .wrap { max-width: 1180px; margin: 0 auto; }
-    .page-card { padding: 18px 18px 14px; }
-    .grid-2 { display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
-    .row-4 { display:grid; grid-template-columns: 220px 1fr 140px 110px; gap:14px; align-items:end; }
-    .hint { font-size:12px; opacity:.7; margin-top:6px; }
+
+    .form-grid-2{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .row-4{
+      display:grid;
+      grid-template-columns: 220px 1fr 140px 120px;
+      gap: 14px;
+      align-items:end;
+      margin-top: 12px;
+    }
+
+    .hint { font-size: 12px; opacity: .7; margin-top: 6px; }
     .btn-right { display:flex; justify-content:flex-end; margin-top: 12px; }
+
+    .alert{
+      padding: 10px 12px;
+      border-radius: 12px;
+      margin-top: 12px;
+      background: rgba(255,0,0,.08);
+      border: 1px solid rgba(255,0,0,.18);
+    }
 
     .receipt{display:none;}
     @media print{
@@ -264,35 +348,51 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_exit"])) {
 </div>
 
 <div class="layout">
+
   <aside class="sidebar">
     <h3 class="menu-title">Menú</h3>
+
     <nav class="menu">
       <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
+      <a href="/private/patients/index.php"><span class="ico">👤</span> Pacientes</a>
+      <a href="/private/citas/index.php"><span class="ico">📅</span> Citas</a>
+      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
+      <a href="/private/caja/index.php"><span class="ico">💳</span> Caja</a>
+
       <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="/private/inventario/entrada.php" style="margin-left:10px;"><span class="ico">➕</span> Entrada</a>
-      <a class="active" href="/private/inventario/salida.php" style="margin-left:10px;"><span class="ico">➖</span> Salida</a>
+      <a href="/private/inventario/entrada.php" style="margin-left:14px;"><span class="ico">➕</span> Entrada</a>
+      <a class="active" href="/private/inventario/salida.php" style="margin-left:14px;"><span class="ico">➖</span> Salida</a>
+
+      <a href="/private/estadisticas/index.php"><span class="ico">📊</span> Estadísticas</a>
     </nav>
   </aside>
 
   <main class="content">
     <div class="wrap">
 
-      <?php if (isset($_GET["err"]) && $_GET["err"] === "stock"): ?>
-        <div class="card" style="border-left:4px solid #d9534f;">
-          <strong>Stock insuficiente</strong>
-          <div class="muted">Revisa las cantidades e intenta de nuevo.</div>
-        </div>
-      <?php endif; ?>
-
-      <div class="card page-card">
+      <div class="card">
         <h3 style="margin:0;">Salida</h3>
         <div class="muted" style="margin-top:4px;">Registra salida de inventario (sede actual)</div>
 
-        <form method="post" style="margin-top:14px;">
-          <div class="grid-2">
+        <?php if ($errorMsg): ?>
+          <div class="alert"><?= htmlspecialchars($errorMsg) ?></div>
+        <?php endif; ?>
+
+        <form method="post" id="frmSalida">
+
+          <div class="form-grid-2">
             <div>
               <label>Fecha</label>
               <input type="date" value="<?= htmlspecialchars($today) ?>" disabled>
+            </div>
+            <div>
+              <label>Destino</label>
+              <input type="text" name="destination" placeholder="Ej: Consultorio, Brigada, Paciente, etc.">
+            </div>
+
+            <div>
+              <label>Área de origen</label>
+              <input type="text" value="<?= htmlspecialchars($branch_name) ?>" disabled>
             </div>
             <div>
               <label>Nota (opcional)</label>
@@ -300,12 +400,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_exit"])) {
             </div>
           </div>
 
-          <div style="height:12px;"></div>
-
           <div class="row-4">
             <div>
               <label>Categoría</label>
-              <select name="category_id">
+              <select name="category_id" id="categorySelect">
                 <option value="">Todas ...</option>
                 <?php foreach ($categories as $c): ?>
                   <option value="<?= (int)$c["id"] ?>"><?= htmlspecialchars((string)$c["name"]) ?></option>
@@ -315,11 +413,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_exit"])) {
 
             <div>
               <label>Producto</label>
-              <select name="item_id" required>
+              <select name="item_id" id="productSelect" required>
                 <option value="">-- Seleccionar --</option>
                 <?php foreach ($products as $p): ?>
-                  <option value="<?= (int)$p["id"] ?>">
-                    <?= htmlspecialchars((string)$p["name"]) ?> (Stock: <?= (int)$p["quantity"] ?>)
+                  <option
+                    value="<?= (int)$p["id"] ?>"
+                    data-cat="<?= (int)($p["category_id"] ?? 0) ?>"
+                    data-stock="<?= (int)($p["stock_qty"] ?? 0) ?>"
+                  >
+                    <?= htmlspecialchars((string)$p["name"]) ?> (Stock: <?= (int)($p["stock_qty"] ?? 0) ?>)
                   </option>
                 <?php endforeach; ?>
               </select>
@@ -394,6 +496,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_exit"])) {
   <div><strong>Sucursal:</strong> <?= htmlspecialchars($receipt["branch"]) ?></div>
   <div><strong>Fecha:</strong> <?= htmlspecialchars($receipt["date"]) ?></div>
   <div><strong>Movimiento #:</strong> <?= (int)$receipt["movement_id"] ?></div>
+  <?php if ($receipt["destination"] !== ""): ?><div><strong>Destino:</strong> <?= htmlspecialchars($receipt["destination"]) ?></div><?php endif; ?>
   <?php if ($receipt["note"] !== ""): ?><div><strong>Nota:</strong> <?= htmlspecialchars($receipt["note"]) ?></div><?php endif; ?>
   <hr>
   <table style="width:100%; border-collapse:collapse;">
@@ -420,6 +523,53 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_exit"])) {
   window.addEventListener("load", function(){ window.print(); });
 </script>
 <?php endif; ?>
+
+<script>
+/* ==========================================
+   FILTRO: Categoría -> Productos (category_id)
+========================================== */
+(function(){
+  const cat = document.getElementById("categorySelect");
+  const prod = document.getElementById("productSelect");
+  if(!cat || !prod) return;
+
+  const all = Array.from(prod.options).map(o => ({
+    value: o.value,
+    text: o.text,
+    cat: (o.dataset && o.dataset.cat) ? o.dataset.cat : ""
+  }));
+
+  function rebuild(){
+    const selectedCat = cat.value || "";
+    const currentValue = prod.value;
+
+    prod.innerHTML = "";
+    const def = document.createElement("option");
+    def.value = "";
+    def.textContent = "-- Seleccionar --";
+    prod.appendChild(def);
+
+    all.forEach(opt => {
+      if(opt.value === "") return;
+      if(selectedCat === "" || opt.cat === selectedCat){
+        const o = document.createElement("option");
+        o.value = opt.value;
+        o.textContent = opt.text;
+        o.dataset.cat = opt.cat;
+        prod.appendChild(o);
+      }
+    });
+
+    if(currentValue){
+      const exists = Array.from(prod.options).some(o => o.value === currentValue);
+      if(exists) prod.value = currentValue;
+    }
+  }
+
+  cat.addEventListener("change", rebuild);
+  rebuild();
+})();
+</script>
 
 </body>
 </html>
