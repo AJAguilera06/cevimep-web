@@ -186,41 +186,66 @@ if (isset($_GET["ajax"]) && $_GET["ajax"] === "history") {
 if (isset($_GET["print"])) {
   $mov_id = (int)$_GET["print"];
 
-  // Detectar columnas
+  // Detectar columnas en inventory_movements (tu BD real)
   $movCols = table_columns($conn, "inventory_movements");
   $colId     = pick_col($movCols, ["id"]);
   $colBranch = pick_col($movCols, ["branch_id","sucursal_id"]);
+  $colType   = pick_col($movCols, ["movement_type","type","tipo","movement"]);
+  $colItem   = pick_col($movCols, ["item_id","inventory_item_id","product_id","producto_id"]);
+  $colQty    = pick_col($movCols, ["qty","quantity","cantidad"]);
   $colNote   = pick_col($movCols, ["note","nota","observacion","descripcion","comment"]);
   $colDate   = pick_col($movCols, ["created_at","fecha","date","created","created_on"]);
 
-  $itCols = table_columns($conn, "inventory_movement_items");
-  $colMovId = pick_col($itCols, ["movement_id","inventory_movement_id","movimiento_id","entrada_id"]);
-  $colItem  = pick_col($itCols, ["item_id","inventory_item_id","product_id","producto_id"]);
-  $colQty   = pick_col($itCols, ["quantity","qty","cantidad"]);
-
-  if (!$colId || !$colBranch || !$colMovId || !$colItem || !$colQty) {
-    die("No se puede imprimir: faltan columnas en BD.");
+  if (!$colId || !$colBranch || !$colItem || !$colQty) {
+    die("No se puede imprimir: faltan columnas en inventory_movements.");
   }
 
+  // Movimiento base
   $stM = $conn->prepare("SELECT * FROM inventory_movements WHERE {$colId}=? AND {$colBranch}=? LIMIT 1");
   $stM->execute([$mov_id, $branch_id]);
   $mov = $stM->fetch(PDO::FETCH_ASSOC);
   if (!$mov) die("Movimiento no encontrado.");
 
-  $stI = $conn->prepare("
-    SELECT i.name, mi.{$colQty} AS qty
-    FROM inventory_movement_items mi
-    INNER JOIN inventory_items i ON i.id = mi.{$colItem}
-    WHERE mi.{$colMovId} = ?
-    ORDER BY i.name
-  ");
-  $stI->execute([$mov_id]);
-  $items = $stI->fetchAll(PDO::FETCH_ASSOC);
+  // Buscar BATCH en la nota para agrupar todos los items de esta entrada
+  $noteRaw = ($colNote && isset($mov[$colNote])) ? (string)$mov[$colNote] : "";
+  $batch = null;
+  if ($noteRaw && preg_match('/BATCH=([A-Z0-9\-]+)/', $noteRaw, $m)) {
+    $batch = $m[1];
+  }
+
+  // Obtener items: si hay batch, traer todos los movimientos de esa entrada; si no, solo el actual
+  if ($batch) {
+    $whereType = "";
+    $params = [$branch_id, "%BATCH={$batch}%"];
+    if ($colType) {
+      $whereType = " AND {$colType} IN ('IN','in','Entrada','entrada','E','e')";
+    }
+    $sql = "
+      SELECT i.name, m.{$colQty} AS qty
+      FROM inventory_movements m
+      INNER JOIN inventory_items i ON i.id = m.{$colItem}
+      WHERE m.{$colBranch}=? AND " . ($colNote ? "m.{$colNote} LIKE ?" : "1=0") . $whereType . "
+      ORDER BY i.name
+    ";
+    $stI = $conn->prepare($sql);
+    $stI->execute($params);
+    $items = $stI->fetchAll(PDO::FETCH_ASSOC);
+  } else {
+    $items = [[
+      "name" => (string)($mov["name"] ?? ""),
+      "qty"  => (float)($mov[$colQty] ?? 0)
+    ]];
+    // Mejor: resolver nombre real desde inventory_items
+    $stN = $conn->prepare("SELECT name FROM inventory_items WHERE id=? LIMIT 1");
+    $stN->execute([(int)$mov[$colItem]]);
+    $nm = $stN->fetchColumn();
+    if ($nm) $items[0]["name"] = (string)$nm;
+  }
 
   $dt = "";
   if ($colDate && !empty($mov[$colDate])) $dt = (string)$mov[$colDate];
   $dtOut = ($dt && strtotime($dt) !== false) ? date("d/m/Y H:i", strtotime($dt)) : date("d/m/Y H:i");
-  $note = ($colNote && isset($mov[$colNote])) ? (string)$mov[$colNote] : "";
+  $note = $noteRaw;
 
   ?>
   <!doctype html>
@@ -233,29 +258,42 @@ if (isset($_GET["print"])) {
       table{width:100%; border-collapse:collapse;}
       th,td{border-bottom:1px solid #ddd; padding:8px; text-align:left;}
       th:last-child, td:last-child{text-align:right;}
+      .top{display:flex; justify-content:space-between; align-items:flex-start;}
+      .muted{opacity:.7; font-size:12px;}
+      @media print{ button{display:none;} }
     </style>
   </head>
   <body>
-    <h2 style="margin:0 0 6px 0;">CEVIMEP - Entrada de Inventario</h2>
-    <div><strong>Sucursal:</strong> <?= htmlspecialchars($branch_name) ?></div>
-    <div><strong>Fecha:</strong> <?= htmlspecialchars($dtOut) ?></div>
-    <div><strong>Movimiento #:</strong> <?= (int)$mov_id ?></div>
-    <?php if ($note): ?><div><strong>Nota:</strong> <?= htmlspecialchars($note) ?></div><?php endif; ?>
-    <hr>
+    <div class="top">
+      <div>
+        <h2 style="margin:0;">Entrada de Inventario</h2>
+        <div class="muted">Sucursal: <?=htmlspecialchars($branch_name) ?></div>
+      </div>
+      <div class="muted">Fecha: <?=htmlspecialchars($dtOut) ?></div>
+    </div>
+
+    <?php if ($note): ?>
+      <p><strong>Detalle:</strong> <?=nl2br(htmlspecialchars($note)) ?></p>
+    <?php endif; ?>
+
     <table>
-      <thead>
-        <tr><th>Producto</th><th style="text-align:right;">Cant.</th></tr>
-      </thead>
+      <thead><tr><th>Producto</th><th style="text-align:right;">Cantidad</th></tr></thead>
       <tbody>
         <?php foreach ($items as $it): ?>
           <tr>
-            <td><?= htmlspecialchars((string)$it["name"]) ?></td>
-            <td style="text-align:right;"><?= (int)$it["qty"] ?></td>
+            <td><?=htmlspecialchars((string)$it["name"]) ?></td>
+            <td style="text-align:right;"><?=htmlspecialchars((string)$it["qty"]) ?></td>
           </tr>
         <?php endforeach; ?>
       </tbody>
     </table>
-    <script>window.addEventListener("load", ()=>window.print());</script>
+
+    <div style="margin-top:14px;">
+      <button onclick="window.print()">Imprimir</button>
+      <button onclick="window.close()">Cerrar</button>
+    </div>
+
+    <script>window.onload=function(){ setTimeout(()=>window.print(), 250); };</script>
   </body>
   </html>
   <?php
@@ -380,6 +418,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
     if ($note !== "") $note_final .= ($note_final ? " | " : "") . "Nota: {$note}";
     if ($note_final === "") $note_final = null;
 
+    // Batch para agrupar la impresión (todas las filas de esta entrada)
+    try {
+      $batch = strtoupper(bin2hex(random_bytes(6)));
+    } catch (Throwable $e) {
+      $batch = strtoupper(str_replace('.', '', uniqid('', true)));
+    }
+    $batchTag = "BATCH={$batch}";
+    $note_final = $note_final ? ($batchTag . " | " . $note_final) : $batchTag;
+
+
     // Movements columns
     $movCols = table_columns($conn, "inventory_movements");
     $colType   = pick_col($movCols, ["movement_type","type","tipo","movement"]);
@@ -389,12 +437,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
 
     if (!$colBranch) die("Config BD: inventory_movements no tiene branch_id.");
 
-    // movement_items columns
-    $miCols = table_columns($conn, "inventory_movement_items");
-    $colMovId = pick_col($miCols, ["movement_id","inventory_movement_id","movimiento_id","entrada_id"]);
-    $colItem  = pick_col($miCols, ["item_id","inventory_item_id","product_id","producto_id"]);
-    $colQty   = pick_col($miCols, ["quantity","qty","cantidad"]);
-    if (!$colMovId || !$colItem || !$colQty) die("Config BD: inventory_movement_items incompleta.");
+    // movement columns (item/qty dentro de inventory_movements)
+    $colItemMov = pick_col($movCols, ["item_id","inventory_item_id","product_id","producto_id"]);
+    $colQtyMov  = pick_col($movCols, ["qty","quantity","cantidad"]);
+    $colCreatedBy = pick_col($movCols, ["created_by","user_id","registrado_por"]);
+    if (!$colItemMov || !$colQtyMov) die("Config BD: inventory_movements no tiene item_id/qty.");
 
     // stock columns
     $stockCols = table_columns($conn, "inventory_stock");
@@ -405,43 +452,58 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_entry"])) {
 
     $conn->beginTransaction();
     try {
-      // 1) Insert movement (sin truncar movement_type)
+      // 1) Insertar movimientos (1 fila por producto) en inventory_movements (coherente con tu BD)
+      // Preparar INSERT dinámico
       $fields = [];
       $values = [];
-      $params = [];
+      $hasType = false;
 
+      $mvTypeVal = null;
       if ($colType) {
-        $mv = choose_movement_value($conn, "inventory_movements", $colType, "entrada");
-        // Si no puede determinar valor seguro, NO insertar type (evita truncation)
-        if ($mv !== null) {
-          $fields[] = $colType; $values[] = "?"; $params[] = $mv;
+        $mvTypeVal = choose_movement_value($conn, "inventory_movements", $colType, "entrada");
+        if ($mvTypeVal !== null) {
+          $fields[] = $colType; $values[] = "?"; $hasType = true;
         }
       }
 
-      $fields[] = $colBranch; $values[] = "?"; $params[] = $branch_id;
+      $fields[] = $colBranch;  $values[] = "?";
+      $fields[] = $colItemMov; $values[] = "?";
+      $fields[] = $colQtyMov;  $values[] = "?";
 
-      if ($colNote) { $fields[] = $colNote; $values[] = "?"; $params[] = $note_final; }
+      if ($colNote) { $fields[] = $colNote; $values[] = "?"; }
+      if ($colCreatedBy) { $fields[] = $colCreatedBy; $values[] = "?"; }
       if ($colDate) { $fields[] = $colDate; $values[] = "NOW()"; }
 
       $sqlMov = "INSERT INTO inventory_movements (" . implode(",", $fields) . ") VALUES (" . implode(",", $values) . ")";
       $stMov = $conn->prepare($sqlMov);
-      $stMov->execute($params);
-      $movement_id = (int)$conn->lastInsertId();
 
-      // 2) Insert items + sumar stock
-      $stIt = $conn->prepare("INSERT INTO inventory_movement_items ({$colMovId}, {$colItem}, {$colQty}) VALUES (?, ?, ?)");
+      $movement_id = 0;
 
+      // 2) Insertar cada producto como movimiento IN + sumar stock
       // upsert stock: si existe, sumar; si no, crear
       $stSel = $conn->prepare("SELECT {$colSQty} FROM inventory_stock WHERE {$colSItem}=? AND {$colSBranch}=? LIMIT 1");
       $stUpd = $conn->prepare("UPDATE inventory_stock SET {$colSQty} = {$colSQty} + ? WHERE {$colSItem}=? AND {$colSBranch}=? LIMIT 1");
       $stIns = $conn->prepare("INSERT INTO inventory_stock ({$colSItem}, {$colSBranch}, {$colSQty}) VALUES (?, ?, ?)");
 
+      $createdByVal = (int)($user["id"] ?? 0);
+
       foreach ($_SESSION["entrada_items"] as $item_id => $d) {
         $q = (int)($d["qty"] ?? 0);
         if ($q <= 0) continue;
 
-        $stIt->execute([$movement_id, (int)$item_id, $q]);
+        // Insert movimiento (IN) en inventory_movements
+        $params = [];
+        if ($hasType) $params[] = $mvTypeVal;
+        $params[] = $branch_id;
+        $params[] = (int)$item_id;
+        $params[] = $q;
+        if ($colNote) $params[] = $note_final;
+        if ($colCreatedBy) $params[] = $createdByVal;
 
+        $stMov->execute($params);
+        if (!$movement_id) $movement_id = (int)$conn->lastInsertId();
+
+        // Stock +q
         $stSel->execute([(int)$item_id, $branch_id]);
         $exists = $stSel->fetchColumn();
 
