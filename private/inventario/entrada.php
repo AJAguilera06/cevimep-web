@@ -163,7 +163,7 @@ if (isset($_GET["ajax"]) && $_GET["ajax"] === "history") {
     // Formatear fecha si viene tipo datetime
     $dtOut = $dt;
     if ($dt && strtotime($dt) !== false) {
-      $dtOut = date("d/m/Y H:i", замет=strtotime($dt));
+      $dtOut = date("d/m/Y H:i", strtotime($dt));
     } else if ($dt === "") {
       $dtOut = "-";
     }
