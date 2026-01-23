@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . "/../_guard.php";
 $conn = $pdo;
 
+
 /**
  * Página de entrada del área privada.
  * Si el usuario está autenticado, lo enviamos al dashboard.
