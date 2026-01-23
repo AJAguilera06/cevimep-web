@@ -253,11 +253,12 @@ if (isset($_GET["success"]) && $_GET["success"] == "1" && isset($_GET["batch"]))
     <div class="card">
 
       <!-- ✅ HEADER centrado y más arribita -->
-      <div style="text-align:center; margin-top:-6px; margin-bottom:12px;">
-        <h1 style="margin:0;">Entrada</h1>
-        <div class="muted" style="margin-top:6px;">Registra entrada de inventario (sede actual)</div>
-        <div class="muted" style="margin-top:6px;">Sucursal: <strong><?= h($branch_name) ?></strong></div>
-      </div>
+      <div class="page-head-center">
+  <h1>Entrada</h1>
+  <div class="sub">Registra entrada de inventario (sede actual)</div>
+  <div class="branch">Sucursal: <strong><?= h($branch_name) ?></strong></div>
+</div>
+
 
       <?php if (!empty($errors)): ?>
         <div class="card" style="border-color: rgba(255,80,80,.25); background: rgba(255,80,80,.06);">
@@ -269,41 +270,42 @@ if (isset($_GET["success"]) && $_GET["success"] == "1" && isset($_GET["batch"]))
       <?php endif; ?>
 
       <!-- ✅ Campos arriba en una sola fila -->
-      <form method="post" class="row-4" style="margin-top:14px; display:grid; grid-template-columns: 220px 1fr 140px 140px; gap:14px; align-items:end;">
-        <input type="hidden" name="action" value="add">
+      <form method="post" class="form-row-4">
+  <input type="hidden" name="action" value="add">
 
-        <div>
-          <label class="muted2">Categoría</label>
-          <select id="category_id" name="category_id">
-            <option value="">Todas</option>
-            <?php foreach($categories as $c): ?>
-              <option value="<?= (int)$c["id"] ?>"><?= h($c["name"]) ?></option>
-            <?php endforeach; ?>
-          </select>
-        </div>
+  <div>
+    <label>Categoría</label>
+    <select id="category_id" name="category_id">
+      <option value="">Todas</option>
+      <?php foreach($categories as $c): ?>
+        <option value="<?= (int)$c["id"] ?>"><?= h($c["name"]) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </div>
 
-        <div>
-          <label class="muted2">Producto</label>
-          <select id="item_id" name="item_id" required>
-            <option value="">Selecciona</option>
-            <?php foreach($products as $p): ?>
-              <option value="<?= (int)$p["id"] ?>" data-cat="<?= isset($p["category_id"]) ? (int)$p["category_id"] : 0 ?>">
-                <?= h($p["name"]) ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
-          <div class="muted2">Solo productos de esta sucursal.</div>
-        </div>
+  <div>
+    <label>Producto</label>
+    <select id="item_id" name="item_id" required>
+      <option value="">Selecciona</option>
+      <?php foreach($products as $p): ?>
+        <option value="<?= (int)$p["id"] ?>" data-cat="<?= isset($p["category_id"]) ? (int)$p["category_id"] : 0 ?>">
+          <?= h($p["name"]) ?>
+        </option>
+      <?php endforeach; ?>
+    </select>
+    <div class="muted2" style="margin-top:6px;">Solo productos de esta sucursal.</div>
+  </div>
 
-        <div>
-          <label class="muted2">Cantidad</label>
-          <input type="number" name="qty" min="1" step="1" value="1" required>
-        </div>
+  <div>
+    <label>Cantidad</label>
+    <input type="number" name="qty" min="1" step="1" value="1" required>
+  </div>
 
-        <div style="display:flex; justify-content:flex-end;">
-          <button class="btn" type="submit">Añadir</button>
-        </div>
-      </form>
+  <div style="display:flex; justify-content:flex-end;">
+    <button class="btn" type="submit" style="min-width:120px;">Añadir</button>
+  </div>
+</form>
+
 
       <!-- Detalle -->
       <div class="card" style="margin-top:14px;">
@@ -359,20 +361,21 @@ if (isset($_GET["success"]) && $_GET["success"] == "1" && isset($_GET["batch"]))
         </div>
 
         <!-- ✅ Form guardar e imprimir: QUITÉ Nota -->
-        <form method="post" style="margin-top:14px;">
-          <input type="hidden" name="action" value="save_print">
+        <form method="post" class="section-card">
+  <input type="hidden" name="action" value="save_print">
 
-          <div style="display:grid; grid-template-columns:1fr; gap:12px;">
-            <div>
-              <label class="muted2">Suplidor</label>
-              <input type="text" name="supplier" placeholder="Escribe el suplidor (opcional)">
-            </div>
-          </div>
+  <div class="supplier-row">
+    <div>
+      <label class="muted2">Suplidor</label>
+      <input type="text" name="supplier" placeholder="Escribe el suplidor (opcional)">
+    </div>
 
-          <div class="actions-right">
-            <button class="btn" type="submit">Guardar e Imprimir</button>
-          </div>
-        </form>
+    <div class="actions-right" style="margin-top:0;">
+      <button class="btn" type="submit" style="width:100%;">Guardar e Imprimir</button>
+    </div>
+  </div>
+</form>
+
       </div>
 
       <!-- Historial -->

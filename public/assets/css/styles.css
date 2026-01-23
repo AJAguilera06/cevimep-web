@@ -458,3 +458,85 @@ body{
 /* Historial embebido */
 .historyBox{ display:none; margin-top:12px; }
 .historyBox.open{ display:block; }
+/* ===== Entrada/Salida: layout más organizado ===== */
+.content .card {
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.page-head-center{
+  text-align:center;
+  margin: -4px 0 14px;
+}
+.page-head-center h1{
+  margin:0;
+  font-size: 34px;
+  letter-spacing: .2px;
+}
+.page-head-center .sub{
+  margin-top:6px;
+  font-size: 13px;
+  opacity:.8;
+}
+.page-head-center .branch{
+  margin-top:4px;
+  font-size: 13px;
+  opacity:.9;
+}
+
+.form-row-4{
+  display:grid;
+  grid-template-columns: 210px 1fr 140px 140px;
+  gap: 14px;
+  align-items: end;
+  margin-top: 10px;
+}
+
+.form-row-4 label,
+.muted2{
+  display:block;
+  margin-bottom:6px;
+  font-size: 12px;
+  opacity:.75;
+}
+
+.form-row-4 select,
+.form-row-4 input{
+  width:100%;
+}
+
+.section-card{
+  margin-top:14px;
+  padding-top:14px;
+}
+
+.section-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+}
+
+.section-head h3{
+  margin:0 0 6px;
+}
+
+.actions-right{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  margin-top: 12px;
+}
+
+/* Suplidor + botón en una misma línea (cuando haya espacio) */
+.supplier-row{
+  display:grid;
+  grid-template-columns: 1fr 220px;
+  gap: 12px;
+  align-items:end;
+}
+@media (max-width: 900px){
+  .form-row-4{ grid-template-columns: 1fr; }
+  .supplier-row{ grid-template-columns: 1fr; }
+}
