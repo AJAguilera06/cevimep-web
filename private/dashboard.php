@@ -1,90 +1,118 @@
 <?php
-require_once __DIR__ . '/bootstrap.php';
-require_once __DIR__ . '/_guard.php';
+declare(strict_types=1);
 
-$userName   = $_SESSION['user_name'] ?? 'CEVIMEP';
-$branchName = $_SESSION['branch_name'] ?? 'Sucursal';
-$branchId   = $_SESSION['branch_id'] ?? '';
-$role       = $_SESSION['role'] ?? '';
+/* ===============================
+   Sesión (sin duplicados)
+   =============================== */
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+/* ===============================
+   Protección de acceso
+   =============================== */
+if (!isset($_SESSION["user"])) {
+    header("Location: /login.php");
+    exit;
+}
+
+$user = $_SESSION["user"];
+$rol = $user["role"] ?? "";
+$sucursal_id = (int)($user["branch_id"] ?? 0);
+$nombre = $user["full_name"] ?? "CEVIMEP";
+
+/* “Bienvenido CEVIMEP [Sucursal]”
+   Si el full_name ya viene tipo "CEVIMEP Moca", lo usamos tal cual */
+$bienvenido = $nombre;
 ?>
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Dashboard | CEVIMEP</title>
-    <link rel="stylesheet" href="/assets/css/styles.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CEVIMEP | Panel interno</title>
+
+  <!-- CSS ABSOLUTO (clave para Railway + /private) -->
+  <link rel="stylesheet" href="/assets/css/styles.css?v=40">
 </head>
+
 <body>
 
-<!-- TOPBAR -->
-<header class="navbar">
-    <div class="inner">
-        <div class="brand">
-            <span class="dot"></span>
-            <span>CEVIMEP</span>
-        </div>
-
-        <div class="nav-right">
-            <a href="/logout.php" class="btn-pill">Salir</a>
-        </div>
+<!-- NAVBAR -->
+<div class="navbar">
+  <div class="inner">
+    <div class="brand">
+      <span class="dot"></span>
+      <strong>CEVIMEP</strong>
     </div>
-</header>
+
+    <div class="nav-right">
+      <a class="btn-pill" href="/logout.php">Salir</a>
+    </div>
+  </div>
+</div>
 
 <!-- LAYOUT -->
 <div class="layout">
 
-    <!-- SIDEBAR -->
-    <aside class="sidebar">
-        <div class="box">
-            <h3>Menú</h3>
-            <ul class="menu">
-                <li class="active"><a href="/private/dashboard.php">🏠 Panel</a></li>
-                <li><a href="/private/patients/index.php">👤 Pacientes</a></li>
-                <li><a href="/private/appointments/index.php">📅 Citas</a></li>
-                <li><a href="/private/facturacion/index.php">🧾 Facturación</a></li>
-                <li><a href="/private/caja/index.php">💳 Caja</a></li>
-                <li><a href="/private/inventario/index.php">📦 Inventario</a></li>
-                <li><a href="/private/estadistica/index.php">📊 Estadísticas</a></li>
-            </ul>
-        </div>
-    </aside>
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <h3 class="menu-title">Menú</h3>
 
-    <!-- CONTENT -->
-    <main class="content">
+    <nav class="menu">
+      <a class="active" href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
+      <a href="/private/patients/index.php"><span class="ico">👤</span> Pacientes</a>
+      <a href="/private/citas/index.php"><span class="ico">📅</span> Citas</a>
+      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
+      <a href="/private/caja/index.php"><span class="ico">💳</span> Caja</a>
+      <a href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
 
-        <h1 style="text-align:center;">
-            Bienvenido <strong><?php echo htmlspecialchars($branchName); ?></strong>
-        </h1>
+      <!-- OJO: tu carpeta en el árbol es "estadistica" (singular) -->
+      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
+    </nav>
+  </aside>
 
-        <p class="muted" style="text-align:center;">
-            Rol: <?php echo htmlspecialchars($role); ?>
-            <?php if ($branchId): ?> • Sucursal ID: <?php echo $branchId; ?><?php endif; ?>
+  <!-- CONTENIDO -->
+  <main class="content">
+
+    <section class="hero hero-center">
+      <h1>Bienvenido <strong><?= htmlspecialchars($bienvenido) ?></strong></h1>
+      <p class="muted">
+        Rol: <?= htmlspecialchars($rol) ?>
+        <?= $sucursal_id > 0 ? " • Sucursal ID: {$sucursal_id}" : "" ?>
+      </p>
+    </section>
+
+    <section class="grid-top">
+
+      <div class="card">
+        <h3>Estado del sistema</h3>
+        <p class="muted">Sistema operativo correctamente.</p>
+      </div>
+
+      <div class="card">
+        <h3>Sucursal</h3>
+        <p class="muted">
+          <?= $sucursal_id > 0 ? "ID: {$sucursal_id}" : "No asignada" ?>
         </p>
+      </div>
 
-        <div class="card">
-            <h3>Estado del sistema</h3>
-            <p>Sistema operativo correctamente.</p>
-        </div>
+      <div class="card">
+        <h3>Usuario</h3>
+        <p class="muted"><?= htmlspecialchars($nombre) ?></p>
+      </div>
 
-        <div class="card">
-            <h3>Sucursal</h3>
-            <p><?php echo htmlspecialchars($branchName); ?><?php if ($branchId): ?> (ID: <?php echo $branchId; ?>)<?php endif; ?></p>
-        </div>
+    </section>
 
-        <div class="card">
-            <h3>Usuario</h3>
-            <p><?php echo htmlspecialchars($userName); ?></p>
-        </div>
-
-    </main>
+  </main>
 </div>
 
 <!-- FOOTER -->
-<footer class="footer">
-    <div class="inner">
-        © 2026 CEVIMEP — Todos los derechos reservados.
-    </div>
-</footer>
+<div class="footer">
+  <div class="inner">
+    © <?= (int)date("Y") ?> CEVIMEP — Todos los derechos reservados.
+  </div>
+</div>
 
 </body>
 </html>
