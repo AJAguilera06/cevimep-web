@@ -97,6 +97,179 @@ $st = $conn->prepare("
 ");
 $st->execute([$branch_id]);
 $products = $st->fetchAll(PDO::FETCH_ASSOC);
+/* =========================
+   AJAX: historial en la misma página
+========================= */
+if (isset($_GET["ajax"]) && $_GET["ajax"] === "history") {
+  header("Content-Type: text/html; charset=utf-8");
+
+  $movCols = table_columns($conn, "inventory_movements");
+  $colId     = pick_col($movCols, ["id"]);
+  $colBranch = pick_col($movCols, ["branch_id","sucursal_id"]);
+  $colType   = pick_col($movCols, ["movement_type","type","tipo","movement"]);
+  $colNote   = pick_col($movCols, ["note","nota","observacion","descripcion","comment"]);
+  $colDate   = pick_col($movCols, ["created_at","fecha","date","created","created_on"]);
+
+  if (!$colId || !$colBranch) {
+    echo "<div class='muted'>No se pudo leer inventory_movements (faltan columnas).</div>";
+    exit;
+  }
+
+  // Filtro tipo "salida" si existe
+  $whereType = "";
+  $params = [$branch_id];
+  if ($colType) {
+    $whereType = " AND {$colType} IN ('salida','out','OUT','S','SALIDA')";
+  }
+
+  $orderCol = $colDate ?: $colId;
+
+  $sql = "SELECT {$colId} AS id"
+       . ($colDate ? ", {$colDate} AS created_at" : "")
+       . ($colNote ? ", {$colNote} AS note" : "")
+       . " FROM inventory_movements
+          WHERE {$colBranch}=? {$whereType}
+          ORDER BY {$orderCol} DESC
+          LIMIT 50";
+
+  $stH = $conn->prepare($sql);
+  $stH->execute($params);
+  $rows = $stH->fetchAll(PDO::FETCH_ASSOC);
+
+  if (!$rows) {
+    echo "<div class='muted'>No hay salidas registradas.</div>";
+    exit;
+  }
+
+  echo "<table class='table'><thead><tr>";
+  echo "<th style='width:110px;'>Mov.</th>";
+  echo "<th style='width:180px;'>Fecha</th>";
+  echo "<th>Nota</th>";
+  echo "<th style='width:140px;'>Acción</th>";
+  echo "</tr></thead><tbody>";
+
+  foreach ($rows as $r) {
+    $id = (int)$r["id"];
+    $dt = isset($r["created_at"]) ? (string)$r["created_at"] : "";
+    $note = isset($r["note"]) ? (string)$r["note"] : "";
+
+    $dtOut = $dt;
+    if ($dt && strtotime($dt) !== false) {
+      $dtOut = date("d/m/Y H:i", strtotime($dt));
+    } else if ($dt === "") {
+      $dtOut = "-";
+    }
+
+    echo "<tr>";
+    echo "<td>#{$id}</td>";
+    echo "<td>" . htmlspecialchars($dtOut) . "</td>";
+    echo "<td>" . htmlspecialchars($note) . "</td>";
+    echo "<td><a class='btn' href='?print={$id}'>Imprimir</a></td>";
+    echo "</tr>";
+  }
+
+  echo "</tbody></table>";
+  exit;
+}
+
+/* =========================
+   Imprimir historial (reimpresión)
+========================= */
+if (isset($_GET["print"])) {
+  $mov_id = (int)$_GET["print"];
+
+  $movCols = table_columns($conn, "inventory_movements");
+  $colId     = pick_col($movCols, ["id"]);
+  $colBranch = pick_col($movCols, ["branch_id","sucursal_id"]);
+  $colType   = pick_col($movCols, ["movement_type","type","tipo","movement"]);
+  $colItem   = pick_col($movCols, ["item_id","inventory_item_id","product_id","producto_id"]);
+  $colQty    = pick_col($movCols, ["qty","quantity","cantidad"]);
+  $colNote   = pick_col($movCols, ["note","nota","observacion","descripcion","comment"]);
+  $colDate   = pick_col($movCols, ["created_at","fecha","date","created","created_on"]);
+
+  if (!$colId || !$colBranch || !$colItem || !$colQty) {
+    die("No se puede imprimir: faltan columnas en inventory_movements.");
+  }
+
+  $stM = $conn->prepare("SELECT * FROM inventory_movements WHERE {$colId}=? AND {$colBranch}=? LIMIT 1");
+  $stM->execute([$mov_id, $branch_id]);
+  $mov = $stM->fetch(PDO::FETCH_ASSOC);
+  if (!$mov) die("Movimiento no encontrado.");
+
+  $noteRaw = ($colNote && isset($mov[$colNote])) ? (string)$mov[$colNote] : "";
+  $batch = null;
+  if ($noteRaw && preg_match('/BATCH=([A-Z0-9\\-]+)/', $noteRaw, $m)) {
+    $batch = $m[1];
+  }
+
+  if ($batch) {
+    $whereType = "";
+    $params = [$branch_id, "%BATCH={$batch}%"];
+    if ($colType) {
+      $whereType = " AND {$colType} IN ('OUT','out','Salida','salida','S','s')";
+    }
+    $sql = "
+      SELECT i.name, m.{$colQty} AS qty
+      FROM inventory_movements m
+      INNER JOIN inventory_items i ON i.id = m.{$colItem}
+      WHERE m.{$colBranch}=? AND " . ($colNote ? "m.{$colNote} LIKE ?" : "1=0") . $whereType . "
+      ORDER BY i.name
+    ";
+    $stI = $conn->prepare($sql);
+    $stI->execute($params);
+    $items = $stI->fetchAll(PDO::FETCH_ASSOC);
+  } else {
+    $items = [[ "name" => "", "qty" => (float)($mov[$colQty] ?? 0) ]];
+    $stN = $conn->prepare("SELECT name FROM inventory_items WHERE id=? LIMIT 1");
+    $stN->execute([(int)$mov[$colItem]]);
+    $nm = $stN->fetchColumn();
+    if ($nm) $items[0]["name"] = (string)$nm;
+  }
+
+  $dt = "";
+  if ($colDate && !empty($mov[$colDate])) $dt = (string)$mov[$colDate];
+  $dtOut = ($dt && strtotime($dt) !== false) ? date("d/m/Y H:i", strtotime($dt)) : date("d/m/Y H:i");
+
+  ?>
+  <!doctype html>
+  <html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <title>Imprimir Salida</title>
+    <style>
+      body{font-family:Arial, sans-serif; padding:16px;}
+      table{width:100%; border-collapse:collapse;}
+      th,td{border-bottom:1px solid #ddd; padding:8px; text-align:left;}
+      th:last-child, td:last-child{text-align:right;}
+      h2{margin:0 0 10px 0;}
+      .small{font-size:12px; opacity:.75;}
+    </style>
+  </head>
+  <body>
+    <h2>CEVIMEP - Salida de Inventario</h2>
+    <div><strong>Sucursal:</strong> <?= htmlspecialchars($branch_name) ?></div>
+    <div><strong>Fecha:</strong> <?= htmlspecialchars($dtOut) ?></div>
+    <div><strong>Movimiento #:</strong> <?= (int)$mov_id ?></div>
+    <?php if ($noteRaw): ?><div><strong>Nota:</strong> <?= htmlspecialchars($noteRaw) ?></div><?php endif; ?>
+    <hr>
+    <table>
+      <thead><tr><th>Producto</th><th>Cant.</th></tr></thead>
+      <tbody>
+        <?php foreach ($items as $it): ?>
+          <tr>
+            <td><?= htmlspecialchars((string)$it["name"]) ?></td>
+            <td><?= (int)$it["qty"] ?></td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+    <p class="small">Generado por CEVIMEP</p>
+    <script>window.print();</script>
+  </body>
+  </html>
+  <?php
+  exit;
+}
 
 /* =========================
    Agregar item
@@ -507,14 +680,20 @@ $conn->beginTransaction();
       </div>
 
       <div class="card" style="margin-top:14px;">
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
-          <div>
-            <strong>Historial de Salidas</strong>
-            <div class="muted" style="font-size:12px;">Últimos 50 registros (sede actual)</div>
-          </div>
-          <a class="btn" href="/private/inventario/historial_salidas.php">Ver el historial</a>
-        </div>
-      </div>
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+    <div>
+      <strong>Historial de Salidas</strong>
+      <div class="muted" style="font-size:12px;">Últimos 50 registros (sede actual)</div>
+    </div>
+    <button class="btn" type="button" id="btnToggleHistory">Ver el historial</button>
+  </div>
+
+  <div class="historyBox" id="historyBox">
+    <div class="muted" id="historyLoading" style="margin-top:10px;">Cargando...</div>
+    <div id="historyContent" style="margin-top:10px;"></div>
+  </div>
+</div>
+
 
     </div>
   </main>
