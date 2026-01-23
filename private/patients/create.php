@@ -1,17 +1,7 @@
 <?php
 declare(strict_types=1);
 
-/* ===============================
-   Sesión (sin warnings)
-   =============================== */
 if (session_status() !== PHP_SESSION_ACTIVE) {
-  session_set_cookie_params([
-    'lifetime' => 0,
-    'path' => '/',
-    'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
-    'httponly' => true,
-    'samesite' => 'Lax',
-  ]);
   session_start();
 }
 
@@ -68,9 +58,7 @@ if ($isAdmin) {
 
 $error = "";
 
-/* ===============================
-   Defaults
-   =============================== */
+/* Defaults */
 $no_libro = "";
 $first_name = "";
 $last_name = "";
@@ -80,8 +68,6 @@ $email = "";
 $birth_date = "";
 $gender = "";
 $blood_type = "";
-
-/* Campos nuevos */
 $medico_refiere = "";
 $clinica_referencia = "";
 $ars = "";
@@ -122,7 +108,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $error = "Nombre y apellido son obligatorios.";
   } else {
     try {
-      // evitar duplicados de No. Libro en la MISMA sucursal
       $chk = $pdo->prepare("SELECT id FROM patients WHERE branch_id = :bid AND no_libro = :nl LIMIT 1");
       $chk->execute(['bid' => $branch_id, 'nl' => $no_libro]);
       if ($chk->fetchColumn()) {
@@ -148,7 +133,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
           'ge'  => $gender !== '' ? $gender : null,
           'bt'  => $blood_type !== '' ? $blood_type : null,
           'bid' => $branch_id,
-
           'mr'  => $medico_refiere !== '' ? $medico_refiere : null,
           'cr'  => $clinica_referencia !== '' ? $clinica_referencia : null,
           'ars' => $ars !== '' ? $ars : null,
@@ -173,7 +157,24 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
   <title>CEVIMEP | Registrar paciente</title>
 
   <link rel="stylesheet" href="/assets/css/styles.css?v=60">
-  <link rel="stylesheet" href="/assets/css/paciente.css?v=1">
+  <link rel="stylesheet" href="/assets/css/paciente.css?v=2">
+
+  <style>
+    .patients-wrap{max-width:1100px;margin:0 auto;padding:24px 18px;}
+    .patients-header{text-align:center;margin-top:10px;margin-bottom:18px;}
+    .patients-header h1{margin:0;font-size:34px;font-weight:800;}
+    .patients-header p{margin:6px 0 0;opacity:.75;}
+    .patients-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:18px 0 18px;}
+    .form-card{max-width:880px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.10);padding:18px;}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+    .span2{grid-column:1 / -1;}
+    .input{width:100%;}
+    label{display:block;font-weight:700;margin-bottom:6px;}
+    .muted{font-weight:600;opacity:.65;font-size:.85em;}
+    .actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px;}
+    @media (max-width: 820px){ .grid{grid-template-columns:1fr;} .form-card{padding:14px;} }
+    .alert{max-width:880px;margin:0 auto 12px;}
+  </style>
 </head>
 <body>
 
@@ -204,119 +205,122 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
   </aside>
 
   <main class="content">
-    <div class="module-head">
-      <div class="module-head-left">
-        <h1 class="module-title">Registrar nuevo paciente</h1>
-        <p class="module-subtitle">Completa los datos y guarda.</p>
+    <div class="patients-wrap">
+
+      <div class="patients-header">
+        <h1>Registrar nuevo paciente</h1>
+        <p>Completa los datos y guarda.</p>
       </div>
-      <div class="module-head-right">
+
+      <div class="patients-actions">
         <a class="btn" href="/private/patients/index.php">← Volver</a>
       </div>
-    </div>
 
-    <?php if ($error): ?>
-      <div class="alert alert-danger"><?= h($error) ?></div>
-    <?php endif; ?>
+      <?php if ($error): ?>
+        <div class="alert alert-danger"><?= h($error) ?></div>
+      <?php endif; ?>
 
-    <div class="card-form">
-      <form method="post" autocomplete="off">
-        <?php if ($isAdmin): ?>
+      <div class="form-card">
+        <form method="post" autocomplete="off">
+          <?php if ($isAdmin): ?>
+            <div class="grid" style="margin-bottom:12px;">
+              <div class="span2">
+                <label for="branch_id">Sucursal</label>
+                <select id="branch_id" name="branch_id" class="input" required>
+                  <?php foreach ($branches as $b): ?>
+                    <option value="<?= (int)$b['id'] ?>" <?= ((int)$b['id'] === (int)$branch_id) ? 'selected' : '' ?>>
+                      <?= h($b['name'] ?? '') ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+            </div>
+          <?php endif; ?>
+
           <div class="grid">
             <div>
-              <label for="branch_id">Sucursal</label>
-              <select id="branch_id" name="branch_id" class="input" required>
-                <?php foreach ($branches as $b): ?>
-                  <option value="<?= (int)$b['id'] ?>" <?= ((int)$b['id'] === (int)$branch_id) ? 'selected' : '' ?>>
-                    <?= h($b['name'] ?? '') ?>
-                  </option>
-                <?php endforeach; ?>
+              <label for="no_libro">No. Libro <span class="muted">(obligatorio)</span></label>
+              <input id="no_libro" name="no_libro" class="input" value="<?= h($no_libro) ?>" required>
+            </div>
+
+            <div>
+              <label for="cedula">Cédula</label>
+              <input id="cedula" name="cedula" class="input" value="<?= h($cedula) ?>">
+            </div>
+
+            <div>
+              <label for="first_name">Nombre <span class="muted">(obligatorio)</span></label>
+              <input id="first_name" name="first_name" class="input" value="<?= h($first_name) ?>" required>
+            </div>
+
+            <div>
+              <label for="last_name">Apellido <span class="muted">(obligatorio)</span></label>
+              <input id="last_name" name="last_name" class="input" value="<?= h($last_name) ?>" required>
+            </div>
+
+            <div>
+              <label for="phone">Teléfono</label>
+              <input id="phone" name="phone" class="input" value="<?= h($phone) ?>">
+            </div>
+
+            <div>
+              <label for="email">Correo</label>
+              <input id="email" name="email" type="email" class="input" value="<?= h($email) ?>">
+            </div>
+
+            <div>
+              <label for="birth_date">Fecha de nacimiento</label>
+              <input id="birth_date" name="birth_date" type="date" class="input" value="<?= h($birth_date) ?>">
+            </div>
+
+            <div>
+              <label for="gender">Género</label>
+              <select id="gender" name="gender" class="input">
+                <option value="">— Seleccionar —</option>
+                <option value="M" <?= ($gender === 'M') ? 'selected' : '' ?>>Masculino</option>
+                <option value="F" <?= ($gender === 'F') ? 'selected' : '' ?>>Femenino</option>
+                <option value="O" <?= ($gender === 'O') ? 'selected' : '' ?>>Otro</option>
               </select>
             </div>
-          </div>
-        <?php endif; ?>
 
-        <div class="grid">
-          <div>
-            <label for="no_libro">No. Libro <span class="muted">(obligatorio)</span></label>
-            <input id="no_libro" name="no_libro" class="input" value="<?= h($no_libro) ?>" required>
-          </div>
+            <div>
+              <label for="blood_type">Tipo de sangre</label>
+              <input id="blood_type" name="blood_type" class="input" value="<?= h($blood_type) ?>" placeholder="Ej: O+, A-">
+            </div>
 
-          <div>
-            <label for="cedula">Cédula</label>
-            <input id="cedula" name="cedula" class="input" value="<?= h($cedula) ?>">
-          </div>
+            <div>
+              <label for="ars">ARS</label>
+              <input id="ars" name="ars" class="input" value="<?= h($ars) ?>">
+            </div>
 
-          <div>
-            <label for="first_name">Nombre <span class="muted">(obligatorio)</span></label>
-            <input id="first_name" name="first_name" class="input" value="<?= h($first_name) ?>" required>
-          </div>
+            <div>
+              <label for="numero_afiliado">Número de afiliado</label>
+              <input id="numero_afiliado" name="numero_afiliado" class="input" value="<?= h($numero_afiliado) ?>">
+            </div>
 
-          <div>
-            <label for="last_name">Apellido <span class="muted">(obligatorio)</span></label>
-            <input id="last_name" name="last_name" class="input" value="<?= h($last_name) ?>" required>
-          </div>
+            <div class="span2">
+              <label for="medico_refiere">Médico que refiere</label>
+              <input id="medico_refiere" name="medico_refiere" class="input" value="<?= h($medico_refiere) ?>">
+            </div>
 
-          <div>
-            <label for="phone">Teléfono</label>
-            <input id="phone" name="phone" class="input" value="<?= h($phone) ?>">
-          </div>
+            <div class="span2">
+              <label for="clinica_referencia">Clínica de referencia</label>
+              <input id="clinica_referencia" name="clinica_referencia" class="input" value="<?= h($clinica_referencia) ?>">
+            </div>
 
-          <div>
-            <label for="email">Correo</label>
-            <input id="email" name="email" type="email" class="input" value="<?= h($email) ?>">
+            <div class="span2">
+              <label for="registrado_por">Registrado por</label>
+              <input id="registrado_por" name="registrado_por" class="input" value="<?= h($registrado_por) ?>">
+            </div>
           </div>
 
-          <div>
-            <label for="birth_date">Fecha de nacimiento</label>
-            <input id="birth_date" name="birth_date" type="date" class="input" value="<?= h($birth_date) ?>">
+          <div class="actions">
+            <button class="btn btn-primary" type="submit">Guardar paciente</button>
+            <a class="btn" href="/private/patients/index.php">Cancelar</a>
           </div>
+        </form>
+      </div>
 
-          <div>
-            <label for="gender">Género</label>
-            <select id="gender" name="gender" class="input">
-              <option value="">— Seleccionar —</option>
-              <option value="M" <?= ($gender === 'M') ? 'selected' : '' ?>>Masculino</option>
-              <option value="F" <?= ($gender === 'F') ? 'selected' : '' ?>>Femenino</option>
-              <option value="O" <?= ($gender === 'O') ? 'selected' : '' ?>>Otro</option>
-            </select>
-          </div>
-
-          <div>
-            <label for="blood_type">Tipo de sangre</label>
-            <input id="blood_type" name="blood_type" class="input" value="<?= h($blood_type) ?>" placeholder="Ej: O+, A-">
-          </div>
-
-          <div>
-            <label for="ars">ARS</label>
-            <input id="ars" name="ars" class="input" value="<?= h($ars) ?>">
-          </div>
-
-          <div>
-            <label for="numero_afiliado">Número de afiliado</label>
-            <input id="numero_afiliado" name="numero_afiliado" class="input" value="<?= h($numero_afiliado) ?>">
-          </div>
-
-          <div class="span2">
-            <label for="medico_refiere">Médico que refiere</label>
-            <input id="medico_refiere" name="medico_refiere" class="input" value="<?= h($medico_refiere) ?>">
-          </div>
-
-          <div class="span2">
-            <label for="clinica_referencia">Clínica de referencia</label>
-            <input id="clinica_referencia" name="clinica_referencia" class="input" value="<?= h($clinica_referencia) ?>">
-          </div>
-
-          <div class="span2">
-            <label for="registrado_por">Registrado por</label>
-            <input id="registrado_por" name="registrado_por" class="input" value="<?= h($registrado_por) ?>">
-          </div>
-        </div>
-
-        <div class="actions">
-          <button class="btn btn-primary" type="submit">Guardar paciente</button>
-          <a class="btn" href="/private/patients/index.php">Cancelar</a>
-        </div>
-      </form>
     </div>
   </main>
 </div>
