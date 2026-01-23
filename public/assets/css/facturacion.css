@@ -385,3 +385,75 @@
 .fact-methods-mini .tag.efectivo{ background:#e8f5e9; border-color:#a7dfb0; color:#0b7a2b; }
 .fact-methods-mini .tag.tarjeta{ background:#e3f2fd; border-color:#a7d4ff; color:#0b4d87; }
 .fact-methods-mini .tag.transferencia{ background:#fff3e0; border-color:#ffd59e; color:#8a5200; }
+/* =========================
+   PACIENTE - CENTER STYLE
+   (como la imagen)
+   ========================= */
+
+.fact-center{
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 28px 18px 10px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+}
+
+.fact-center-head{
+  width: 100%;
+  text-align: left;
+  margin-bottom: 12px;
+}
+
+.fact-center-head h1{
+  margin: 0;
+  font-size: 28px;
+  font-weight: 950;
+}
+
+.fact-center-head p{
+  margin: 6px 0 0;
+  opacity: .75;
+  font-weight: 700;
+}
+
+.fact-center-card{
+  width: 100%;
+  background:#fff;
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(0,0,0,.08);
+  padding: 18px;
+}
+
+.fact-center-card-title{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.fact-center-card-title h2{
+  margin:0;
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.fact-table-center{
+  width:100%;
+}
+
+.fact-table-center th,
+.fact-table-center td{
+  font-size: 13px;
+}
+
+.fact-center-actions{
+  margin-top: 14px;
+  display:flex;
+  gap: 12px;
+  justify-content:center;
+  width: 100%;
+  flex-wrap: wrap;
+}

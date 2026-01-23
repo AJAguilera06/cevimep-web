@@ -130,109 +130,69 @@ unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
 
   <main class="content">
 
-    <section class="hero">
+  <section class="fact-center">
+    <div class="fact-center-head">
       <h1>Facturación</h1>
       <p>Historial del paciente en esta sucursal</p>
-    </section>
+    </div>
 
-    <?php if ($flash_ok): ?><div class="fact-flash-ok"><?= h($flash_ok) ?></div><?php endif; ?>
-    <?php if ($flash_err): ?><div class="fact-flash-err"><?= h($flash_err) ?></div><?php endif; ?>
+    <div class="fact-center-card">
 
-    <div class="fact-patient-grid">
+      <div class="fact-center-card-title">
+        <h2><?= h($patient["full_name"] ?? "Paciente") ?></h2>
+        <span class="fact-badge-branch">Sucursal: <?= h($branch_name) ?></span>
+      </div>
 
-      <!-- LEFT: CARD PACIENTE -->
-      <section class="fact-patient-card">
-        <div class="fact-patient-head">
-          <h2 class="fact-patient-title"><?= h($patient["full_name"] ?? "Paciente") ?></h2>
-          <span class="fact-badge-branch">Sucursal: <?= h($branch_name) ?></span>
-        </div>
+      <table class="fact-table fact-table-center">
+        <thead>
+          <tr>
+            <th style="width:110px;">ID</th>
+            <th style="width:160px;">Fecha</th>
+            <th style="width:190px;">Método</th>
+            <th style="width:170px;">Total</th>
+            <th style="width:140px;">Detalle</th>
+          </tr>
+        </thead>
 
-        <p class="fact-patient-sub">
-          Aquí ves el historial de facturas del paciente en esta sucursal.
-        </p>
-
-        <div class="fact-patient-stats">
-          <div class="fact-stat">
-            <small>Total facturas</small>
-            <strong><?= (int)$invoice_count ?></strong>
-          </div>
-          <div class="fact-stat">
-            <small>Monto total</small>
-            <strong>RD$ <?= number_format((float)$invoice_total, 2) ?></strong>
-          </div>
-        </div>
-
-        <!-- Mini resumen por método (bonito y útil) -->
-        <div class="fact-methods-mini">
-          <div class="mini-item">
-            <span class="tag efectivo">Efectivo</span>
-            <strong>RD$ <?= number_format((float)$by_method["EFECTIVO"], 2) ?></strong>
-          </div>
-          <div class="mini-item">
-            <span class="tag tarjeta">Tarjeta</span>
-            <strong>RD$ <?= number_format((float)$by_method["TARJETA"], 2) ?></strong>
-          </div>
-          <div class="mini-item">
-            <span class="tag transferencia">Transferencia</span>
-            <strong>RD$ <?= number_format((float)$by_method["TRANSFERENCIA"], 2) ?></strong>
-          </div>
-        </div>
-
-        <div class="fact-patient-actions">
-          <a class="fact-btn secondary" href="/private/facturacion/index.php">← Volver</a>
-          <a class="fact-btn primary" href="/private/facturacion/nueva.php?patient_id=<?= (int)$patient_id ?>">➕ Nueva factura</a>
-        </div>
-      </section>
-
-      <!-- RIGHT: TABLA FACTURAS -->
-      <section class="fact-card-wide">
-        <div class="head">
-          <h3>Facturas</h3>
-        </div>
-
-        <table class="fact-table">
-          <thead>
+        <tbody>
+          <?php if (empty($invoices)): ?>
             <tr>
-              <th style="width:110px;">ID</th>
-              <th style="width:140px;">Fecha</th>
-              <th style="width:180px;">Método</th>
-              <th style="width:170px;">Total</th>
-              <th style="width:160px;">Detalle</th>
+              <td colspan="5" class="muted">Este paciente no tiene facturas en esta sucursal.</td>
             </tr>
-          </thead>
-
-          <tbody>
-            <?php if (empty($invoices)): ?>
+          <?php else: ?>
+            <?php foreach ($invoices as $inv): ?>
+              <?php
+                $pm_raw = strtoupper(trim((string)($inv["payment_method"] ?? "")));
+                $pm_class = "otro";
+                if ($pm_raw === "EFECTIVO") $pm_class = "efectivo";
+                elseif ($pm_raw === "TARJETA") $pm_class = "tarjeta";
+                elseif ($pm_raw === "TRANSFERENCIA") $pm_class = "transferencia";
+              ?>
               <tr>
-                <td colspan="5" class="muted">Este paciente no tiene facturas en esta sucursal.</td>
+                <td>#<?= (int)$inv["id"] ?></td>
+                <td><?= h($inv["invoice_date"]) ?></td>
+                <td><span class="fact-method <?= h($pm_class) ?>"><?= h($pm_raw ?: "OTRO") ?></span></td>
+                <td class="fact-money">RD$ <?= number_format((float)$inv["total"], 2) ?></td>
+                <td>
+                  <a class="fact-pill" target="_blank" href="/private/facturacion/print.php?id=<?= (int)$inv["id"] ?>">🧾 Ver</a>
+                </td>
               </tr>
-            <?php else: ?>
-              <?php foreach ($invoices as $inv): ?>
-                <?php
-                  $pm_raw = strtoupper(trim((string)($inv["payment_method"] ?? "")));
-                  $pm_class = "otro";
-                  if ($pm_raw === "EFECTIVO") $pm_class = "efectivo";
-                  elseif ($pm_raw === "TARJETA") $pm_class = "tarjeta";
-                  elseif ($pm_raw === "TRANSFERENCIA") $pm_class = "transferencia";
-                ?>
-                <tr>
-                  <td>#<?= (int)$inv["id"] ?></td>
-                  <td><?= h($inv["invoice_date"]) ?></td>
-                  <td><span class="fact-method <?= h($pm_class) ?>"><?= h($pm_raw ?: "OTRO") ?></span></td>
-                  <td class="fact-money">RD$ <?= number_format((float)$inv["total"], 2) ?></td>
-                  <td>
-                    <a class="fact-pill" target="_blank" href="/private/facturacion/print.php?id=<?= (int)$inv["id"] ?>">🧾 Ver</a>
-                  </td>
-                </tr>
-              <?php endforeach; ?>
-            <?php endif; ?>
-          </tbody>
-        </table>
-      </section>
+            <?php endforeach; ?>
+          <?php endif; ?>
+        </tbody>
+      </table>
 
     </div>
 
-  </main>
+    <div class="fact-center-actions">
+      <a class="fact-btn secondary" href="/private/facturacion/index.php">← Volver</a>
+      <a class="fact-btn primary" href="/private/facturacion/nueva.php?patient_id=<?= (int)$patient_id ?>">➕ Nueva factura</a>
+    </div>
+
+  </section>
+
+</main>
+
 </div>
 
 <div class="footer">
