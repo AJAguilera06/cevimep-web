@@ -6,7 +6,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 /* =========================
-   CARGAR DB (RUTA REAL)
+   CONEXIÓN BD (RUTA REAL)
    ========================= */
 require_once __DIR__ . '/../private/config/db.php';
 
@@ -15,7 +15,7 @@ if (!isset($pdo) || !($pdo instanceof PDO)) {
     die('Error crítico: no se pudo cargar la conexión a la base de datos.');
 }
 
-/* Si ya está logueado, al dashboard */
+/* Si ya hay sesión, ir al dashboard */
 if (isset($_SESSION['user'])) {
     header("Location: /private/dashboard.php");
     exit;
@@ -64,31 +64,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>CEVIMEP | Iniciar sesión</title>
-  <link rel="stylesheet" href="/assets/css/auth.css">
+    <meta charset="UTF-8">
+    <title>CEVIMEP | Iniciar sesión</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- ✅ ESTILO OFICIAL AUTH -->
+    <link rel="stylesheet" href="/assets/css/auth.css?v=1">
 </head>
 
 <body class="auth-ui">
 
 <div class="auth-page">
-  <div class="auth-card">
 
-    <img src="/assets/img/logo.png" class="auth-logo" alt="CEVIMEP">
+    <div class="auth-card">
 
-    <h2>Iniciar sesión</h2>
+        <!-- Logo -->
+        <div class="auth-logo">
+            <img src="/assets/img/logo.png" alt="CEVIMEP">
+        </div>
 
-    <?php if ($error): ?>
-      <div class="auth-alert error"><?= htmlspecialchars($error) ?></div>
-    <?php endif; ?>
+        <!-- Títulos -->
+        <h1 class="auth-title">CEVIMEP</h1>
+        <p class="auth-subtitle">Iniciar sesión</p>
 
-    <form method="POST">
-      <input type="email" name="email" placeholder="Correo" required>
-      <input type="password" name="password" placeholder="Contraseña" required>
-      <button type="submit">Entrar</button>
-    </form>
+        <?php if ($error): ?>
+            <div class="auth-alert error">
+                <?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?>
+            </div>
+        <?php endif; ?>
 
-  </div>
+        <!-- Formulario -->
+        <form method="POST" autocomplete="off">
+
+            <div class="form-group">
+                <label for="email">Correo</label>
+                <input
+                    id="email"
+                    type="email"
+                    name="email"
+                    class="input"
+                    placeholder="correo@ejemplo.com"
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="password">Contraseña</label>
+                <input
+                    id="password"
+                    type="password"
+                    name="password"
+                    class="input"
+                    placeholder="••••••••"
+                    required
+                >
+            </div>
+
+            <button type="submit" class="btn btn-primary">
+                Entrar
+            </button>
+
+        </form>
+
+    </div>
+
+</div>
+
+<!-- Footer fijo -->
+<div class="auth-footer">
+    © <?= date('Y') ?> CEVIMEP. Todos los derechos reservados.
 </div>
 
 </body>
