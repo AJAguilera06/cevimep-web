@@ -175,93 +175,129 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_exit"])) {
     if ($note !== "") $note_final .= ($note_final ? " | " : "") . "Nota: {$note}";
     if ($note_final === "") $note_final = null;
 
-    // Detectar columnas de inventory_movements
+    // Detectar columnas de inventory_movements (tu BD guarda 1 fila por item, no usa movement_items)
     $movCols = table_columns($conn, "inventory_movements");
-    $colType   = pick_col($movCols, ["type","movement_type","tipo","accion","action","movement"]);
-    $colBranch = pick_col($movCols, ["branch_id","sucursal_id","branch","sucursal"]);
-    $colNote   = pick_col($movCols, ["note","nota","descripcion","observacion","obs","comment"]);
-    $colDate   = pick_col($movCols, ["created_at","created","fecha","date","created_on"]);
+    $colType    = pick_col($movCols, ["type","movement_type","tipo","accion","action","movement"]);
+    $colBranch  = pick_col($movCols, ["branch_id","sucursal_id","branch","sucursal"]);
+    $colItemMov = pick_col($movCols, ["item_id","inventory_item_id","product_id","producto_id"]);
+    $colQtyMov  = pick_col($movCols, ["qty","quantity","cantidad"]);
+    $colNote    = pick_col($movCols, ["note","nota","descripcion","observacion","obs","comment"]);
+    $colDate    = pick_col($movCols, ["created_at","created","fecha","date","created_on"]);
 
     if (!$colBranch) {
       die("Config BD: inventory_movements no tiene columna branch_id/sucursal_id.");
     }
-
-    // Columnas de movement_items
-    $itemCols2 = table_columns($conn, "inventory_movement_items");
-    $colMovId = pick_col($itemCols2, ["movement_id","inventory_movement_id","movimiento_id","exit_id","salida_id"]);
-    $colItem  = pick_col($itemCols2, ["item_id","inventory_item_id","product_id","producto_id"]);
-    $colQty   = pick_col($itemCols2, ["quantity","qty","cantidad"]);
-    if (!$colMovId || !$colItem || !$colQty) {
-      die("Config BD: inventory_movement_items no tiene columnas requeridas.");
+    if (!$colItemMov) {
+      die("Config BD: inventory_movements no tiene columna item_id/product_id.");
+    }
+    if (!$colQtyMov) {
+      die("Config BD: inventory_movements no tiene columna qty/quantity.");
+    }
+    if (!$colType) {
+      die("Config BD: inventory_movements no tiene columna movement_type/type.");
     }
 
-    // Columnas stock
+    // Generar un batch para agrupar esta salida en el recibo
+    $batch = strtoupper(bin2hex(random_bytes(4)));
+    if ($note_final === null || $note_final === "") {
+      $note_final = "BATCH={$batch}";
+    } else {
+      $note_final = "BATCH={$batch} | " . $note_final;
+    }
+
+
+
+    
+    // Detectar inventory_stock (opcional). Si existe, lo actualizamos; si no, el stock queda calculado por movimientos.
     $stockCols = table_columns($conn, "inventory_stock");
     $colSItem   = pick_col($stockCols, ["item_id","inventory_item_id","product_id","producto_id"]);
     $colSBranch = pick_col($stockCols, ["branch_id","sucursal_id","branch","sucursal"]);
     $colSQty    = pick_col($stockCols, ["quantity","qty","cantidad"]);
-    if (!$colSItem || !$colSBranch || !$colSQty) {
-      die("Config BD: inventory_stock no tiene columnas requeridas.");
-    }
+    $hasStockTable = ($colSItem && $colSBranch && $colSQty);
 
-    $conn->beginTransaction();
+
+$conn->beginTransaction();
 
     try {
-      // 1) Validar stock para todos
-      $stCheck = $conn->prepare("
-        SELECT {$colSQty} AS qty
-        FROM inventory_stock
-        WHERE {$colSItem}=? AND {$colSBranch}=?
-        LIMIT 1
+      // 1) Validar stock por item (calculado desde inventory_movements)
+      $stHave = $conn->prepare("
+        SELECT COALESCE(SUM(
+          CASE
+            WHEN UPPER({$colType}) IN ('IN','ENTRADA','ENTRY') THEN {$colQtyMov}
+            ELSE -{$colQtyMov}
+          END
+        ), 0) AS stock
+        FROM inventory_movements
+        WHERE {$colBranch}=? AND {$colItemMov}=?
       ");
 
       foreach ($_SESSION["salida_items"] as $item_id => $d) {
         $need = (int)($d["qty"] ?? 0);
         if ($need <= 0) continue;
 
-        $stCheck->execute([(int)$item_id, $branch_id]);
-        $have = (int)($stCheck->fetchColumn() ?? 0);
+        $stHave->execute([$branch_id, (int)$item_id]);
+        $have = (int)($stHave->fetchColumn() ?? 0);
 
         if ($have < $need) {
           throw new RuntimeException("Stock insuficiente para '{$d["name"]}'. Disponible: {$have}, solicitado: {$need}.");
         }
       }
 
-      // 2) Insert movimiento
-      $fields = [];
-      $values = [];
-      $params = [];
+      // 2) Insertar salida (1 fila por item) en inventory_movements
+      $movement_id = 0;
 
-      if ($colType) { $fields[] = $colType; $values[] = "?"; $params[] = "salida"; }
-      $fields[] = $colBranch; $values[] = "?"; $params[] = $branch_id;
-      if ($colNote) { $fields[] = $colNote; $values[] = "?"; $params[] = $note_final; }
-      if ($colDate) { $fields[] = $colDate; $values[] = "NOW()"; }
+      $fieldsBase = [];
+      $valuesBase = [];
+      // Tipo
+      $fieldsBase[] = $colType;
+      $valuesBase[] = "?";
+      // Sucursal
+      $fieldsBase[] = $colBranch;
+      $valuesBase[] = "?";
+      // Item
+      $fieldsBase[] = $colItemMov;
+      $valuesBase[] = "?";
+      // Cantidad
+      $fieldsBase[] = $colQtyMov;
+      $valuesBase[] = "?";
+      // Nota (si existe)
+      if ($colNote) { $fieldsBase[] = $colNote; $valuesBase[] = "?"; }
+      // Fecha (si existe y no es autoincrement)
+      if ($colDate) { $fieldsBase[] = $colDate; $valuesBase[] = "NOW()"; }
 
-      $sqlMov = "INSERT INTO inventory_movements (" . implode(",", $fields) . ") VALUES (" . implode(",", $values) . ")";
+      $sqlMov = "INSERT INTO inventory_movements (" . implode(",", $fieldsBase) . ") VALUES (" . implode(",", $valuesBase) . ")";
       $stMov = $conn->prepare($sqlMov);
-      $stMov->execute($params);
-
-      $movement_id = (int)$conn->lastInsertId();
-
-      // 3) Insert movement items
-      $sqlIt = "INSERT INTO inventory_movement_items ({$colMovId}, {$colItem}, {$colQty}) VALUES (?, ?, ?)";
-      $stIt = $conn->prepare($sqlIt);
-
-      // 4) Descontar stock
-      $stUpd = $conn->prepare("
-        UPDATE inventory_stock
-        SET {$colSQty} = {$colSQty} - ?
-        WHERE {$colSItem}=? AND {$colSBranch}=?
-        LIMIT 1
-      ");
 
       foreach ($_SESSION["salida_items"] as $item_id => $d) {
         $q = (int)($d["qty"] ?? 0);
         if ($q <= 0) continue;
 
-        $stIt->execute([$movement_id, (int)$item_id, $q]);
-        $stUpd->execute([$q, (int)$item_id, $branch_id]);
+        $params = [];
+        $params[] = "OUT";         // movement_type
+        $params[] = $branch_id;    // branch_id
+        $params[] = (int)$item_id; // item_id
+        $params[] = $q;            // qty
+        if ($colNote) $params[] = $note_final;
+
+        $stMov->execute($params);
+
+        // 3) Actualizar inventory_stock si existe
+        if ($hasStockTable) {
+          if (!isset($stUpd)) { $stUpd = $conn->prepare("
+            UPDATE inventory_stock
+            SET {$colSQty} = {$colSQty} - ?
+            WHERE {$colSItem}=? AND {$colSBranch}=?
+            LIMIT 1
+          ");
+          }
+          $stUpd->execute([$q, (int)$item_id, $branch_id]);
+        }
+
+        if ($movement_id === 0) {
+          $movement_id = (int)$conn->lastInsertId();
+        }
       }
+
 
       $conn->commit();
 
