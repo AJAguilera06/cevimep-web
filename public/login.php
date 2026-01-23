@@ -3,25 +3,20 @@
 //  CEVIMEP - LOGIN (PUBLIC)
 // ==========================
 
-// DB (esto sí debe existir)
-$dbPath = __DIR__ . '/../private/config/db.php';
-if (!file_exists($dbPath)) {
-    die("Error: No se encontró db.php en: " . htmlspecialchars($dbPath));
-}
-require_once $dbPath;
+// Conexión DB
+require_once __DIR__ . '/../private/config/db.php';
 
-// Bootstrap (si existe lo carga; si no, no rompe)
+// Bootstrap opcional (si existe)
 $bootstrapPath = __DIR__ . '/../private/bootstrap.php';
 if (file_exists($bootstrapPath)) {
     require_once $bootstrapPath;
 } else {
-    // Fallback mínimo para Railway
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
 }
 
-// Helper seguro (por si bootstrap no lo trae)
+// Escape helper
 if (!function_exists('h')) {
     function h($v) {
         return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
@@ -37,8 +32,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($email === '' || $password === '') {
         $error = 'Debe completar todos los campos.';
     } else {
+        // ✅ Usamos password_hash (tu columna real)
         $stmt = $pdo->prepare("
-            SELECT u.id, u.email, u.password, u.role, u.branch_id, b.name AS branch_name
+            SELECT u.id, u.full_name, u.email, u.password_hash, u.role, u.branch_id, b.name AS branch_name
             FROM users u
             LEFT JOIN branches b ON b.id = u.branch_id
             WHERE u.email = ?
@@ -47,14 +43,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([$email]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$user || !password_verify($password, $user['password'])) {
+        if (!$user || empty($user['password_hash']) || !password_verify($password, $user['password_hash'])) {
             $error = 'Credenciales incorrectas.';
         } else {
+            // Sesión
             $_SESSION['user_id']   = $user['id'];
             $_SESSION['email']     = $user['email'];
-            $_SESSION['role']      = $user['role'];
-            $_SESSION['branch_id'] = $user['branch_id'];
-            $_SESSION['branch']    = $user['branch_name'];
+            $_SESSION['full_name'] = $user['full_name'] ?? null;
+            $_SESSION['role']      = $user['role'] ?? null;
+            $_SESSION['branch_id'] = $user['branch_id'] ?? null;
+            $_SESSION['branch']    = $user['branch_name'] ?? null;
 
             header('Location: /private/dashboard.php');
             exit;
@@ -68,8 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="utf-8">
     <title>CEVIMEP | Iniciar sesión</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-
-    <link rel="stylesheet" href="/assets/css/auth.css?v=2">
+    <link rel="stylesheet" href="/assets/css/auth.css?v=3">
 </head>
 
 <body class="auth-ui">
@@ -81,6 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <img src="/assets/img/CEVIMEP.png" alt="CEVIMEP">
             </div>
 
+            <h1 class="auth-title">CEVIMEP</h1>
             <p class="auth-subtitle">Amamos la prevención, cuidamos tu salud.</p>
 
             <?php if ($error): ?>
