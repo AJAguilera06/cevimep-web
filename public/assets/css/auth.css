@@ -150,3 +150,70 @@ html, body { margin: 0; padding: 0; height: 100%; }
   /* Encima de todo */
   z-index: 999;
 }
+/* =========================
+   EXTRAS UI (hover + toggle)
+   ========================= */
+
+/* Botón: hover suave + click */
+.auth-ui .btn{
+  transition: transform .12s ease, box-shadow .18s ease, background-color .18s ease, filter .18s ease;
+}
+
+.auth-ui .btn-primary:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(26,166,160,.25);
+}
+
+.auth-ui .btn-primary:active{
+  transform: translateY(0);
+  box-shadow: 0 6px 14px rgba(26,166,160,.18);
+}
+
+/* Campo contraseña con botón ojo */
+.auth-ui .pass-wrap{
+  position: relative;
+}
+
+.auth-ui .pass-toggle{
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #0b3c7a;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-weight: 800;
+  font-size: 12px;
+  cursor: pointer;
+  transition: filter .15s ease, transform .08s ease;
+}
+
+.auth-ui .pass-toggle:hover{ filter: brightness(.98); }
+.auth-ui .pass-toggle:active{ transform: translateY(-50%) scale(.98); }
+
+/* Deja espacio para el botón ojo */
+.auth-ui .pass-wrap .input{
+  padding-right: 92px;
+}
+
+/* Checkbox row */
+.auth-ui .check-row{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.auth-ui .check-row label{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-weight: 700;
+}

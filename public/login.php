@@ -5,9 +5,6 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-/* =========================
-   CONEXIÓN BD (RUTA REAL)
-   ========================= */
 require_once __DIR__ . '/../private/config/db.php';
 
 if (!isset($pdo) || !($pdo instanceof PDO)) {
@@ -15,7 +12,6 @@ if (!isset($pdo) || !($pdo instanceof PDO)) {
     die('Error crítico: no se pudo cargar la conexión a la base de datos.');
 }
 
-/* Si ya hay sesión, ir al dashboard */
 if (isset($_SESSION['user'])) {
     header("Location: /private/dashboard.php");
     exit;
@@ -44,7 +40,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$user || !password_verify($password, $user['password_hash'])) {
             $error = 'Credenciales incorrectas.';
         } else {
-
             session_regenerate_id(true);
 
             $_SESSION['user'] = [
@@ -68,22 +63,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>CEVIMEP | Iniciar sesión</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <!-- ✅ ESTILO OFICIAL AUTH -->
-    <link rel="stylesheet" href="/assets/css/auth.css?v=1">
+    <!-- ✅ ESTILO AUTH OFICIAL -->
+    <link rel="stylesheet" href="/assets/css/auth.css?v=2">
 </head>
 
 <body class="auth-ui">
 
 <div class="auth-page">
-
     <div class="auth-card">
 
-        <!-- Logo -->
         <div class="auth-logo">
-            <img src="/assets/img/logo.png" alt="CEVIMEP">
+            <img src="/assets/img/CEVIMEP.png" alt="CEVIMEP">
         </div>
 
-        <!-- Títulos -->
         <h1 class="auth-title">CEVIMEP</h1>
         <p class="auth-subtitle">Iniciar sesión</p>
 
@@ -93,8 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
         <?php endif; ?>
 
-        <!-- Formulario -->
-        <form method="POST" autocomplete="off">
+        <form method="POST" autocomplete="on" id="loginForm">
 
             <div class="form-group">
                 <label for="email">Correo</label>
@@ -104,20 +95,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     name="email"
                     class="input"
                     placeholder="correo@ejemplo.com"
+                    autocomplete="username"
                     required
                 >
             </div>
 
             <div class="form-group">
                 <label for="password">Contraseña</label>
-                <input
-                    id="password"
-                    type="password"
-                    name="password"
-                    class="input"
-                    placeholder="••••••••"
-                    required
-                >
+
+                <div class="pass-wrap">
+                    <input
+                        id="password"
+                        type="password"
+                        name="password"
+                        class="input"
+                        placeholder="••••••••"
+                        autocomplete="current-password"
+                        required
+                    >
+                    <button type="button" class="pass-toggle" id="togglePass">Mostrar</button>
+                </div>
+
+                <div class="check-row">
+                    <label>
+                        <input type="checkbox" id="rememberPass">
+                        Recordar contraseña (esta pestaña)
+                    </label>
+
+                    <label style="font-weight:700; opacity:.85;">
+                        <input type="checkbox" id="rememberEmail">
+                        Recordar correo
+                    </label>
+                </div>
             </div>
 
             <button type="submit" class="btn btn-primary">
@@ -127,13 +136,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </form>
 
     </div>
-
 </div>
 
-<!-- Footer fijo -->
 <div class="auth-footer">
     © <?= date('Y') ?> CEVIMEP. Todos los derechos reservados.
 </div>
+
+<script>
+(function(){
+  const email = document.getElementById('email');
+  const pass = document.getElementById('password');
+  const toggle = document.getElementById('togglePass');
+  const rememberPass = document.getElementById('rememberPass');
+  const rememberEmail = document.getElementById('rememberEmail');
+  const form = document.getElementById('loginForm');
+
+  // ===== Mostrar/Ocultar =====
+  toggle.addEventListener('click', () => {
+    const isPass = pass.type === 'password';
+    pass.type = isPass ? 'text' : 'password';
+    toggle.textContent = isPass ? 'Ocultar' : 'Mostrar';
+    pass.focus();
+  });
+
+  // ===== Recordar CORREO (localStorage) =====
+  const savedEmail = localStorage.getItem('cevimep_login_email');
+  if (savedEmail) {
+    email.value = savedEmail;
+    rememberEmail.checked = true;
+  }
+
+  rememberEmail.addEventListener('change', () => {
+    if (rememberEmail.checked) {
+      localStorage.setItem('cevimep_login_email', email.value || '');
+    } else {
+      localStorage.removeItem('cevimep_login_email');
+    }
+  });
+
+  email.addEventListener('input', () => {
+    if (rememberEmail.checked) {
+      localStorage.setItem('cevimep_login_email', email.value || '');
+    }
+  });
+
+  // ===== Recordar CONTRASEÑA (sessionStorage: solo esta pestaña) =====
+  // Por seguridad: solo si el usuario marca la casilla
+  const savedPass = sessionStorage.getItem('cevimep_login_pass');
+  const savedFlag = sessionStorage.getItem('cevimep_login_pass_enabled');
+
+  if (savedFlag === '1') {
+    rememberPass.checked = true;
+    if (savedPass) pass.value = savedPass;
+  }
+
+  rememberPass.addEventListener('change', () => {
+    if (rememberPass.checked) {
+      sessionStorage.setItem('cevimep_login_pass_enabled', '1');
+      sessionStorage.setItem('cevimep_login_pass', pass.value || '');
+    } else {
+      sessionStorage.removeItem('cevimep_login_pass_enabled');
+      sessionStorage.removeItem('cevimep_login_pass');
+    }
+  });
+
+  pass.addEventListener('input', () => {
+    if (rememberPass.checked) {
+      sessionStorage.setItem('cevimep_login_pass', pass.value || '');
+    }
+  });
+
+  // Si el usuario NO quiere recordar, limpiamos siempre al recargar
+  if (!rememberPass.checked) {
+    sessionStorage.removeItem('cevimep_login_pass');
+    sessionStorage.removeItem('cevimep_login_pass_enabled');
+  }
+
+  // Si se envía el form y el usuario NO quiere recordar, limpia
+  form.addEventListener('submit', () => {
+    if (!rememberPass.checked) {
+      sessionStorage.removeItem('cevimep_login_pass');
+      sessionStorage.removeItem('cevimep_login_pass_enabled');
+    }
+  });
+})();
+</script>
 
 </body>
 </html>
