@@ -1,18 +1,13 @@
 <?php
-declare(strict_types=1);
-
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-/**
- * ✅ Guard: si no hay sesión, SIEMPRE manda a /login.php (público)
- * ❌ Nunca redirigir a /private (eso crea loops)
- */
 if (!isset($_SESSION['user'])) {
     header("Location: /login.php");
     exit;
 }
+
 
 /* ===============================
    DB robusta (funciona en Railway)
