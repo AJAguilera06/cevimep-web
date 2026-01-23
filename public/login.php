@@ -1,139 +1,120 @@
 <?php
-declare(strict_types=1);
+require_once __DIR__ . '/../private/config/db.php';
+require_once __DIR__ . '/../private/bootstrap.php';
 
-// Iniciar sesión SOLO si no está activa
-if (session_status() !== PHP_SESSION_ACTIVE) {
-    session_start();
-}
-
-/* ===============================
-   Cargar conexión a la BD
-   =============================== */
-$db_candidates = [
-    __DIR__ . '/../config/db.php',
-    __DIR__ . '/../db.php',
-    __DIR__ . '/../private/config/db.php',
-    __DIR__ . '/db.php',
-];
-
-$loaded = false;
-foreach ($db_candidates as $path) {
-    if (is_file($path)) {
-        require_once $path;
-        $loaded = true;
-        break;
-    }
-}
-
-if (!$loaded || !isset($pdo) || !($pdo instanceof PDO)) {
-    http_response_code(500);
-    echo "Error crítico: no se pudo cargar la conexión a la base de datos.";
-    exit;
-}
-
-// Si ya está logueado → dashboard
-if (!empty($_SESSION['user'])) {
-    header("Location: /private/dashboard.php");
-    exit;
-}
-
-function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); }
-
-$error = '';
+$error = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email    = trim((string)($_POST['email'] ?? ''));
-    $password = (string)($_POST['password'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $password = $_POST['password'] ?? '';
 
     if ($email === '' || $password === '') {
-        $error = 'Completa correo y contraseña.';
+        $error = 'Debe completar todos los campos.';
     } else {
-        try {
-            $stmt = $pdo->prepare("
-                SELECT id, full_name, email, password_hash, role, branch_id, is_active
-                FROM users
-                WHERE email = :email
-                LIMIT 1
-            ");
-            $stmt->execute([':email' => $email]);
-            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stmt = $pdo->prepare("
+            SELECT u.id, u.email, u.password, u.role, u.branch_id, b.name AS branch_name
+            FROM users u
+            LEFT JOIN branches b ON b.id = u.branch_id
+            WHERE u.email = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$email]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            if (
-                !$user ||
-                (int)$user['is_active'] !== 1 ||
-                !password_verify($password, (string)$user['password_hash'])
-            ) {
-                $error = 'Correo o contraseña incorrectos.';
-            } else {
-                $_SESSION['user'] = [
-                    'id'        => (int)$user['id'],
-                    'full_name' => (string)$user['full_name'],
-                    'email'     => (string)$user['email'],
-                    'role'      => (string)$user['role'],
-                    'branch_id' => (int)$user['branch_id'],
-                ];
-                session_regenerate_id(true);
+        if (!$user || !password_verify($password, $user['password'])) {
+            $error = 'Credenciales incorrectas.';
+        } else {
+            $_SESSION['user_id']   = $user['id'];
+            $_SESSION['email']     = $user['email'];
+            $_SESSION['role']      = $user['role'];
+            $_SESSION['branch_id'] = $user['branch_id'];
+            $_SESSION['branch']    = $user['branch_name'];
 
-                header("Location: /private/dashboard.php");
-                exit;
-            }
-        } catch (Throwable $e) {
-            $error = 'Error interno del sistema.';
+            header('Location: /private/dashboard.php');
+            exit;
         }
     }
+}
+
+function h($v) {
+    return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 }
 ?>
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CEVIMEP | Iniciar sesión</title>
+    <meta charset="utf-8">
+    <title>CEVIMEP | Iniciar sesión</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <!-- subí el v para que no se quede cacheado -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=14">
+    <!-- CSS del login -->
+    <link rel="stylesheet" href="/assets/css/auth.css?v=1">
 </head>
 
-<body class="cev-auth-body">
+<body class="auth-ui">
 
-  <div class="cev-auth-bg"></div>
+    <!-- CONTENIDO PRINCIPAL -->
+    <div class="auth-page">
+        <div class="auth-card">
 
-  <main class="cev-auth-wrap">
-    <section class="cev-auth-card">
+            <!-- LOGO -->
+            <div class="auth-logo">
+                <img src="/assets/img/CEVIMEP.png" alt="CEVIMEP">
+            </div>
 
-      <div class="cev-auth-header">
-        <div class="cev-auth-logo-img">
-  <img src="/assets/img/CEVIMEP.png" alt="CEVIMEP">
-</div>
-        <h1 class="cev-auth-title"></h1>
-        <p class="cev-auth-subtitle">Amamos la prevención,cuidamos tu salud.</p>
-      </div>
+            <!-- TITULOS -->
+            <h1 class="auth-title">CEVIMEP</h1>
+            <p class="auth-subtitle">
+                Centro de Vacunación Integral y Medicina Preventiva
+            </p>
 
-      <?php if ($error): ?>
-        <div class="cev-alert cev-alert-danger"><?= h($error) ?></div>
-      <?php endif; ?>
+            <!-- ERROR -->
+            <?php if ($error): ?>
+                <div class="auth-alert error">
+                    <?= h($error) ?>
+                </div>
+            <?php endif; ?>
 
-      <form class="cev-auth-form" method="post" action="/login.php" autocomplete="on">
-        <div class="cev-field">
-          <label class="cev-label">Correo</label>
-          <input class="cev-input" type="email" name="email" required autocomplete="email" placeholder="ej: usuario@cevimep.com">
+            <!-- FORMULARIO -->
+            <form method="post" action="/login.php" autocomplete="on">
+
+                <div class="form-group">
+                    <label for="email">Correo</label>
+                    <input
+                        id="email"
+                        class="input"
+                        type="email"
+                        name="email"
+                        value="<?= h($_POST['email'] ?? '') ?>"
+                        placeholder="ej: usuario@cevimep.com"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Contraseña</label>
+                    <input
+                        id="password"
+                        class="input"
+                        type="password"
+                        name="password"
+                        placeholder="••••••••"
+                        required
+                    >
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    Ingresar
+                </button>
+            </form>
+
         </div>
+    </div>
 
-        <div class="cev-field">
-          <label class="cev-label">Contraseña</label>
-          <input class="cev-input" type="password" name="password" required autocomplete="current-password" placeholder="••••••••">
-        </div>
-
-        <button class="cev-btn cev-btn-primary" type="submit">Ingresar</button>
-      </form>
-
-    </section>
-  </main>
-
-  <!-- Barra azul inferior fija -->
-  <div class="cev-auth-bottom-bar">
-    © <?= (int)date("Y") ?> CEVIMEP — Todos los derechos reservados.
-  </div>
+    <!-- FOOTER -->
+    <div class="auth-footer">
+        © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
+    </div>
 
 </body>
 </html>
