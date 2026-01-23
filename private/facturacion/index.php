@@ -1,11 +1,15 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . "/../_guard.php";
+require_once __DIR__ . "/_guard.php";
 
-
+/**
+ * Página de entrada del área privada.
+ * Si el usuario está autenticado, lo enviamos al dashboard.
+ */
 header("Location: /private/dashboard.php");
 exit;
+
 
 
 /* Nombre sucursal */
