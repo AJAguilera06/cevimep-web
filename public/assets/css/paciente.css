@@ -1,155 +1,189 @@
-/* =========================================================
-   PACIENTES (extends styles.css)
-   Archivo: /public/assets/css/paciente.css
-   ========================================================= */
+/* public/assets/css/paciente.css */
+/* Mantiene el estilo del dashboard y mejora el módulo Pacientes */
 
-/* Contenedor principal de la página Pacientes */
-.patients-page .content{
-  padding-top: 18px !important;
-}
-
-/* Card centrada como la imagen */
-.patients-wrap{
-  max-width: 1100px;
+.patients-wrap {
+  width: 100%;
+  max-width: 1100px;            /* MÁS GRANDE */
   margin: 0 auto;
 }
 
-.patients-card{
-  background: var(--card);
-  border: 1px solid rgba(15,23,42,.06);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 18px 18px 16px;
+.module-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 10px 0 18px;
 }
 
-/* Header */
-.patients-head{
-  text-align: center;
-  margin-bottom: 14px;
-}
-
-.patients-head h1{
+.module-head-left .module-title {
   margin: 0;
   font-size: 34px;
-  letter-spacing: .2px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
 }
 
-.patients-head .sub{
-  margin-top: 6px;
+.module-head-left .module-subtitle {
+  margin: 6px 0 0;
+  color: #5d6b7a;
   font-size: 13px;
-  opacity: .78;
 }
 
-/* Barra acciones (buscar + botones) */
-.patients-actions{
-  display:flex;
-  justify-content: flex-end;
-  align-items:center;
+.module-head-right {
+  display: flex;
+  align-items: center;
   gap: 10px;
-  margin: 10px 0 14px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
-.patients-actions .search-input{
-  width: min(520px, 100%);
-  height: 38px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
+/* Search bar */
+.searchbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.searchbar-input {
+  width: 360px;
+  max-width: 70vw;
+  height: 36px;
   border-radius: 10px;
-  outline: none;
+  border: 1px solid rgba(16, 34, 56, 0.12);
+  padding: 0 12px;
   background: #fff;
+  outline: none;
+  transition: box-shadow .15s ease, border-color .15s ease;
 }
 
-.patients-actions .search-input:focus{
-  border-color: rgba(20,184,166,.55);
-  box-shadow: 0 0 0 4px rgba(20,184,166,.12);
+.searchbar-input:focus {
+  border-color: rgba(22, 131, 255, 0.35);
+  box-shadow: 0 0 0 4px rgba(22, 131, 255, 0.12);
 }
 
-.patients-actions .btn{
-  height: 38px;
+.searchbar-btn {
+  height: 36px;
   padding: 0 14px;
   border-radius: 10px;
-  border: 1px solid transparent;
+  border: 1px solid rgba(16, 34, 56, 0.12);
+  background: rgba(255,255,255,0.85);
+  font-weight: 700;
   cursor: pointer;
-  font-weight: 700;
+  transition: transform .12s ease, background .12s ease;
 }
 
-.btn-primary{
-  background: var(--accent);
-  color: #fff;
-}
-.btn-primary:hover{ filter: brightness(.98); }
-
-.btn-outline{
-  background: transparent;
-  color: #1d4ed8;
-  border-color: rgba(29,78,216,.35);
-}
-.btn-outline:hover{
-  background: rgba(29,78,216,.06);
+.searchbar-btn:hover {
+  background: #fff;
+  transform: translateY(-1px);
 }
 
-/* Links de acción arriba (Registrar/Volver) */
-.patients-actions a.link{
-  font-weight: 700;
+/* Botones (por si styles.css no los cubre) */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-weight: 800;
   text-decoration: none;
-  color: #6d28d9; /* morado como tu referencia */
+  border: 1px solid rgba(16, 34, 56, 0.12);
+  cursor: pointer;
 }
-.patients-actions a.link:hover{
+
+.btn-primary {
+  color: #fff;
+  border: 0;
+  background: linear-gradient(180deg, #167bff 0%, #0b56d6 100%);
+  box-shadow: 0 10px 22px rgba(11, 86, 214, 0.18);
+}
+
+.btn-primary:hover {
+  filter: brightness(1.03);
+  transform: translateY(-1px);
+}
+
+.btn-soft {
+  background: rgba(255,255,255,0.85);
+}
+
+/* Tabla grande y bonita */
+.card-table {
+  background: rgba(255, 255, 255, 0.60);
+  border: 1px solid rgba(16, 34, 56, 0.08);
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 16px 30px rgba(0,0,0,0.08);
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 14px;             /* MÁS LEGIBLE */
+  min-width: 980px;            /* para que no se apriete */
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  background: #0f4f9e;
+  color: #fff;
+  font-weight: 900;
+  padding: 12px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255,255,255,0.18);
+}
+
+.table thead th:first-child {
+  border-top-left-radius: 10px;
+}
+
+.table thead th:last-child {
+  border-top-right-radius: 10px;
+}
+
+.table tbody td {
+  background: rgba(255,255,255,0.85);
+  padding: 12px 12px;
+  border-bottom: 1px solid rgba(16, 34, 56, 0.08);
+}
+
+.table tbody tr:nth-child(even) td {
+  background: rgba(245, 249, 255, 0.95);
+}
+
+.td-actions {
+  white-space: nowrap;
+}
+
+.link-action {
+  font-weight: 900;
+  color: #5a2bd6;
+  text-decoration: none;
+}
+
+.link-action:hover {
   text-decoration: underline;
 }
 
-/* Tabla */
-.table-wrap{
-  overflow-x:auto;
-  border-radius: 14px;
-  border: 1px solid rgba(15,23,42,.08);
+.sep {
+  opacity: .55;
+  margin: 0 6px;
 }
 
-.table{
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 920px; /* para que no se rompa en pantallas chicas */
+.td-empty {
+  text-align: center;
+  padding: 22px 10px !important;
+  color: #5d6b7a;
+  font-weight: 700;
 }
-
-.table thead th{
-  background: #0b4aa1;
-  color: #fff;
-  text-align: left;
-  font-size: 13px;
-  padding: 12px 12px;
-  white-space: nowrap;
-}
-
-.table tbody td{
-  padding: 12px 12px;
-  font-size: 13px;
-  border-top: 1px solid rgba(15,23,42,.06);
-  vertical-align: middle;
-  white-space: nowrap;
-}
-
-.table tbody tr:nth-child(even){
-  background: rgba(2, 132, 199, 0.03);
-}
-
-.td-actions{
-  display:flex;
-  gap: 10px;
-}
-
-/* Botones Ver/Editar estilo link */
-.a-action{
-  font-weight: 800;
-  text-decoration: none;
-  color: #2563eb;
-}
-.a-action:hover{ text-decoration: underline; }
 
 /* Responsive */
-@media (max-width: 760px){
-  .patients-head h1{ font-size: 28px; }
-  .patients-actions{
-    justify-content: center;
-  }
+@media (max-width: 900px) {
+  .patients-wrap { max-width: 96vw; }
+  .module-head { flex-direction: column; align-items: flex-start; }
+  .module-head-right { width: 100%; justify-content: flex-start; }
+  .searchbar { width: 100%; }
+  .searchbar-input { width: 100%; max-width: 100%; }
 }
