@@ -45,22 +45,6 @@ function h($v): string {
   return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 }
 
-function tableExists(PDO $pdo, string $table): bool {
-  $st = $pdo->prepare("SHOW TABLES LIKE ?");
-  $st->execute([$table]);
-  return (bool)$st->fetchColumn();
-}
-
-function columnExists(PDO $pdo, string $table, string $col): bool {
-  try {
-    $st = $pdo->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
-    $st->execute([$col]);
-    return (bool)$st->fetchColumn();
-  } catch (Throwable $e) {
-    return false;
-  }
-}
-
 /* ================= Sucursal ================= */
 $branchName = "Sucursal ID: {$branchId}";
 try {
@@ -73,77 +57,39 @@ try {
 /* ================= Buscar ================= */
 $search = trim((string)($_GET['q'] ?? ''));
 
-/* ================= Facturas (YA SABEMOS QUE EXISTE invoices) ================= */
-$invoiceTable = "invoices";
-if (!tableExists($pdo, $invoiceTable)) {
-  // Si por alguna razón no existe, degradamos a "sin facturas"
-  $invoiceTable = null;
-}
-
-$invoicesHasBranchId = $invoiceTable ? columnExists($pdo, $invoiceTable, "branch_id") : false;
-$invoicesHasPatientId = $invoiceTable ? columnExists($pdo, $invoiceTable, "patient_id") : false;
-
-/* ================= Query ================= */
+/* ================= Query (invoices REAL) =================
+   invoices tiene: patient_id, branch_id (confirmado por tu SHOW COLUMNS)
+*/
 $params = [$branchId];
 
-if ($invoiceTable && $invoicesHasPatientId) {
-  // JOIN por paciente; si invoices tiene branch_id, filtramos por sucursal
-  $joinExtra = $invoicesHasBranchId ? " AND i.branch_id = p.branch_id" : "";
+$sql = "
+  SELECT
+    p.id,
+    CONCAT(p.first_name,' ',p.last_name) AS patient_name,
+    COUNT(i.id) AS invoice_count
+  FROM patients p
+  LEFT JOIN invoices i
+    ON i.patient_id = p.id
+   AND i.branch_id  = p.branch_id
+  WHERE p.branch_id = ?
+";
 
-  $sql = "
-    SELECT
-      p.id,
-      CONCAT(p.first_name,' ',p.last_name) AS patient_name,
-      COUNT(i.id) AS invoice_count
-    FROM patients p
-    LEFT JOIN {$invoiceTable} i
-      ON i.patient_id = p.id
-      {$joinExtra}
-    WHERE p.branch_id = ?
-  ";
-
-  if ($search !== '') {
-    $sql .= " AND (
-      CONCAT(p.first_name,' ',p.last_name) LIKE ?
-      OR p.no_libro LIKE ?
-      OR p.cedula LIKE ?
-    )";
-    $like = "%{$search}%";
-    $params[] = $like;
-    $params[] = $like;
-    $params[] = $like;
-  }
-
-  $sql .= "
-    GROUP BY p.id, p.first_name, p.last_name
-    ORDER BY p.first_name, p.last_name
-  ";
-
-} else {
-  // Sin tabla invoices usable -> solo pacientes
-  $sql = "
-    SELECT
-      p.id,
-      CONCAT(p.first_name,' ',p.last_name) AS patient_name,
-      0 AS invoice_count
-    FROM patients p
-    WHERE p.branch_id = ?
-  ";
-
-  if ($search !== '') {
-    $sql .= " AND (
-      CONCAT(p.first_name,' ',p.last_name) LIKE ?
-      OR p.no_libro LIKE ?
-      OR p.cedula LIKE ?
-    )";
-    $like = "%{$search}%";
-    $params[] = $like;
-    $params[] = $like;
-    $params[] = $like;
-  }
-
-  $sql .= " ORDER BY p.first_name, p.last_name";
+if ($search !== '') {
+  $sql .= " AND (
+    CONCAT(p.first_name,' ',p.last_name) LIKE ?
+    OR p.no_libro LIKE ?
+    OR p.cedula LIKE ?
+  )";
+  $like = "%{$search}%";
+  $params[] = $like;
+  $params[] = $like;
+  $params[] = $like;
 }
+
+$sql .= "
+  GROUP BY p.id, p.first_name, p.last_name
+  ORDER BY p.first_name, p.last_name
+";
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
@@ -157,10 +103,10 @@ $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <link rel="stylesheet" href="/assets/css/styles.css?v=60">
-  <link rel="stylesheet" href="/assets/css/facturacion.css?v=2">
+  <link rel="stylesheet" href="/assets/css/facturacion.css?v=3">
 
   <style>
-    /* Fallback por si facturacion.css no carga */
+    /* fallback por si facturacion.css no carga */
     .fact-wrap{max-width:1100px;margin:0 auto;padding:24px 18px;}
     .fact-head{text-align:center;margin-top:10px;margin-bottom:14px;}
     .fact-head h1{margin:0;font-size:34px;font-weight:800;}
