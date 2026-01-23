@@ -46,43 +46,50 @@ function h($v): string {
 }
 
 function tableExists(PDO $pdo, string $table): bool {
+  $st = $pdo->prepare("SHOW TABLES LIKE ?");
+  $st->execute([$table]);
+  return (bool)$st->fetchColumn();
+}
+
+function columnExists(PDO $pdo, string $table, string $col): bool {
   try {
-    $st = $pdo->prepare("SHOW TABLES LIKE ?");
-    $st->execute([$table]);
+    $st = $pdo->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
+    $st->execute([$col]);
     return (bool)$st->fetchColumn();
   } catch (Throwable $e) {
     return false;
   }
 }
 
-/* ================= Sucursal (nombre opcional) ================= */
+/* ================= Sucursal ================= */
 $branchName = "Sucursal ID: {$branchId}";
 try {
-  if (tableExists($pdo, "branches")) {
-    $st = $pdo->prepare("SELECT name FROM branches WHERE id = ? LIMIT 1");
-    $st->execute([$branchId]);
-    $n = $st->fetchColumn();
-    if ($n) $branchName = (string)$n;
-  }
+  $st = $pdo->prepare("SELECT name FROM branches WHERE id = ? LIMIT 1");
+  $st->execute([$branchId]);
+  $n = $st->fetchColumn();
+  if ($n) $branchName = (string)$n;
 } catch (Throwable $e) {}
 
 /* ================= Buscar ================= */
 $search = trim((string)($_GET['q'] ?? ''));
 
-/* ================= Detectar tabla facturas ================= */
-$invoiceTable = null;
-foreach (["invoices", "facturas", "billing_invoices", "invoice_headers"] as $t) {
-  if (tableExists($pdo, $t)) {
-    $invoiceTable = $t;
-    break;
-  }
+/* ================= Facturas (YA SABEMOS QUE EXISTE invoices) ================= */
+$invoiceTable = "invoices";
+if (!tableExists($pdo, $invoiceTable)) {
+  // Si por alguna razón no existe, degradamos a "sin facturas"
+  $invoiceTable = null;
 }
+
+$invoicesHasBranchId = $invoiceTable ? columnExists($pdo, $invoiceTable, "branch_id") : false;
+$invoicesHasPatientId = $invoiceTable ? columnExists($pdo, $invoiceTable, "patient_id") : false;
 
 /* ================= Query ================= */
 $params = [$branchId];
 
-if ($invoiceTable) {
-  // Con tabla de facturas: podemos calcular Con/Sin factura por sucursal
+if ($invoiceTable && $invoicesHasPatientId) {
+  // JOIN por paciente; si invoices tiene branch_id, filtramos por sucursal
+  $joinExtra = $invoicesHasBranchId ? " AND i.branch_id = p.branch_id" : "";
+
   $sql = "
     SELECT
       p.id,
@@ -91,7 +98,7 @@ if ($invoiceTable) {
     FROM patients p
     LEFT JOIN {$invoiceTable} i
       ON i.patient_id = p.id
-     AND (i.branch_id = p.branch_id OR i.branch_id IS NULL)
+      {$joinExtra}
     WHERE p.branch_id = ?
   ";
 
@@ -113,7 +120,7 @@ if ($invoiceTable) {
   ";
 
 } else {
-  // SIN tabla de facturas: NO hacemos JOIN (evita el error railway.i)
+  // Sin tabla invoices usable -> solo pacientes
   $sql = "
     SELECT
       p.id,
@@ -153,7 +160,7 @@ $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
   <link rel="stylesheet" href="/assets/css/facturacion.css?v=2">
 
   <style>
-    /* Por si tu facturacion.css todavía no está aplicado */
+    /* Fallback por si facturacion.css no carga */
     .fact-wrap{max-width:1100px;margin:0 auto;padding:24px 18px;}
     .fact-head{text-align:center;margin-top:10px;margin-bottom:14px;}
     .fact-head h1{margin:0;font-size:34px;font-weight:800;}
@@ -174,7 +181,6 @@ $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
     .fact-badge.ok{background:#e9fff1;border:1px solid #9be7b2;color:#0b7a2b;}
     .fact-badge.no{background:#ffecec;border:1px solid #ffb3b3;color:#b30000;}
     .fact-empty{opacity:.7;text-align:center;padding:18px;font-weight:700;}
-    .fact-note{margin-top:12px;opacity:.65;font-weight:700;font-size:12px;}
   </style>
 </head>
 <body>
@@ -211,8 +217,8 @@ $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
       <div class="fact-actions">
         <form class="fact-search" method="get" action="/private/facturacion/index.php">
           <input type="search" name="q"
-            placeholder="Buscar paciente por nombre, No. libro o cédula…"
-            value="<?= h($search) ?>">
+                 placeholder="Buscar paciente por nombre, No. libro o cédula…"
+                 value="<?= h($search) ?>">
           <button class="btn btn-primary" type="submit">Buscar</button>
         </form>
       </div>
@@ -229,7 +235,7 @@ $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
           <?php foreach ($patients as $p): ?>
             <?php
               $pid = (int)$p['id'];
-              $hasInvoice = ((int)$p['invoice_count'] > 0);
+              $hasInvoice = ((int)($p['invoice_count'] ?? 0) > 0);
             ?>
             <div class="fact-row">
               <div class="fact-name">
@@ -244,12 +250,6 @@ $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
               </a>
             </div>
           <?php endforeach; ?>
-        <?php endif; ?>
-
-        <?php if (!$invoiceTable): ?>
-          <div class="fact-note">
-            Nota: No se detectó tabla de facturas (invoices/facturas). Por eso todos salen “Sin factura”.
-          </div>
         <?php endif; ?>
       </div>
 
