@@ -347,3 +347,41 @@
   margin-top:12px;
   font-weight:800;
 }
+/* --- Paciente: cabecera alineada --- */
+.fact-patient-head{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.fact-methods-mini{
+  margin-top: 14px;
+  display:grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.fact-methods-mini .mini-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background:#f8fafc;
+  border:1px solid rgba(2,21,44,.08);
+  font-weight:900;
+}
+
+.fact-methods-mini .tag{
+  padding:6px 10px;
+  border-radius:999px;
+  font-size:12px;
+  border:1px solid rgba(2,21,44,.12);
+  background:#f2f5f9;
+  color:#2b3b4a;
+}
+
+.fact-methods-mini .tag.efectivo{ background:#e8f5e9; border-color:#a7dfb0; color:#0b7a2b; }
+.fact-methods-mini .tag.tarjeta{ background:#e3f2fd; border-color:#a7d4ff; color:#0b4d87; }
+.fact-methods-mini .tag.transferencia{ background:#fff3e0; border-color:#ffd59e; color:#8a5200; }

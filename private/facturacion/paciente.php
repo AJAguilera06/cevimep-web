@@ -45,19 +45,41 @@ if (!$patient) {
   die("Paciente no encontrado en esta sucursal.");
 }
 
-/* Facturas del paciente en la sucursal */
-$invoices = [];
+/* Facturas */
 $stI = $conn->prepare("
   SELECT id, invoice_date, payment_method, total, created_at
   FROM invoices
   WHERE branch_id = ? AND patient_id = ?
   ORDER BY id DESC
-  LIMIT 50
+  LIMIT 80
 ");
 $stI->execute([$branch_id, $patient_id]);
 $invoices = $stI->fetchAll(PDO::FETCH_ASSOC);
 
-/* Flash */
+/* Resumen */
+$invoice_count = count($invoices);
+$invoice_total = 0.0;
+
+$by_method = [
+  "EFECTIVO" => 0.0,
+  "TARJETA" => 0.0,
+  "TRANSFERENCIA" => 0.0,
+  "OTRO" => 0.0,
+];
+
+foreach ($invoices as $row) {
+  $t = (float)($row["total"] ?? 0);
+  $invoice_total += $t;
+
+  $m = strtoupper(trim((string)($row["payment_method"] ?? "")));
+  if ($m === "EFECTIVO" || $m === "TARJETA" || $m === "TRANSFERENCIA") {
+    $by_method[$m] += $t;
+  } else {
+    $by_method["OTRO"] += $t;
+  }
+}
+
+/* Flash (si usas) */
 $flash_ok = $_SESSION["flash_success"] ?? "";
 $flash_err = $_SESSION["flash_error"] ?? "";
 unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
@@ -69,64 +91,15 @@ unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Facturación - Paciente</title>
 
-  <!-- ✅ MISMO CSS QUE DASHBOARD -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=30">
-
-  <style>
-    .toolbar{
-      display:flex;
-      justify-content:space-between;
-      align-items:flex-start;
-      gap:12px;
-      flex-wrap:wrap;
-      margin-top:14px;
-    }
-
-    .btn-ui{
-      height:38px;
-      border:none;
-      border-radius:12px;
-      padding:0 14px;
-      font-weight:900;
-      cursor:pointer;
-      text-decoration:none;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      gap:8px;
-    }
-    .btn-primary-ui{background:#0b4d87;color:#fff;}
-    .btn-secondary-ui{background:#eef2f6;color:#2b3b4a;}
-
-    .table-card{
-      background:#fff;
-      border-radius:16px;
-      box-shadow:0 12px 30px rgba(0,0,0,.08);
-      padding:14px;
-      margin-top:14px;
-    }
-
-    table{width:100%;border-collapse:separate;border-spacing:0;}
-    th,td{padding:12px 10px;border-bottom:1px solid #eef2f6;font-size:13px;}
-    th{color:#0b4d87;text-align:left;font-weight:900;font-size:12px;}
-    tr:last-child td{border-bottom:none;}
-
-    .flash-ok{background:#e9fff1;border:1px solid #a7f0bf;color:#0a7a33;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:12px;}
-    .flash-err{background:#ffecec;border:1px solid #ffb6b6;color:#a40000;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:12px;}
-
-    .pill{
-      display:inline-flex;align-items:center;gap:8px;
-      padding:6px 10px;border-radius:999px;
-      font-weight:900;font-size:12px;background:#eef6ff;color:#0b4d87;
-      border:1px solid rgba(2,21,44,.12);
-      text-decoration:none;
-    }
-  </style>
+  <!-- Dashboard base -->
+  <link rel="stylesheet" href="/assets/css/styles.css?v=50">
+  <!-- Facturación UI -->
+  <link rel="stylesheet" href="/assets/css/facturacion.css?v=50">
 </head>
 
 <body>
 
-<!-- NAVBAR (IGUAL AL dashboard.php) -->
+<!-- TOPBAR -->
 <div class="navbar">
   <div class="inner">
     <div class="brand">
@@ -141,7 +114,7 @@ unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
 
 <div class="layout">
 
-  <!-- SIDEBAR (IGUAL AL dashboard.php) -->
+  <!-- SIDEBAR -->
   <aside class="sidebar">
     <h3 class="menu-title">Menú</h3>
     <nav class="menu">
@@ -158,56 +131,105 @@ unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
   <main class="content">
 
     <section class="hero">
-      <h1><?= h($patient["full_name"] ?? "Paciente") ?></h1>
-      <p>Sucursal: <strong><?= h($branch_name) ?></strong></p>
+      <h1>Facturación</h1>
+      <p>Historial del paciente en esta sucursal</p>
     </section>
 
-    <?php if ($flash_ok): ?><div class="flash-ok"><?= h($flash_ok) ?></div><?php endif; ?>
-    <?php if ($flash_err): ?><div class="flash-err"><?= h($flash_err) ?></div><?php endif; ?>
+    <?php if ($flash_ok): ?><div class="fact-flash-ok"><?= h($flash_ok) ?></div><?php endif; ?>
+    <?php if ($flash_err): ?><div class="fact-flash-err"><?= h($flash_err) ?></div><?php endif; ?>
 
-    <div class="toolbar">
-      <div>
-        <h3 style="margin:0 0 6px;"><?= h($patient["full_name"]) ?></h3>
-        <p class="muted" style="margin:0;">Historial de facturas del paciente en esta sucursal.</p>
-      </div>
+    <div class="fact-patient-grid">
 
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <a class="btn-ui btn-secondary-ui" href="/private/facturacion/index.php">← Volver</a>
-        <a class="btn-ui btn-primary-ui" href="/private/facturacion/nueva.php?patient_id=<?= (int)$patient_id ?>">➕ Nueva factura</a>
-      </div>
-    </div>
+      <!-- LEFT: CARD PACIENTE -->
+      <section class="fact-patient-card">
+        <div class="fact-patient-head">
+          <h2 class="fact-patient-title"><?= h($patient["full_name"] ?? "Paciente") ?></h2>
+          <span class="fact-badge-branch">Sucursal: <?= h($branch_name) ?></span>
+        </div>
 
-    <div class="table-card">
-      <h3 style="margin:0 0 10px;">Facturas</h3>
+        <p class="fact-patient-sub">
+          Aquí ves el historial de facturas del paciente en esta sucursal.
+        </p>
 
-      <table>
-        <thead>
-          <tr>
-            <th style="width:110px;">ID</th>
-            <th style="width:140px;">Fecha</th>
-            <th style="width:160px;">Método</th>
-            <th style="width:160px;">Total</th>
-            <th style="width:160px;">Detalle</th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php if (empty($invoices)): ?>
-            <tr><td colspan="5" class="muted">Este paciente no tiene facturas en esta sucursal.</td></tr>
-          <?php else: ?>
-            <?php foreach ($invoices as $inv): ?>
+        <div class="fact-patient-stats">
+          <div class="fact-stat">
+            <small>Total facturas</small>
+            <strong><?= (int)$invoice_count ?></strong>
+          </div>
+          <div class="fact-stat">
+            <small>Monto total</small>
+            <strong>RD$ <?= number_format((float)$invoice_total, 2) ?></strong>
+          </div>
+        </div>
+
+        <!-- Mini resumen por método (bonito y útil) -->
+        <div class="fact-methods-mini">
+          <div class="mini-item">
+            <span class="tag efectivo">Efectivo</span>
+            <strong>RD$ <?= number_format((float)$by_method["EFECTIVO"], 2) ?></strong>
+          </div>
+          <div class="mini-item">
+            <span class="tag tarjeta">Tarjeta</span>
+            <strong>RD$ <?= number_format((float)$by_method["TARJETA"], 2) ?></strong>
+          </div>
+          <div class="mini-item">
+            <span class="tag transferencia">Transferencia</span>
+            <strong>RD$ <?= number_format((float)$by_method["TRANSFERENCIA"], 2) ?></strong>
+          </div>
+        </div>
+
+        <div class="fact-patient-actions">
+          <a class="fact-btn secondary" href="/private/facturacion/index.php">← Volver</a>
+          <a class="fact-btn primary" href="/private/facturacion/nueva.php?patient_id=<?= (int)$patient_id ?>">➕ Nueva factura</a>
+        </div>
+      </section>
+
+      <!-- RIGHT: TABLA FACTURAS -->
+      <section class="fact-card-wide">
+        <div class="head">
+          <h3>Facturas</h3>
+        </div>
+
+        <table class="fact-table">
+          <thead>
+            <tr>
+              <th style="width:110px;">ID</th>
+              <th style="width:140px;">Fecha</th>
+              <th style="width:180px;">Método</th>
+              <th style="width:170px;">Total</th>
+              <th style="width:160px;">Detalle</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            <?php if (empty($invoices)): ?>
               <tr>
-                <td>#<?= (int)$inv["id"] ?></td>
-                <td><?= h($inv["invoice_date"]) ?></td>
-                <td><?= h($inv["payment_method"]) ?></td>
-                <td style="font-weight:900;white-space:nowrap;">RD$ <?= number_format((float)$inv["total"], 2) ?></td>
-                <td>
-                  <a class="pill" target="_blank" href="/private/facturacion/print.php?id=<?= (int)$inv["id"] ?>">🧾 Ver</a>
-                </td>
+                <td colspan="5" class="muted">Este paciente no tiene facturas en esta sucursal.</td>
               </tr>
-            <?php endforeach; ?>
-          <?php endif; ?>
-        </tbody>
-      </table>
+            <?php else: ?>
+              <?php foreach ($invoices as $inv): ?>
+                <?php
+                  $pm_raw = strtoupper(trim((string)($inv["payment_method"] ?? "")));
+                  $pm_class = "otro";
+                  if ($pm_raw === "EFECTIVO") $pm_class = "efectivo";
+                  elseif ($pm_raw === "TARJETA") $pm_class = "tarjeta";
+                  elseif ($pm_raw === "TRANSFERENCIA") $pm_class = "transferencia";
+                ?>
+                <tr>
+                  <td>#<?= (int)$inv["id"] ?></td>
+                  <td><?= h($inv["invoice_date"]) ?></td>
+                  <td><span class="fact-method <?= h($pm_class) ?>"><?= h($pm_raw ?: "OTRO") ?></span></td>
+                  <td class="fact-money">RD$ <?= number_format((float)$inv["total"], 2) ?></td>
+                  <td>
+                    <a class="fact-pill" target="_blank" href="/private/facturacion/print.php?id=<?= (int)$inv["id"] ?>">🧾 Ver</a>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            <?php endif; ?>
+          </tbody>
+        </table>
+      </section>
+
     </div>
 
   </main>
