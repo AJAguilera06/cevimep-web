@@ -1,101 +1,188 @@
 <?php
 declare(strict_types=1);
-require_once __DIR__ . "/../_guard.php";
 
-$conn = $pdo;
-
-$user = $_SESSION["user"];
-$year = date("Y");
-$branch_id = (int)($user["branch_id"] ?? 0);
-
-$branch_name = "";
-if ($branch_id > 0) {
-  $stB = $conn->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
-  $stB->execute([$branch_id]);
-  $branch_name = (string)($stB->fetchColumn() ?? "");
+if (session_status() !== PHP_SESSION_ACTIVE) {
+  session_start();
 }
-if ($branch_name === "") $branch_name = "CEVIMEP";
 
-/* Pacientes de la sucursal */
-$patients = [];
-if ($branch_id > 0) {
-  $st = $conn->prepare("
-    SELECT 
+if (empty($_SESSION['user'])) {
+  header("Location: /login.php");
+  exit;
+}
+
+$user = $_SESSION['user'];
+$branchId = (int)($user['branch_id'] ?? 0);
+
+if ($branchId <= 0) {
+  header("Location: /private/dashboard.php");
+  exit;
+}
+
+/* ===============================
+   DB (ruta robusta)
+   =============================== */
+$db_candidates = [
+  __DIR__ . "/../config/db.php",
+  __DIR__ . "/../../config/db.php",
+  __DIR__ . "/../db.php",
+  __DIR__ . "/../../db.php",
+];
+
+$loaded = false;
+foreach ($db_candidates as $p) {
+  if (is_file($p)) {
+    require_once $p;
+    $loaded = true;
+    break;
+  }
+}
+
+if (!$loaded || !isset($pdo) || !($pdo instanceof PDO)) {
+  http_response_code(500);
+  echo "Error crítico: no se pudo cargar la conexión a la base de datos.";
+  exit;
+}
+
+function h($v): string {
+  return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+}
+
+function tableExists(PDO $pdo, string $table): bool {
+  try {
+    $st = $pdo->prepare("SHOW TABLES LIKE ?");
+    $st->execute([$table]);
+    return (bool)$st->fetchColumn();
+  } catch (Throwable $e) {
+    return false;
+  }
+}
+
+/* ===============================
+   Nombre de sucursal (si existe branches)
+   =============================== */
+$branchName = "Sucursal ID: " . $branchId;
+try {
+  if (tableExists($pdo, "branches")) {
+    $stB = $pdo->prepare("SELECT name FROM branches WHERE id = ? LIMIT 1");
+    $stB->execute([$branchId]);
+    $bn = $stB->fetchColumn();
+    if ($bn) $branchName = (string)$bn;
+  }
+} catch (Throwable $e) {}
+
+/* ===============================
+   Buscar paciente
+   =============================== */
+$search = trim((string)($_GET['q'] ?? ''));
+
+/* ===============================
+   Tabla de facturas (detecta nombre)
+   =============================== */
+$invoiceTable = null;
+foreach (["invoices", "facturas", "billing_invoices"] as $cand) {
+  if (tableExists($pdo, $cand)) {
+    $invoiceTable = $cand;
+    break;
+  }
+}
+
+/* ===============================
+   Query: pacientes de la sucursal + estado con/sin factura
+   - Usamos parámetros POSICIONALES para evitar HY093
+   =============================== */
+$params = [];
+if ($invoiceTable) {
+  $sql = "
+    SELECT
       p.id,
-      TRIM(CONCAT(p.first_name,' ',p.last_name)) AS full_name,
-      (
-        SELECT COUNT(*)
-        FROM invoices i
-        WHERE i.patient_id = p.id AND i.branch_id = ?
-      ) AS invoices_count
+      CONCAT(p.first_name,' ',p.last_name) AS patient_name,
+      COUNT(i.id) AS invoice_count
+    FROM patients p
+    LEFT JOIN {$invoiceTable} i
+      ON i.patient_id = p.id
+     AND i.branch_id  = p.branch_id
+    WHERE p.branch_id = ?
+  ";
+  $params[] = $branchId;
+
+  if ($search !== '') {
+    $sql .= " AND (CONCAT(p.first_name,' ',p.last_name) LIKE ? OR p.no_libro LIKE ? OR p.cedula LIKE ?)";
+    $like = "%{$search}%";
+    $params[] = $like;
+    $params[] = $like;
+    $params[] = $like;
+  }
+
+  $sql .= "
+    GROUP BY p.id, p.first_name, p.last_name
+    ORDER BY p.first_name ASC, p.last_name ASC
+  ";
+
+  $stmt = $pdo->prepare($sql);
+  $stmt->execute($params);
+  $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} else {
+  // Si no existe tabla de facturas, igual listamos pacientes (estado = sin factura)
+  $sql = "
+    SELECT
+      p.id,
+      CONCAT(p.first_name,' ',p.last_name) AS patient_name,
+      0 AS invoice_count
     FROM patients p
     WHERE p.branch_id = ?
-    ORDER BY full_name ASC
-  ");
-  $st->execute([$branch_id, $branch_id]);
-  $patients = $st->fetchAll(PDO::FETCH_ASSOC);
+  ";
+  $params[] = $branchId;
+
+  if ($search !== '') {
+    $sql .= " AND (CONCAT(p.first_name,' ',p.last_name) LIKE ? OR p.no_libro LIKE ? OR p.cedula LIKE ?)";
+    $like = "%{$search}%";
+    $params[] = $like;
+    $params[] = $like;
+    $params[] = $like;
+  }
+
+  $sql .= " ORDER BY p.first_name ASC, p.last_name ASC";
+
+  $stmt = $pdo->prepare($sql);
+  $stmt->execute($params);
+  $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
+
 ?>
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CEVIMEP | Facturación</title>
+  <meta charset="UTF-8">
+  <title>Facturación | CEVIMEP</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <!-- ✅ MISMO CSS QUE DASHBOARD (ruta absoluta) -->
+  <!-- MISMO CSS DEL DASHBOARD -->
   <link rel="stylesheet" href="/assets/css/styles.css?v=60">
+  <!-- Tu CSS (ahora mismo está vacío/“asd”, pero lo dejamos linkeado) -->
+  <link rel="stylesheet" href="/assets/css/facturacion.css?v=2">
 
   <style>
-    /* ✅ Asegura layout estable como los otros módulos */
-    html,body{height:100%;}
-    body{margin:0; overflow:hidden !important;}
-
-    /* ✅ Pequeños refinamientos visuales (sin romper tu CSS global) */
-    .page-card{padding:18px;}
-    .header-row{display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; justify-content:space-between;}
-    .subtitle{margin:4px 0 0; font-weight:700; opacity:.8;}
-    .search-wrap{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:14px;}
-    .search-label{font-weight:900; color:#052a7a;}
-    .search-input{
-      width:min(520px, 100%);
-      padding:10px 12px;
-      border-radius:14px;
-      border:1px solid rgba(2,21,44,.14);
-      outline:none;
-      background:#fff;
-    }
-    .search-input:focus{border-color:#93c5fd; box-shadow:0 0 0 4px rgba(59,130,246,.15);}
-
-    .status-pill{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      padding:8px 14px;
-      border-radius:999px;
-      font-weight:900;
-      font-size:12px;
-      text-decoration:none;
-      border:1px solid transparent;
-      min-width:120px;
-      transition:transform .05s ease, box-shadow .15s ease, opacity .15s ease;
-    }
-    .status-pill:hover{transform:translateY(-1px); box-shadow:0 6px 18px rgba(2,6,23,.10);}
-    .status-ok{background:#e8fff1; color:#067647; border-color:#abefc6;}
-    .status-no{background:#fff0f0; color:#b42318; border-color:#fecdca;}
-
-    .name-link{
-      font-weight:900;
-      color:#052a7a;
-      text-decoration:none;
-    }
-    .name-link:hover{text-decoration:underline;}
-
-    /* alinear columna estado a la derecha como en tu captura */
-    th.state-col, td.state-col{text-align:right;}
-
-    /* hace que la fila sea más “clicable” sin cambiar tu tabla base */
-    tr.data-row:hover{background:rgba(2,21,44,.03);}
+    /* Layout centrado tipo "Pacientes" */
+    .wrap{max-width:1100px;margin:0 auto;padding:24px 18px;}
+    .head{text-align:center;margin-top:10px;margin-bottom:14px;}
+    .head h1{margin:0;font-size:34px;font-weight:800;}
+    .head p{margin:6px 0 0;opacity:.75;font-weight:600;}
+    .actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:18px 0 18px;}
+    .searchform{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;}
+    .searchform .input{min-width:340px;}
+    .card{max-width:780px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.10);padding:16px;}
+    .table{width:100%;border-collapse:separate;border-spacing:0;}
+    .table thead th{font-weight:800;}
+    .list-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 10px;border-bottom:1px solid rgba(0,0,0,.06);}
+    .list-row:last-child{border-bottom:0;}
+    .pname{font-weight:800;}
+    .pname a{color:#0b3a8a;text-decoration:none;}
+    .pname a:hover{text-decoration:underline;}
+    .badge{padding:7px 12px;border-radius:999px;font-weight:800;font-size:12px;white-space:nowrap;}
+    .ok{background:#e9fff1;border:1px solid #9be7b2;color:#0b7a2b;}
+    .no{background:#ffecec;border:1px solid #ffb3b3;color:#b30000;}
+    .empty{opacity:.7;text-align:center;padding:18px;font-weight:700;}
+    @media (max-width: 520px){ .searchform .input{min-width:100%;} }
   </style>
 </head>
 
@@ -103,117 +190,94 @@ if ($branch_id > 0) {
 
 <header class="navbar">
   <div class="inner">
-    <div></div>
-    <div class="brand"><span class="dot"></span> CEVIMEP</div>
+    <div class="brand">
+      <span class="dot"></span>
+      <span>CEVIMEP</span>
+    </div>
     <div class="nav-right">
-      <a class="
-/assets/css/styles.css
-
-
--pill" href="/logout.php">Salir</a>
+      <a href="/logout.php" class="btn-pill">Salir</a>
     </div>
   </div>
 </header>
 
-<!-- ✅ MISMA ESTRUCTURA QUE DASHBOARD -->
 <div class="layout">
 
   <aside class="sidebar">
     <div class="menu-title">Menú</div>
-
     <nav class="menu">
-      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
-      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;">
-        <span class="ico">🗓️</span> Citas
-      </a>
-
-      <!-- ✅ ACTIVO -->
-      <a class="active" href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
-
-      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
-      <a href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
+      <a href="/private/dashboard.php">🏠 Panel</a>
+      <a href="/private/patients/index.php">👤 Pacientes</a>
+      <a href="/private/citas/index.php">📅 Citas</a>
+      <a class="active" href="/private/facturacion/index.php">🧾 Facturación</a>
+      <a href="/private/caja/index.php">💳 Caja</a>
+      <a href="/private/inventario/index.php">📦 Inventario</a>
+      <a href="/private/estadistica/index.php">📊 Estadísticas</a>
     </nav>
   </aside>
 
   <main class="content">
+    <div class="wrap">
 
-    <div class="card page-card">
-      <div class="header-row">
-        <div>
-          <h2 style="margin:0;">Facturación</h2>
-          <div class="subtitle">
-            Sucursal actual: <strong><?= htmlspecialchars($branch_name) ?></strong>
-          </div>
+      <div class="head">
+        <h1>Facturación</h1>
+        <p>Sucursal actual: <?= h($branchName) ?></p>
+      </div>
+
+      <div class="actions">
+        <form class="searchform" method="get" action="/private/facturacion/index.php">
+          <input
+            class="input"
+            type="search"
+            name="q"
+            placeholder="Buscar paciente por nombre, No. libro o cédula…"
+            value="<?= h($search) ?>"
+          >
+          <button class="btn btn-primary" type="submit">Buscar</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:10px;align-items:center;flex-wrap:wrap;">
+          <div style="font-weight:900;">Pacientes</div>
+          <div style="opacity:.7;font-weight:700;">Estado (por sucursal)</div>
         </div>
+
+        <?php if (empty($patients)): ?>
+          <div class="empty">No hay pacientes para esta sucursal<?= $search ? " con ese filtro." : "." ?></div>
+        <?php else: ?>
+          <?php foreach ($patients as $p): ?>
+            <?php
+              $pid = (int)($p['id'] ?? 0);
+              $name = (string)($p['patient_name'] ?? '');
+              $count = (int)($p['invoice_count'] ?? 0);
+              $hasInvoice = $count > 0;
+            ?>
+            <div class="list-row">
+              <div class="pname">
+                <!-- Si tienes create.php en facturacion, esto abre la factura del paciente -->
+                <a href="/private/facturacion/create.php?patient_id=<?= $pid ?>"><?= h($name) ?></a>
+              </div>
+              <div class="badge <?= $hasInvoice ? 'ok' : 'no' ?>">
+                <?= $hasInvoice ? 'Con factura' : 'Sin factura' ?>
+              </div>
+            </div>
+          <?php endforeach; ?>
+        <?php endif; ?>
+
+        <?php if (!$invoiceTable): ?>
+          <div style="margin-top:12px;opacity:.65;font-weight:700;font-size:12px;">
+            Nota: No se detectó tabla de facturas (invoices/facturas). Mostrando pacientes, estado por defecto “Sin factura”.
+          </div>
+        <?php endif; ?>
       </div>
-
-      <div class="search-wrap">
-        <div class="search-label">Buscar paciente:</div>
-        <input type="text" id="searchInput" class="search-input" placeholder="Escribe el nombre..." />
-      </div>
-
-      <div style="height:12px;"></div>
-
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Nombre</th>
-            <th class="state-col" style="width:220px;">Estado (por sucursal)</th>
-          </tr>
-        </thead>
-
-        <tbody id="patientsTable">
-          <?php if (empty($patients)): ?>
-            <tr><td colspan="2" class="muted">No hay pacientes registrados.</td></tr>
-          <?php else: ?>
-            <?php foreach ($patients as $p): ?>
-              <?php $pid = (int)$p["id"]; ?>
-              <?php $hasInv = ((int)$p["invoices_count"] > 0); ?>
-              <tr class="data-row">
-                <td>
-                  <!-- ✅ nombre clicable -->
-                  <a class="name-link" href="paciente.php?patient_id=<?= $pid ?>">
-                    <?= htmlspecialchars($p["full_name"]) ?>
-                  </a>
-                </td>
-
-                <td class="state-col">
-                  <!-- ✅ “Sin factura” ahora FUNCIONA: te lleva a paciente.php -->
-                  <a class="status-pill <?= $hasInv ? "status-ok" : "status-no" ?>"
-                     href="paciente.php?patient_id=<?= $pid ?>">
-                    <?= $hasInv ? "Con factura" : "Sin factura" ?>
-                  </a>
-                </td>
-              </tr>
-            <?php endforeach; ?>
-          <?php endif; ?>
-        </tbody>
-      </table>
 
     </div>
-
   </main>
 </div>
 
 <footer class="footer">
-  <div class="footer-inner">© <?= (int)$year ?> CEVIMEP. Todos los derechos reservados.</div>
+  © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
 </footer>
-
-<script>
-(function(){
-  const input = document.getElementById("searchInput");
-  const rows = () => document.querySelectorAll("#patientsTable tr.data-row");
-
-  input.addEventListener("input", function () {
-    const filter = this.value.toLowerCase().trim();
-    rows().forEach(tr => {
-      tr.style.display = tr.textContent.toLowerCase().includes(filter) ? "" : "none";
-    });
-  });
-})();
-</script>
 
 </body>
 </html>
