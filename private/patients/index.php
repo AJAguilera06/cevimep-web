@@ -1,133 +1,58 @@
 <?php
 declare(strict_types=1);
 
-/**
- * CEVIMEP - Pacientes (Railway OK)
- * - Nombre sale de first_name + last_name (tu BD real)
- * - UI completa con Buscar / + Nuevo paciente / Volver
- * - Sin el HERO grande de arriba
- */
-
 /* ===============================
-   Sesión (sin warnings)
+   Sesión
    =============================== */
 if (session_status() !== PHP_SESSION_ACTIVE) {
-  session_set_cookie_params([
-    'lifetime' => 0,
-    'path' => '/',
-    'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
-    'httponly' => true,
-    'samesite' => 'Lax',
-  ]);
   session_start();
 }
 
-if (empty($_SESSION['user'])) {
-  header('Location: /login.php');
+/* ===============================
+   Protección de acceso
+   =============================== */
+if (!isset($_SESSION["user"])) {
+  header("Location: /login.php");
   exit;
 }
+
+$user = $_SESSION["user"];
+$rol = $user["role"] ?? "";
+$sucursal_id = (int)($user["branch_id"] ?? 0);
+$nombre = $user["full_name"] ?? "Usuario";
 
 /* ===============================
-   DB (ruta robusta)
+   DB
    =============================== */
-$db_candidates = [
-  __DIR__ . "/../../config/db.php",
-  __DIR__ . "/../../db.php",
-  __DIR__ . "/../config/db.php",
-  __DIR__ . "/../db.php",
-];
+require __DIR__ . "/../config/db.php";
 
-$loaded = false;
-foreach ($db_candidates as $p) {
-  if (is_file($p)) {
-    require_once $p;
-    $loaded = true;
-    break;
-  }
-}
+/* ===============================
+   Búsqueda (opcional)
+   =============================== */
+$q = trim((string)($_GET["q"] ?? ""));
 
-if (!$loaded || !isset($pdo) || !($pdo instanceof PDO)) {
-  http_response_code(500);
-  echo "Error crítico: no se pudo cargar la conexión a la base de datos.";
-  exit;
-}
+$sql = "SELECT id, book_no, full_name, cedula, phone, email, age, gender, blood_type
+        FROM patients
+        WHERE branch_id = :branch_id";
 
-$db = $pdo;
+$params = [":branch_id" => $sucursal_id];
 
-$user = $_SESSION['user'];
-$isAdmin = (($user['role'] ?? '') === 'admin');
-$branchId = (int)($user['branch_id'] ?? 0);
-
-$search = trim((string)($_GET['q'] ?? ''));
-
-function calcAge(?string $birthDate): string {
-  if (!$birthDate) return '';
-  try {
-    $dob = new DateTime($birthDate);
-    $today = new DateTime();
-    $age = $today->diff($dob)->y;
-    return (string)$age;
-  } catch (Throwable $e) {
-    return '';
-  }
-}
-
-$params = [];
-$where  = [];
-
-if (!$isAdmin && !empty($branchId)) {
-  $where[] = "branch_id = :branch_id";
-  $params[':branch_id'] = $branchId;
-}
-
-if ($search !== '') {
-  $where[] = "(
-    first_name LIKE :q OR
-    last_name  LIKE :q OR
-    cedula     LIKE :q OR
-    phone      LIKE :q OR
-    no_libro   LIKE :q
+if ($q !== "") {
+  $sql .= " AND (
+      full_name LIKE :q
+      OR cedula LIKE :q
+      OR phone LIKE :q
+      OR email LIKE :q
+      OR book_no LIKE :q
   )";
-  $params[':q'] = "%{$search}%";
+  $params[":q"] = "%{$q}%";
 }
 
-$sql = "
-  SELECT
-    id,
-    no_libro,
-    first_name,
-    last_name,
-    cedula,
-    phone,
-    email,
-    birth_date,
-    gender,
-    blood_type
-  FROM patients
-";
+$sql .= " ORDER BY id DESC LIMIT 200";
 
-if ($where) $sql .= " WHERE " . implode(" AND ", $where);
-$sql .= " ORDER BY id DESC";
-
-try {
-  $stmt = $db->prepare($sql);
-  $stmt->execute($params);
-  $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Throwable $e) {
-  // Fallback mínimo (por si faltan columnas en alguna instalación)
-  $sql2 = "
-    SELECT id, no_libro, first_name, last_name, cedula, phone
-    FROM patients
-  ";
-  if ($where) $sql2 .= " WHERE " . implode(" AND ", $where);
-  $sql2 .= " ORDER BY id DESC";
-
-  $stmt = $db->prepare($sql2);
-  $stmt->execute($params);
-  $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
-}
-
-$year = date('Y');
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+$patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!doctype html>
 <html lang="es">
@@ -136,146 +61,132 @@ $year = date('Y');
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Pacientes</title>
 
-  <!-- ✅ Ruta absoluta: funciona desde /private/* -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=60">
+  <!-- Base del sistema -->
+  <link rel="stylesheet" href="/assets/css/styles.css?v=40">
+  <!-- Estilos específicos de Pacientes -->
+  <link rel="stylesheet" href="/assets/css/paciente.css?v=40">
 </head>
 
-<body>
+<body class="patients-page">
 
-<header class="navbar">
+<!-- NAVBAR -->
+<div class="navbar">
   <div class="inner">
-    <div></div>
-    <div class="brand"><span class="dot"></span> CEVIMEP</div>
+    <div class="brand">
+      <span class="dot"></span>
+      <strong>CEVIMEP</strong>
+    </div>
+
     <div class="nav-right">
       <a class="btn-pill" href="/logout.php">Salir</a>
     </div>
   </div>
-</header>
+</div>
 
+<!-- LAYOUT -->
 <div class="layout">
 
+  <!-- SIDEBAR -->
   <aside class="sidebar">
-    <div class="menu-title">Menú</div>
+    <h3 class="menu-title">Menú</h3>
+
     <nav class="menu">
       <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a class="active" href="/private/patients/index.php"><span class="ico">👥</span> Pacientes</a>
-      <a href="javascript:void(0)" style="opacity:.45; cursor:not-allowed;"><span class="ico">🗓️</span> Citas</a>
+      <a class="active" href="/private/patients/index.php"><span class="ico">👤</span> Pacientes</a>
+      <a href="/private/citas/index.php"><span class="ico">📅</span> Citas</a>
       <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
-      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
+      <a href="/private/caja/index.php"><span class="ico">💳</span> Caja</a>
       <a href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="/private/estadistica/index.php"><span class="ico">📊</span> Estadísticas</a>
+      <a href="/private/estadisticas/index.php"><span class="ico">📊</span> Estadísticas</a>
     </nav>
   </aside>
 
+  <!-- CONTENIDO -->
   <main class="content">
 
-    <section class="card">
-      <div class="card-head" style="display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:nowrap;">
+    <div class="patients-wrap">
+      <div class="patients-card">
 
-        <!-- TÍTULO -->
-        <div>
-          <h1 style="margin:0;">Pacientes</h1>
-          <p class="muted" style="margin:6px 0 0;">
-            Listado filtrado por sucursal (automático).
-          </p>
+        <div class="patients-head">
+          <h1>Pacientes</h1>
+          <div class="sub">Listado filtrado por sucursal (automático).</div>
         </div>
 
-        <!-- ACCIONES DERECHA -->
-        <div style="display:flex; align-items:center; gap:12px; margin-left:auto; white-space:nowrap;">
-
-          <!-- BUSCADOR -->
-          <form method="get" style="display:flex; align-items:center; gap:8px;">
+        <div class="patients-actions">
+          <form method="GET" action="" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
             <input
-              class="form-control"
-              type="search"
+              class="search-input"
+              type="text"
               name="q"
+              value="<?= htmlspecialchars($q) ?>"
               placeholder="Buscar por nombre, cédula, teléfono..."
-              value="<?= htmlspecialchars($search) ?>"
-              style="width:320px;"
-            >
-            <button class="btn btn-small" type="submit">Buscar</button>
+            />
+            <button class="btn btn-outline" type="submit">Buscar</button>
           </form>
 
-          <!-- BOTÓN PRINCIPAL -->
-          <a href="/private/patients/create.php" class="btn btn-primary">
-  Registrar nuevo paciente
-</a>
-
-
-          <!-- VOLVER -->
-          <a href="/private/dashboard.php" class="btn btn-small">
-            Volver
-          </a>
-
+          <a class="link" href="/private/patients/create.php">Registrar nuevo paciente</a>
+          <a class="link" href="/private/dashboard.php">Volver</a>
         </div>
-      </div>
 
-      <div class="table-wrap">
-        <table class="table">
-          <thead>
-            <tr>
-              <th style="width:120px;">No. Libro</th>
-              <th>Nombre</th>
-              <th>Cédula</th>
-              <th>Teléfono</th>
-              <th>Correo</th>
-              <th style="width:90px;">Edad</th>
-              <th style="width:110px;">Género</th>
-              <th style="width:110px;">Sangre</th>
-              <th style="width:170px;">Acciones</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            <?php if (!$patients): ?>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
               <tr>
-                <td colspan="9" style="padding:18px; color:#6b7280;">No hay pacientes registrados.</td>
+                <th>No. Libro</th>
+                <th>Nombre</th>
+                <th>Cédula</th>
+                <th>Teléfono</th>
+                <th>Correo</th>
+                <th>Edad</th>
+                <th>Género</th>
+                <th>Sangre</th>
+                <th>Acciones</th>
               </tr>
-            <?php else: ?>
-              <?php foreach ($patients as $p): ?>
-                <?php
-                  $id = (int)($p['id'] ?? 0);
-                  $no_libro = trim((string)($p['no_libro'] ?? ''));
-                  $nombre = trim((string)($p['first_name'] ?? '') . ' ' . (string)($p['last_name'] ?? ''));
-                  $cedula = (string)($p['cedula'] ?? '');
-                  $phone  = (string)($p['phone'] ?? '');
-                  $email  = (string)($p['email'] ?? '');
-                  $birth  = $p['birth_date'] ?? null;
-                  $gender = (string)($p['gender'] ?? '');
-                  $blood  = (string)($p['blood_type'] ?? '');
-                ?>
-                <tr>
-                  <td><?= $no_libro !== '' ? htmlspecialchars($no_libro) : '—' ?></td>
-                  <td><?= htmlspecialchars($nombre) ?></td>
-                  <td><?= htmlspecialchars($cedula) ?></td>
-                  <td><?= htmlspecialchars($phone) ?></td>
-                  <td><?= htmlspecialchars($email) ?></td>
-                  <td><?= htmlspecialchars(calcAge(is_string($birth) ? $birth : null)) ?></td>
-                  <td><?= $gender !== '' ? '<span class="pill">'.htmlspecialchars($gender).'</span>' : '' ?></td>
-                  <td><?= $blood  !== '' ? '<span class="pill">'.htmlspecialchars($blood).'</span>' : '' ?></td>
-                  <td class="td-actions">
-                    <a href="/private/patients/view.php?id=<?= $row['id'] ?>" class="btn btn-ver">
-  Ver
-</a>
-                    <a href="/private/patients/edit.php?id=<?= $row['id'] ?>" class="btn btn-editar">
-  Editar
-</a>
+            </thead>
 
+            <tbody>
+              <?php if (!$patients): ?>
+                <tr>
+                  <td colspan="9" style="text-align:center; padding:18px;">
+                    No hay pacientes registrados en esta sucursal.
                   </td>
                 </tr>
-              <?php endforeach; ?>
-            <?php endif; ?>
-          </tbody>
-        </table>
+              <?php else: ?>
+                <?php foreach ($patients as $p): ?>
+                  <tr>
+                    <td><?= htmlspecialchars((string)($p["book_no"] ?? "")) ?></td>
+                    <td><?= htmlspecialchars((string)($p["full_name"] ?? "")) ?></td>
+                    <td><?= htmlspecialchars((string)($p["cedula"] ?? "")) ?></td>
+                    <td><?= htmlspecialchars((string)($p["phone"] ?? "")) ?></td>
+                    <td><?= htmlspecialchars((string)($p["email"] ?? "")) ?></td>
+                    <td><?= htmlspecialchars((string)($p["age"] ?? "")) ?></td>
+                    <td><?= htmlspecialchars((string)($p["gender"] ?? "")) ?></td>
+                    <td><?= htmlspecialchars((string)($p["blood_type"] ?? "")) ?></td>
+                    <td>
+                      <div class="td-actions">
+                        <a class="a-action" href="/private/patients/view.php?id=<?= (int)$p["id"] ?>">Ver</a>
+                        <a class="a-action" href="/private/patients/edit.php?id=<?= (int)$p["id"] ?>">Editar</a>
+                      </div>
+                    </td>
+                  </tr>
+                <?php endforeach; ?>
+              <?php endif; ?>
+            </tbody>
+          </table>
+        </div>
+
       </div>
-    </section>
+    </div>
 
   </main>
 </div>
 
-<footer class="footer">
-  <div class="inner">© <?= htmlspecialchars((string)$year) ?> CEVIMEP. Todos los derechos reservados.</div>
-</footer>
+<!-- FOOTER -->
+<div class="footer">
+  <div class="inner">
+    © <?= (int)date("Y") ?> CEVIMEP. Todos los derechos reservados.
+  </div>
+</div>
 
 </body>
 </html>
