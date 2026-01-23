@@ -1,208 +1,218 @@
 <?php
 declare(strict_types=1);
 
-if (session_status() !== PHP_SESSION_ACTIVE) {
-  session_start();
+require_once __DIR__ . "/../_guard.php";
+$conn = $pdo;
+
+function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8"); }
+
+$user = $_SESSION["user"] ?? [];
+$year = (int)date("Y");
+$branch_id = (int)($user["branch_id"] ?? 0);
+
+if ($branch_id <= 0) {
+  http_response_code(400);
+  die("Sucursal inválida (branch_id).");
 }
 
-if (empty($_SESSION['user'])) {
-  header("Location: /login.php");
+$patient_id = (int)($_GET["patient_id"] ?? 0);
+if ($patient_id <= 0) {
+  header("Location: /private/facturacion/index.php");
   exit;
 }
 
-$user = $_SESSION['user'];
-$branchId = (int)($user['branch_id'] ?? 0);
+/* Nombre sucursal */
+$branch_name = "";
+try {
+  $stB = $conn->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
+  $stB->execute([$branch_id]);
+  $branch_name = (string)($stB->fetchColumn() ?: "");
+} catch (Throwable $e) {}
+if ($branch_name === "") $branch_name = "Sede #".$branch_id;
 
-if ($branchId <= 0) {
-  header("Location: /private/dashboard.php");
-  exit;
+/* Paciente */
+$stP = $conn->prepare("
+  SELECT p.id, p.branch_id, TRIM(CONCAT(p.first_name,' ',p.last_name)) AS full_name
+  FROM patients p
+  WHERE p.id=? AND p.branch_id=?
+  LIMIT 1
+");
+$stP->execute([$patient_id, $branch_id]);
+$patient = $stP->fetch(PDO::FETCH_ASSOC);
+
+if (!$patient) {
+  http_response_code(404);
+  die("Paciente no encontrado en esta sucursal.");
 }
 
-/* ================= DB ================= */
-$db_candidates = [
-  __DIR__ . "/../config/db.php",
-  __DIR__ . "/../../config/db.php",
-  __DIR__ . "/../db.php",
-  __DIR__ . "/../../db.php",
+/* Facturas del paciente en la sucursal */
+$invoices = [];
+$stI = $conn->prepare("
+  SELECT id, invoice_date, payment_method, total, created_at
+  FROM invoices
+  WHERE branch_id = ? AND patient_id = ?
+  ORDER BY id DESC
+  LIMIT 50
+");
+$stI->execute([$branch_id, $patient_id]);
+$invoices = $stI->fetchAll(PDO::FETCH_ASSOC);
+
+/* Resumen */
+$invoice_count = count($invoices);
+$invoice_total = 0.0;
+$by_method = [
+  "EFECTIVO" => 0.0,
+  "TARJETA" => 0.0,
+  "TRANSFERENCIA" => 0.0,
+  "OTRO" => 0.0
 ];
-
-$loaded = false;
-foreach ($db_candidates as $f) {
-  if (is_file($f)) {
-    require_once $f;
-    $loaded = true;
-    break;
+foreach ($invoices as $row) {
+  $t = (float)($row["total"] ?? 0);
+  $invoice_total += $t;
+  $m = strtoupper(trim((string)($row["payment_method"] ?? "")));
+  if ($m === "EFECTIVO" || $m === "TARJETA" || $m === "TRANSFERENCIA") {
+    $by_method[$m] += $t;
+  } else {
+    $by_method["OTRO"] += $t;
   }
 }
 
-if (!$loaded || !isset($pdo) || !($pdo instanceof PDO)) {
-  http_response_code(500);
-  echo "Error crítico: no se pudo cargar la conexión a la base de datos.";
-  exit;
-}
-
-function h($v): string {
-  return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
-}
-
-/* ================= Sucursal ================= */
-$branchName = "Sucursal ID: {$branchId}";
-try {
-  $st = $pdo->prepare("SELECT name FROM branches WHERE id = ? LIMIT 1");
-  $st->execute([$branchId]);
-  $n = $st->fetchColumn();
-  if ($n) $branchName = (string)$n;
-} catch (Throwable $e) {}
-
-/* ================= Buscar ================= */
-$search = trim((string)($_GET['q'] ?? ''));
-
-/* ================= Query (invoices REAL) =================
-   invoices tiene: patient_id, branch_id (confirmado por tu SHOW COLUMNS)
-*/
-$params = [$branchId];
-
-$sql = "
-  SELECT
-    p.id,
-    CONCAT(p.first_name,' ',p.last_name) AS patient_name,
-    COUNT(i.id) AS invoice_count
-  FROM patients p
-  LEFT JOIN invoices i
-    ON i.patient_id = p.id
-   AND i.branch_id  = p.branch_id
-  WHERE p.branch_id = ?
-";
-
-if ($search !== '') {
-  $sql .= " AND (
-    CONCAT(p.first_name,' ',p.last_name) LIKE ?
-    OR p.no_libro LIKE ?
-    OR p.cedula LIKE ?
-  )";
-  $like = "%{$search}%";
-  $params[] = $like;
-  $params[] = $like;
-  $params[] = $like;
-}
-
-$sql .= "
-  GROUP BY p.id, p.first_name, p.last_name
-  ORDER BY p.first_name, p.last_name
-";
-
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
+/* Flash */
+$flash_ok = $_SESSION["flash_success"] ?? "";
+$flash_err = $_SESSION["flash_error"] ?? "";
+unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
 ?>
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>Facturación | CEVIMEP</title>
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CEVIMEP | Facturación - Paciente</title>
 
-  <link rel="stylesheet" href="/assets/css/styles.css?v=60">
-  <link rel="stylesheet" href="/assets/css/facturacion.css?v=3">
-
-  <style>
-    /* fallback por si facturacion.css no carga */
-    .fact-wrap{max-width:1100px;margin:0 auto;padding:24px 18px;}
-    .fact-head{text-align:center;margin-top:10px;margin-bottom:14px;}
-    .fact-head h1{margin:0;font-size:34px;font-weight:800;}
-    .fact-head p{margin:6px 0 0;opacity:.75;font-weight:600;}
-    .fact-actions{display:flex;justify-content:center;margin:18px 0;}
-    .fact-search{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;}
-    .fact-search input[type="search"]{width:min(520px,85vw);height:42px;padding:10px 14px;border-radius:12px;border:1px solid rgba(0,0,0,.12);}
-    .fact-card{max-width:780px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.10);padding:16px;}
-    .fact-card-head{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;}
-    .fact-card-head .title{font-weight:900;}
-    .fact-card-head .subtitle{font-weight:800;opacity:.7;}
-    .fact-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 10px;border-bottom:1px solid rgba(0,0,0,.06);}
-    .fact-row:last-child{border-bottom:0;}
-    .fact-name{font-weight:800;}
-    .fact-name a{color:#0b3a8a;text-decoration:none;}
-    .fact-name a:hover{text-decoration:underline;}
-    .fact-badge{padding:7px 12px;border-radius:999px;font-weight:800;font-size:12px;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;}
-    .fact-badge.ok{background:#e9fff1;border:1px solid #9be7b2;color:#0b7a2b;}
-    .fact-badge.no{background:#ffecec;border:1px solid #ffb3b3;color:#b30000;}
-    .fact-empty{opacity:.7;text-align:center;padding:18px;font-weight:700;}
-  </style>
+  <!-- ✅ MISMO CSS QUE DASHBOARD -->
+  <link rel="stylesheet" href="/assets/css/styles.css?v=30">
+  <!-- ✅ CSS FACTURACIÓN (para esta pantalla y las demás de facturación) -->
+  <link rel="stylesheet" href="/assets/css/facturacion.css?v=1">
 </head>
+
 <body>
 
-<header class="navbar">
+<!-- NAVBAR (IGUAL AL dashboard.php) -->
+<div class="navbar">
   <div class="inner">
-    <div class="brand"><span class="dot"></span><span>CEVIMEP</span></div>
-    <div class="nav-right"><a href="/logout.php" class="btn-pill">Salir</a></div>
+    <div class="brand">
+      <span class="dot"></span>
+      <strong>CEVIMEP</strong>
+    </div>
+    <div class="nav-right">
+      <a class="btn-pill" href="/logout.php">Salir</a>
+    </div>
   </div>
-</header>
+</div>
 
 <div class="layout">
+
+  <!-- SIDEBAR (IGUAL AL dashboard.php) -->
   <aside class="sidebar">
-    <div class="menu-title">Menú</div>
+    <h3 class="menu-title">Menú</h3>
     <nav class="menu">
-      <a href="/private/dashboard.php">🏠 Panel</a>
-      <a href="/private/patients/index.php">👤 Pacientes</a>
-      <a href="/private/citas/index.php">📅 Citas</a>
-      <a class="active" href="/private/facturacion/index.php">🧾 Facturación</a>
-      <a href="/private/caja/index.php">💳 Caja</a>
-      <a href="/private/inventario/index.php">📦 Inventario</a>
-      <a href="/private/estadistica/index.php">📊 Estadísticas</a>
+      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
+      <a href="/private/patients/index.php"><span class="ico">👤</span> Pacientes</a>
+      <a href="/private/citas/index.php"><span class="ico">📅</span> Citas</a>
+      <a class="active" href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
+      <a href="/private/caja/index.php"><span class="ico">💳</span> Caja</a>
+      <a href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
+      <a href="/private/estadisticas/index.php"><span class="ico">📊</span> Estadísticas</a>
     </nav>
   </aside>
 
   <main class="content">
-    <div class="fact-wrap">
 
-      <div class="fact-head">
-        <h1>Facturación</h1>
-        <p>Sucursal actual: <?= h($branchName) ?></p>
-      </div>
+    <section class="hero">
+      <h1>Facturación</h1>
+      <p>Paciente: <strong><?= h($patient["full_name"] ?? "Paciente") ?></strong> · Sucursal: <strong><?= h($branch_name) ?></strong></p>
+    </section>
 
-      <div class="fact-actions">
-        <form class="fact-search" method="get" action="/private/facturacion/index.php">
-          <input type="search" name="q"
-                 placeholder="Buscar paciente por nombre, No. libro o cédula…"
-                 value="<?= h($search) ?>">
-          <button class="btn btn-primary" type="submit">Buscar</button>
-        </form>
-      </div>
+    <?php if ($flash_ok): ?><div class="fact-flash-ok"><?= h($flash_ok) ?></div><?php endif; ?>
+    <?php if ($flash_err): ?><div class="fact-flash-err"><?= h($flash_err) ?></div><?php endif; ?>
 
-      <div class="fact-card">
-        <div class="fact-card-head">
-          <div class="title">Pacientes</div>
-          <div class="subtitle">Estado (por sucursal)</div>
+    <div class="fact-patient-grid">
+
+      <!-- LEFT: PACIENTE -->
+      <section class="fact-patient-card">
+        <h2 class="fact-patient-title"><?= h($patient["full_name"] ?? "Paciente") ?></h2>
+        <span class="fact-badge-branch">Sucursal: <?= h($branch_name) ?></span>
+
+        <p class="fact-patient-sub">Historial de facturas del paciente en esta sucursal.</p>
+
+        <div class="fact-patient-stats">
+          <div class="fact-stat">
+            <small>Total facturas</small>
+            <strong><?= (int)$invoice_count ?></strong>
+          </div>
+          <div class="fact-stat">
+            <small>Monto total</small>
+            <strong>RD$ <?= number_format((float)$invoice_total, 2) ?></strong>
+          </div>
         </div>
 
-        <?php if (empty($patients)): ?>
-          <div class="fact-empty">No hay pacientes<?= $search ? " con ese filtro." : "." ?></div>
-        <?php else: ?>
-          <?php foreach ($patients as $p): ?>
-            <?php
-              $pid = (int)$p['id'];
-              $hasInvoice = ((int)($p['invoice_count'] ?? 0) > 0);
-            ?>
-            <div class="fact-row">
-              <div class="fact-name">
-                <a href="/private/facturacion/paciente.php?patient_id=<?= $pid ?>">
-                  <?= h($p['patient_name'] ?? '') ?>
-                </a>
-              </div>
+        <div class="fact-patient-actions">
+          <a class="fact-btn secondary" href="/private/facturacion/index.php">← Volver</a>
+          <a class="fact-btn primary" href="/private/facturacion/nueva.php?patient_id=<?= (int)$patient_id ?>">➕ Nueva factura</a>
+        </div>
+      </section>
 
-              <a class="fact-badge <?= $hasInvoice ? 'ok' : 'no' ?>"
-                 href="/private/facturacion/paciente.php?patient_id=<?= $pid ?>">
-                <?= $hasInvoice ? 'Con factura' : 'Sin factura' ?>
-              </a>
-            </div>
-          <?php endforeach; ?>
-        <?php endif; ?>
-      </div>
+      <!-- RIGHT: FACTURAS -->
+      <section class="fact-card-wide">
+        <div class="head">
+          <h3>Facturas</h3>
+        </div>
+
+        <table class="fact-table">
+          <thead>
+            <tr>
+              <th style="width:110px;">ID</th>
+              <th style="width:140px;">Fecha</th>
+              <th style="width:180px;">Método</th>
+              <th style="width:170px;">Total</th>
+              <th style="width:160px;">Detalle</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php if (empty($invoices)): ?>
+              <tr><td colspan="5" class="muted">Este paciente no tiene facturas en esta sucursal.</td></tr>
+            <?php else: ?>
+              <?php foreach ($invoices as $inv): ?>
+                <?php
+                  $pm_raw = strtoupper(trim((string)($inv["payment_method"] ?? "")));
+                  $pm_class = "otro";
+                  if ($pm_raw === "EFECTIVO") $pm_class = "efectivo";
+                  elseif ($pm_raw === "TARJETA") $pm_class = "tarjeta";
+                  elseif ($pm_raw === "TRANSFERENCIA") $pm_class = "transferencia";
+                ?>
+                <tr>
+                  <td>#<?= (int)$inv["id"] ?></td>
+                  <td><?= h($inv["invoice_date"]) ?></td>
+                  <td><span class="fact-method <?= h($pm_class) ?>"><?= h($pm_raw ?: "OTRO") ?></span></td>
+                  <td class="fact-money">RD$ <?= number_format((float)$inv["total"], 2) ?></td>
+                  <td>
+                    <a class="fact-pill" target="_blank" href="/private/facturacion/print.php?id=<?= (int)$inv["id"] ?>">🧾 Ver</a>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            <?php endif; ?>
+          </tbody>
+        </table>
+      </section>
 
     </div>
+
   </main>
 </div>
 
-<footer class="footer">© <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.</footer>
+<div class="footer">
+  <div class="inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
+</div>
+
 </body>
 </html>

@@ -253,7 +253,6 @@ if (isset($_GET["success"]) && $_GET["success"] == "1" && isset($_GET["batch"]))
 
     <div class="card">
 
-      <!-- ✅ HEADER correcto (CSS manda aquí) -->
       <div class="page-head-center">
         <h1>Entrada</h1>
         <div class="sub">Registra entrada de inventario (sede actual)</div>
@@ -269,11 +268,12 @@ if (isset($_GET["success"]) && $_GET["success"] == "1" && isset($_GET["batch"]))
         </div>
       <?php endif; ?>
 
-      <!-- ✅ Campos en una sola fila (grid real) -->
-      <form method="post" class="form-row-4">
-        <input type="hidden" name="action" value="add">
+      <!-- ===== Fila superior organizada (Producto pequeño + Cantidad + Suplidor + Hecha por) ===== -->
+      <div class="entry-top">
 
-        <div>
+        <!-- Categoria (ADD FORM) -->
+        <form method="post" id="addForm">
+          <input type="hidden" name="action" value="add">
           <label>Categoría</label>
           <select id="category_id" name="category_id">
             <option value="">Todas</option>
@@ -281,11 +281,12 @@ if (isset($_GET["success"]) && $_GET["success"] == "1" && isset($_GET["batch"]))
               <option value="<?= (int)$c["id"] ?>"><?= h($c["name"]) ?></option>
             <?php endforeach; ?>
           </select>
-        </div>
+        </form>
 
+        <!-- Producto (ADD FORM) -->
         <div>
           <label>Producto</label>
-          <select id="item_id" name="item_id" required>
+          <select form="addForm" id="item_id" name="item_id" required>
             <option value="">Selecciona</option>
             <?php foreach($products as $p): ?>
               <option value="<?= (int)$p["id"] ?>" data-cat="<?= isset($p["category_id"]) ? (int)$p["category_id"] : 0 ?>">
@@ -296,15 +297,31 @@ if (isset($_GET["success"]) && $_GET["success"] == "1" && isset($_GET["batch"]))
           <div class="muted2" style="margin-top:6px;">Solo productos de esta sucursal.</div>
         </div>
 
+        <!-- Cantidad (ADD FORM) -->
         <div>
           <label>Cantidad</label>
-          <input type="number" name="qty" min="1" step="1" value="1" required>
+          <input form="addForm" type="number" name="qty" min="1" step="1" value="1" required>
         </div>
 
-        <div style="display:flex; justify-content:flex-end;">
-          <button class="btn" type="submit" style="min-width:110px;">Añadir</button>
+        <!-- Suplidor (SAVE FORM) -->
+        <form method="post" id="saveForm">
+          <input type="hidden" name="action" value="save_print">
+          <label>Suplidor</label>
+          <input type="text" name="supplier" placeholder="Escribe el suplidor (opcional)">
+        </form>
+
+        <!-- Hecha por (solo visual) -->
+        <div>
+          <label>Hecha por</label>
+          <input type="text" value="<?= h($nombre) ?>" readonly>
         </div>
-      </form>
+
+        <!-- Botón Añadir (ADD FORM) -->
+        <div style="display:flex; justify-content:flex-end;">
+          <button class="btn" type="submit" form="addForm">Añadir</button>
+        </div>
+
+      </div>
 
       <!-- Detalle -->
       <div class="card section-card">
@@ -359,21 +376,9 @@ if (isset($_GET["success"]) && $_GET["success"] == "1" && isset($_GET["batch"]))
           </table>
         </div>
 
-        <!-- ✅ Suplidor + botón organizados -->
-        <form method="post" class="section-card">
-          <input type="hidden" name="action" value="save_print">
-
-          <div class="supplier-row">
-            <div>
-              <label class="muted2">Suplidor</label>
-              <input type="text" name="supplier" placeholder="Escribe el suplidor (opcional)">
-            </div>
-
-            <div class="actions-right" style="margin-top:0;">
-              <button class="btn" type="submit" style="width:100%;">Guardar e Imprimir</button>
-            </div>
-          </div>
-        </form>
+        <div class="actions-right" style="margin-top:12px;">
+          <button class="btn" type="submit" form="saveForm" style="min-width:220px;">Guardar e Imprimir</button>
+        </div>
       </div>
 
       <!-- Historial -->

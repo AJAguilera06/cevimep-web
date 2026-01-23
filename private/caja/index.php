@@ -76,7 +76,8 @@ $currentCajaNum = caja_get_current_caja_num();
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CEVIMEP | Caja</title>
-  <link rel="stylesheet" href="../../assets/css/styles.css">
+  <link rel="stylesheet" href="/assets/css/caja.css?v=1">
+
 
   <style>
     html,body{height:100%;}
