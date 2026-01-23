@@ -1,0 +1,349 @@
+/* public/assets/css/facturacion.css */
+
+/* Contenedor principal */
+.fact-wrap{
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 18px;
+}
+
+/* Encabezado */
+.fact-head{
+  text-align: center;
+  margin-top: 10px;
+  margin-bottom: 14px;
+}
+.fact-head h1{
+  margin: 0;
+  font-size: 34px;
+  font-weight: 800;
+}
+.fact-head p{
+  margin: 6px 0 0;
+  opacity: .75;
+  font-weight: 600;
+}
+
+/* Buscador */
+.fact-actions{
+  display: flex;
+  justify-content: center;
+  margin: 18px 0;
+}
+.fact-search{
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.fact-search input[type="search"],
+.fact-search input[type="text"]{
+  width: min(520px, 85vw);
+  height: 42px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.12);
+  background: #fff;
+  outline: none;
+  transition: box-shadow .15s ease, border-color .15s ease;
+}
+.fact-search input[type="search"]:focus,
+.fact-search input[type="text"]:focus{
+  border-color: rgba(13,110,253,.35);
+  box-shadow: 0 0 0 4px rgba(13,110,253,.12);
+}
+
+/* Tarjeta */
+.fact-card{
+  max-width: 780px;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.10);
+  padding: 16px;
+}
+
+/* Encabezado dentro de la tarjeta */
+.fact-card-head{
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.fact-card-head .title{
+  font-weight: 900;
+}
+.fact-card-head .subtitle{
+  font-weight: 800;
+  opacity: .7;
+}
+
+/* Filas */
+.fact-row{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 10px;
+  border-bottom: 1px solid rgba(0,0,0,.06);
+}
+.fact-row:last-child{ border-bottom: 0; }
+
+/* Nombre */
+.fact-name{
+  font-weight: 800;
+}
+.fact-name a{
+  color: #0b3a8a;
+  text-decoration: none;
+}
+.fact-name a:hover{ text-decoration: underline; }
+
+/* Badge (clickeable) */
+.fact-badge{
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 12px;
+  white-space: nowrap;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: filter .12s ease, transform .05s ease;
+}
+.fact-badge:hover{ filter: brightness(.97); }
+.fact-badge:active{ transform: scale(.98); }
+
+.fact-badge.ok{
+  background: #e9fff1;
+  border: 1px solid #9be7b2;
+  color: #0b7a2b;
+}
+.fact-badge.no{
+  background: #ffecec;
+  border: 1px solid #ffb3b3;
+  color: #b30000;
+}
+
+/* Mensajes */
+.fact-empty{
+  opacity: .7;
+  text-align: center;
+  padding: 18px;
+  font-weight: 700;
+}
+.fact-note{
+  margin-top: 12px;
+  opacity: .65;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+/* =========================
+   PACIENTE (historial) UI
+   ========================= */
+
+.fact-patient-grid{
+  display:grid;
+  grid-template-columns: 380px 1fr;
+  gap: 18px;
+  align-items:start;
+  margin-top: 14px;
+}
+
+@media (max-width: 980px){
+  .fact-patient-grid{
+    grid-template-columns: 1fr;
+  }
+}
+
+.fact-patient-card{
+  background:#fff;
+  border-radius:16px;
+  box-shadow:0 12px 30px rgba(0,0,0,.08);
+  padding:18px;
+}
+
+.fact-patient-title{
+  margin:0 0 10px;
+  font-size:26px;
+  font-weight:900;
+  letter-spacing:-.2px;
+}
+
+.fact-badge-branch{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:7px 12px;
+  border-radius:999px;
+  font-weight:900;
+  font-size:12px;
+  background:#e6f0ff;
+  color:#0b3a8a;
+  border:1px solid rgba(11,58,138,.18);
+}
+
+.fact-patient-sub{
+  margin:12px 0 0;
+  opacity:.75;
+  font-weight:700;
+  font-size:13px;
+}
+
+.fact-patient-stats{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.fact-stat{
+  background:#f8fafc;
+  border:1px solid rgba(2,21,44,.08);
+  border-radius:12px;
+  padding:12px 10px;
+  text-align:center;
+}
+
+.fact-stat small{
+  display:block;
+  opacity:.7;
+  font-weight:800;
+  margin-bottom:6px;
+}
+
+.fact-stat strong{
+  font-weight:950;
+  font-size:16px;
+}
+
+.fact-patient-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top: 16px;
+}
+
+.fact-btn{
+  height:38px;
+  border:none;
+  border-radius:12px;
+  padding:0 14px;
+  font-weight:900;
+  cursor:pointer;
+  text-decoration:none;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+}
+
+.fact-btn.primary{ background:#0b4d87; color:#fff; }
+.fact-btn.secondary{ background:#eef2f6; color:#2b3b4a; }
+
+.fact-card-wide{
+  background:#fff;
+  border-radius:16px;
+  box-shadow:0 12px 30px rgba(0,0,0,.08);
+  padding:14px;
+}
+
+.fact-card-wide .head{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-bottom:10px;
+}
+
+.fact-card-wide .head h3{
+  margin:0;
+  font-weight:950;
+}
+
+.fact-table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+}
+
+.fact-table th,
+.fact-table td{
+  padding:12px 10px;
+  border-bottom:1px solid #eef2f6;
+  font-size:13px;
+}
+
+.fact-table th{
+  color:#0b4d87;
+  text-align:left;
+  font-weight:900;
+  font-size:12px;
+}
+
+.fact-table tr:last-child td{ border-bottom:none; }
+
+.fact-money{
+  font-weight:950;
+  white-space:nowrap;
+}
+
+.fact-method{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:6px 10px;
+  border-radius:999px;
+  font-weight:900;
+  font-size:12px;
+  border:1px solid rgba(2,21,44,.12);
+  background:#f2f5f9;
+  color:#2b3b4a;
+}
+
+.fact-method.efectivo{ background:#e8f5e9; border-color:#a7dfb0; color:#0b7a2b; }
+.fact-method.tarjeta{ background:#e3f2fd; border-color:#a7d4ff; color:#0b4d87; }
+.fact-method.transferencia{ background:#fff3e0; border-color:#ffd59e; color:#8a5200; }
+
+.fact-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:999px;
+  font-weight:900;
+  font-size:12px;
+  background:#eef6ff;
+  color:#0b4d87;
+  border:1px solid rgba(2,21,44,.12);
+  text-decoration:none;
+}
+
+.fact-flash-ok{
+  background:#e9fff1;
+  border:1px solid #a7f0bf;
+  color:#0a7a33;
+  border-radius:12px;
+  padding:10px 12px;
+  font-size:13px;
+  margin-top:12px;
+  font-weight:800;
+}
+
+.fact-flash-err{
+  background:#ffecec;
+  border:1px solid #ffb6b6;
+  color:#a40000;
+  border-radius:12px;
+  padding:10px 12px;
+  font-size:13px;
+  margin-top:12px;
+  font-weight:800;
+}
