@@ -455,3 +455,6 @@ body{
   height: auto;
   display:block;
 }
+/* Historial embebido */
+.historyBox{ display:none; margin-top:12px; }
+.historyBox.open{ display:block; }

@@ -118,10 +118,13 @@ if (isset($_GET["ajax"]) && $_GET["ajax"] === "history") {
   $stH->execute([$branch_id]);
   $rows = $stH->fetchAll(PDO::FETCH_ASSOC);
 
-  if (!$rows) { echo "<p class='muted'>No hay entradas registradas.</p>"; exit; }
+  if (!$rows) {
+    echo "<p class='muted'>No hay entradas registradas.</p>";
+    exit;
+  }
 
-  echo "<table class='table'><thead><tr>
-          <th style='width:110px;'>Mov.</th>
+  echo "<div style='overflow:auto;'><table class='table'><thead><tr>
+          <th style='width:120px;'>ID</th>
           <th style='width:190px;'>Fecha</th>
           <th>Nota</th>
           <th style='width:140px;'>Acción</th>
@@ -129,103 +132,25 @@ if (isset($_GET["ajax"]) && $_GET["ajax"] === "history") {
 
   foreach ($rows as $r) {
     $id = (int)$r["id"];
-    $dt = $r["created_at"] ?? "";
+    $fecha = $r["created_at"] ?? "";
     $note = $r["note"] ?? "";
-    $dtOut = ($dt && strtotime($dt) !== false) ? date("d/m/Y H:i", strtotime((string)$dt)) : "-";
     echo "<tr>
-            <td>#{$id}</td>
-            <td>".h($dtOut)."</td>
+            <td>{$id}</td>
+            <td>".h((string)$fecha)."</td>
             <td>".h((string)$note)."</td>
-            <td><a class='btn btn-small' href='?print={$id}'>Imprimir</a></td>
+            <td style='text-align:right;'>—</td>
           </tr>";
   }
 
-  echo "</tbody></table>";
+  echo "</tbody></table></div>";
   exit;
 }
 
 /* =========================
-   Reimpresión
-========================= */
-if (isset($_GET["print"])) {
-  $mov_id = (int)$_GET["print"];
-
-  $stM = $conn->prepare("SELECT * FROM inventory_movements WHERE `$colMovId`=? AND `$colMovBranch`=? LIMIT 1");
-  $stM->execute([$mov_id, $branch_id]);
-  $mov = $stM->fetch(PDO::FETCH_ASSOC);
-  if (!$mov) die("Movimiento no encontrado.");
-
-  $noteRaw = ($colMovNote && isset($mov[$colMovNote])) ? (string)$mov[$colMovNote] : "";
-  $batch = null;
-  if ($noteRaw && preg_match('/BATCH=([A-Z0-9\\-]+)/', $noteRaw, $m)) $batch = $m[1];
-
-  $itemsPrint = [];
-  if ($batch && $colMovNote && $colMovType) {
-    $sql = "
-      SELECT i.`$colItemName` AS name, m.`$colMovQty` AS qty
-      FROM inventory_movements m
-      INNER JOIN inventory_items i ON i.`$colItemId` = m.`$colMovItem`
-      WHERE m.`$colMovBranch`=? AND m.`$colMovType` IN ('IN','in','Entrada','entrada','E','e')
-        AND m.`$colMovNote` LIKE ?
-      ORDER BY i.`$colItemName` ASC
-    ";
-    $st = $conn->prepare($sql);
-    $st->execute([$branch_id, "%BATCH=$batch%"]);
-    $itemsPrint = $st->fetchAll(PDO::FETCH_ASSOC);
-  } else {
-    $nm = "";
-    $stN = $conn->prepare("SELECT `$colItemName` FROM inventory_items WHERE `$colItemId`=? LIMIT 1");
-    $stN->execute([(int)$mov[$colMovItem]]);
-    $nm = (string)$stN->fetchColumn();
-    $itemsPrint = [[ "name" => $nm, "qty" => (int)$mov[$colMovQty] ]];
-  }
-
-  $dt = ($colMovCreated && !empty($mov[$colMovCreated])) ? (string)$mov[$colMovCreated] : "";
-  $dtOut = ($dt && strtotime($dt) !== false) ? date("d/m/Y H:i", strtotime($dt)) : date("d/m/Y H:i");
-  ?>
-  <!doctype html>
-  <html lang="es">
-  <head>
-    <meta charset="utf-8">
-    <title>Imprimir Entrada</title>
-    <style>
-      body{font-family:Arial,sans-serif;padding:16px;}
-      .wrap{max-width:560px;margin:0 auto;}
-      table{width:100%;border-collapse:collapse;}
-      th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left;}
-      th:last-child,td:last-child{text-align:right;}
-      .small{font-size:12px;opacity:.75;}
-    </style>
-  </head>
-  <body>
-    <div class="wrap">
-      <h2>CEVIMEP - Entrada</h2>
-      <div><strong>Sucursal:</strong> <?= h($branch_name) ?></div>
-      <div><strong>Fecha:</strong> <?= h($dtOut) ?></div>
-      <div><strong>Movimiento #:</strong> <?= (int)$mov_id ?></div>
-      <?php if ($noteRaw): ?><div><strong>Nota:</strong> <?= h($noteRaw) ?></div><?php endif; ?>
-      <hr>
-      <table>
-        <thead><tr><th>Producto</th><th>Cant.</th></tr></thead>
-        <tbody>
-          <?php foreach ($itemsPrint as $it): ?>
-            <tr><td><?= h((string)$it["name"]) ?></td><td><?= (int)$it["qty"] ?></td></tr>
-          <?php endforeach; ?>
-        </tbody>
-      </table>
-      <p class="small">Generado por CEVIMEP</p>
-    </div>
-    <script>window.addEventListener("load",()=>window.print());</script>
-  </body>
-  </html>
-  <?php
-  exit;
-}
-
-/* =========================
-   Acciones: añadir / quitar / vaciar / guardar+imprimir
+   Acciones carrito (add/remove/clear/save_print)
 ========================= */
 $errors = [];
+$success = null;
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
@@ -235,15 +160,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     if ($item_id <= 0) $errors[] = "Selecciona un producto.";
     if ($qty <= 0) $errors[] = "Cantidad inválida.";
-
-    if (!$errors) {
-      // Validar que el item sea de la sucursal si existe branch_id en items
-      if ($colItemBranch) {
-        $st = $conn->prepare("SELECT `$colItemId` FROM inventory_items WHERE `$colItemId`=? AND `$colItemBranch`=? LIMIT 1");
-        $st->execute([$item_id, $branch_id]);
-        if (!$st->fetchColumn()) $errors[] = "Ese producto no pertenece a esta sede.";
-      }
-    }
 
     if (!$errors) {
       $_SESSION["entrada_cart"][] = ["item_id"=>$item_id, "qty"=>$qty];
@@ -256,9 +172,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $idx = (int)($_POST["idx"] ?? -1);
     if ($idx >= 0 && isset($_SESSION["entrada_cart"][$idx])) {
       array_splice($_SESSION["entrada_cart"], $idx, 1);
+      header("Location: entrada.php");
+      exit;
     }
-    header("Location: entrada.php");
-    exit;
   }
 
   if (isset($_POST["action"]) && $_POST["action"] === "clear") {
@@ -270,15 +186,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   if (isset($_POST["action"]) && $_POST["action"] === "save_print") {
 
     $supplier = trim((string)($_POST["supplier"] ?? ""));
-    $note = trim((string)($_POST["note"] ?? ""));
 
     if (empty($_SESSION["entrada_cart"])) $errors[] = "No hay productos agregados.";
 
     if (!$errors) {
       $batch = "ENT-" . strtoupper(substr(uniqid(), -8));
       $noteFull = "BATCH=$batch";
-      if ($supplier !== "") $noteFull .= " | SUPLIDOR=$supplier";
-      if ($note !== "")     $noteFull .= " | NOTA=$note";
+      if ($supplier !== "") $noteFull .= " | SUPLIDOR=$supplier"; // ✅ Nota eliminada (como pediste)
 
       $createdByVal = (int)($user["id"] ?? 0);
 
@@ -320,71 +234,29 @@ if (isset($_GET["success"]) && $_GET["success"] == "1" && isset($_GET["batch"]))
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Entrada</title>
   <link rel="stylesheet" href="/assets/css/styles.css?v=30">
-
-  <style>
-    /* estilos extra solo para el formulario (sin romper tu CSS global) */
-    .page-title{
-      display:flex; align-items:flex-end; justify-content:space-between; gap:12px;
-      margin: 0 0 14px;
-    }
-    .page-title h1{ margin:0; font-size:20px; font-weight:900; color:#052a7a; }
-    .grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-    .row-4{ display:grid; grid-template-columns: 260px 1fr 140px 140px; gap:14px; align-items:end; }
-    .actions-right{ display:flex; justify-content:flex-end; gap:10px; margin-top:12px; }
-    .muted2{ color:var(--muted); font-size:12px; font-weight:700; margin-top:6px; }
-    .submenu a{ padding-left:34px !important; font-size:14px; font-weight:900; opacity:.95; }
-  </style>
 </head>
-
 <body>
 
-<!-- NAVBAR (igual dashboard) -->
 <div class="navbar">
   <div class="inner">
-    <div class="brand">
-      <span class="dot"></span>
-      <strong>CEVIMEP</strong>
-    </div>
-    <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
-    </div>
+    <div class="brand"><span class="dot"></span><strong>CEVIMEP</strong></div>
+    <div class="nav-right"><a class="btn-pill" href="/logout.php">Salir</a></div>
   </div>
 </div>
 
-<!-- LAYOUT -->
 <div class="layout">
 
-  <!-- SIDEBAR -->
-  <aside class="sidebar">
-    <h3 class="menu-title">Menú</h3>
+  <?php require_once __DIR__ . "/../partials/sidebar.php"; ?>
 
-    <nav class="menu">
-      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a href="/private/patients/index.php"><span class="ico">🧑‍🤝‍🧑</span> Pacientes</a>
-      <a href="#" onclick="return false;" style="opacity:.55; cursor:not-allowed;"><span class="ico">📅</span> Citas</a>
-      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
-      <a href="/private/caja/index.php"><span class="ico">💳</span> Caja</a>
-
-      <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <div class="submenu">
-        <a class="active" href="/private/inventario/entrada.php"><span class="ico">➕</span> Entrada</a>
-        <a href="/private/inventario/salida.php"><span class="ico">➖</span> Salida</a>
-      </div>
-
-      <a href="/private/estadisticas/index.php"><span class="ico">📊</span> Estadísticas</a>
-    </nav>
-  </aside>
-
-  <!-- CONTENT -->
   <main class="content">
 
     <div class="card">
-      <div class="page-title">
-        <div>
-          <h1>Entrada</h1>
-          <p class="muted">Registra entrada de inventario (sede actual)</p>
-          <p class="muted">Sucursal: <strong><?= h($branch_name) ?></strong></p>
-        </div>
+
+      <!-- ✅ HEADER centrado y más arribita -->
+      <div style="text-align:center; margin-top:-6px; margin-bottom:12px;">
+        <h1 style="margin:0;">Entrada</h1>
+        <div class="muted" style="margin-top:6px;">Registra entrada de inventario (sede actual)</div>
+        <div class="muted" style="margin-top:6px;">Sucursal: <strong><?= h($branch_name) ?></strong></div>
       </div>
 
       <?php if (!empty($errors)): ?>
@@ -396,8 +268,8 @@ if (isset($_GET["success"]) && $_GET["success"] == "1" && isset($_GET["batch"]))
         </div>
       <?php endif; ?>
 
-      <!-- Agregar -->
-      <form method="post" class="row-4" style="margin-top:14px;">
+      <!-- ✅ Campos arriba en una sola fila -->
+      <form method="post" class="row-4" style="margin-top:14px; display:grid; grid-template-columns: 220px 1fr 140px 140px; gap:14px; align-items:end;">
         <input type="hidden" name="action" value="add">
 
         <div>
@@ -443,58 +315,57 @@ if (isset($_GET["success"]) && $_GET["success"] == "1" && isset($_GET["batch"]))
 
           <form method="post" style="margin:0;">
             <input type="hidden" name="action" value="clear">
-            <button class="btn btn-small" type="submit">Vaciar</button>
+            <button class="btn" type="submit">Vaciar</button>
           </form>
         </div>
 
-        <table class="table" style="margin-top:10px;">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Producto</th>
-              <th style="text-align:right;">Cantidad</th>
-              <th style="text-align:right;">Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-          <?php if (empty($_SESSION["entrada_cart"])): ?>
-            <tr><td colspan="4" class="muted" style="padding:14px;">No hay productos agregados.</td></tr>
-          <?php else: ?>
-            <?php foreach($_SESSION["entrada_cart"] as $i => $c): ?>
-              <?php
-                $pid = (int)$c["item_id"];
-                $name = "";
-                foreach($products as $pp){ if ((int)$pp["id"] === $pid){ $name = (string)$pp["name"]; break; } }
-              ?>
+        <div style="margin-top:10px; overflow:auto;">
+          <table class="table">
+            <thead>
               <tr>
-                <td><?= (int)($i+1) ?></td>
-                <td><?= h($name) ?></td>
-                <td style="text-align:right;"><?= (int)$c["qty"] ?></td>
-                <td style="text-align:right;">
-                  <form method="post" style="display:inline;">
-                    <input type="hidden" name="action" value="remove">
-                    <input type="hidden" name="idx" value="<?= (int)$i ?>">
-                    <button class="btn btn-small" type="submit">Quitar</button>
-                  </form>
-                </td>
+                <th style="width:80px;">#</th>
+                <th>Producto</th>
+                <th style="width:160px; text-align:right;">Cantidad</th>
+                <th style="width:160px; text-align:right;">Acción</th>
               </tr>
-            <?php endforeach; ?>
-          <?php endif; ?>
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              <?php if (empty($_SESSION["entrada_cart"])): ?>
+                <tr><td colspan="4" class="muted" style="text-align:center;">No hay productos agregados.</td></tr>
+              <?php else: ?>
+                <?php foreach($_SESSION["entrada_cart"] as $i => $line): ?>
+                  <?php
+                    $pid = (int)$line["item_id"];
+                    $qty = (int)$line["qty"];
+                    $pname = "";
+                    foreach ($products as $p) { if ((int)$p["id"] === $pid) { $pname = (string)$p["name"]; break; } }
+                  ?>
+                  <tr>
+                    <td><?= (int)($i+1) ?></td>
+                    <td><?= h($pname) ?></td>
+                    <td style="text-align:right;"><?= (int)$qty ?></td>
+                    <td style="text-align:right;">
+                      <form method="post" style="display:inline;">
+                        <input type="hidden" name="action" value="remove">
+                        <input type="hidden" name="idx" value="<?= (int)$i ?>">
+                        <button class="btn" type="submit">Quitar</button>
+                      </form>
+                    </td>
+                  </tr>
+                <?php endforeach; ?>
+              <?php endif; ?>
+            </tbody>
+          </table>
+        </div>
 
-        <!-- Guardar -->
+        <!-- ✅ Form guardar e imprimir: QUITÉ Nota -->
         <form method="post" style="margin-top:14px;">
           <input type="hidden" name="action" value="save_print">
 
-          <div class="grid-2">
+          <div style="display:grid; grid-template-columns:1fr; gap:12px;">
             <div>
               <label class="muted2">Suplidor</label>
               <input type="text" name="supplier" placeholder="Escribe el suplidor (opcional)">
-            </div>
-            <div>
-              <label class="muted2">Nota</label>
-              <input type="text" name="note" placeholder="Observaciones (opcional)">
             </div>
           </div>
 
@@ -511,70 +382,61 @@ if (isset($_GET["success"]) && $_GET["success"] == "1" && isset($_GET["batch"]))
             <h3 style="margin:0 0 6px;">Historial de Entradas</h3>
             <p class="muted">Últimos 50 registros (sede actual)</p>
           </div>
-          <button class="btn btn-small" type="button" id="btnToggleHistory">Ver el historial</button>
+          <button class="btn" type="button" id="btnToggleHistory">Ver el historial</button>
         </div>
 
-        <div class="historyBox" id="historyBox">
-          <div class="muted" id="historyLoading" style="margin-top:10px; display:none;">Cargando...</div>
-          <div id="historyContent" style="margin-top:10px;"></div>
+        <div id="historyBox" style="display:none; margin-top:10px;">
+          <div id="historyLoading" class="muted">Cargando...</div>
+          <div id="historyContent"></div>
         </div>
       </div>
 
     </div>
 
-    <?php if ($print_receipt && $batch_print && $colMovNote && $colMovType): ?>
-      <div class="card" id="printArea" style="max-width:560px; margin:16px auto;">
-        <h3 style="text-align:center; margin:0;">Entrada</h3>
-        <p class="muted" style="text-align:center; margin-top:6px;">Sucursal: <?= h($branch_name) ?></p>
-        <p class="muted" style="text-align:center; margin-top:6px;">Batch: <?= h($batch_print) ?></p>
-        <hr style="margin:12px 0;">
-
-        <table class="table">
-          <thead><tr><th>Producto</th><th style="text-align:right;">Cant.</th></tr></thead>
-          <tbody>
-          <?php
-            $stP = $conn->prepare("
-              SELECT i.`$colItemName` AS name, m.`$colMovQty` AS qty
-              FROM inventory_movements m
-              INNER JOIN inventory_items i ON i.`$colItemId` = m.`$colMovItem`
-              WHERE m.`$colMovBranch`=? AND m.`$colMovType` IN ('IN','in','Entrada','entrada','E','e')
-                AND m.`$colMovNote` LIKE ?
-              ORDER BY i.`$colItemName` ASC
-            ");
-            $stP->execute([$branch_id, "%BATCH=$batch_print%"]);
-            foreach($stP->fetchAll(PDO::FETCH_ASSOC) as $r){
-              echo "<tr><td>".h($r["name"])."</td><td style='text-align:right;'>".(int)$r["qty"]."</td></tr>";
-            }
-          ?>
-          </tbody>
-        </table>
-
-        <p class="muted" style="text-align:center; margin-top:10px;">Generado por CEVIMEP</p>
-      </div>
-      <script>window.addEventListener("load",()=>window.print());</script>
-    <?php endif; ?>
-
   </main>
 </div>
 
-<!-- FOOTER (igual dashboard) -->
 <div class="footer">
-  <div class="inner">
-    © <?= (int)date("Y") ?> CEVIMEP. Todos los derechos reservados.
-  </div>
+  <div class="inner">© <?= (int)date("Y") ?> CEVIMEP. Todos los derechos reservados.</div>
 </div>
 
 <script>
-/* Filtro categoría -> producto */
+(function(){
+  const btn = document.getElementById("btnToggleHistory");
+  const box = document.getElementById("historyBox");
+  const loading = document.getElementById("historyLoading");
+  const content = document.getElementById("historyContent");
+  if(!btn || !box) return;
+
+  let loaded = false;
+  btn.addEventListener("click", async () => {
+    box.style.display = (box.style.display === "none" || box.style.display === "") ? "block" : "none";
+    if (box.style.display === "block" && !loaded) {
+      loaded = true;
+      loading.style.display = "block";
+      content.innerHTML = "";
+      try{
+        const res = await fetch("?ajax=history", { cache: "no-store" });
+        content.innerHTML = await res.text();
+      }catch(e){
+        content.innerHTML = "<p class='muted'>No se pudo cargar el historial.</p>";
+      }finally{
+        loading.style.display = "none";
+      }
+    }
+  });
+})();
+</script>
+
+<script>
+/* filtro categoría (front) */
 (function(){
   const cat = document.getElementById("category_id");
   const prod = document.getElementById("item_id");
   if(!cat || !prod) return;
 
   const all = Array.from(prod.options).map(o => ({
-    value: o.value,
-    text: o.text,
-    cat: o.getAttribute("data-cat") || "0"
+    value:o.value, text:o.textContent, cat:o.getAttribute("data-cat") || "0"
   }));
 
   function rebuild(){
@@ -606,38 +468,6 @@ if (isset($_GET["success"]) && $_GET["success"] == "1" && isset($_GET["batch"]))
 
   cat.addEventListener("change", rebuild);
   rebuild();
-})();
-
-/* Historial embebido */
-(function(){
-  const btn = document.getElementById("btnToggleHistory");
-  const box = document.getElementById("historyBox");
-  const loading = document.getElementById("historyLoading");
-  const content = document.getElementById("historyContent");
-  if(!btn || !box || !loading || !content) return;
-
-  let loaded = false;
-
-  async function loadHistory(){
-    loading.style.display = "block";
-    content.innerHTML = "";
-    try{
-      const res = await fetch("?ajax=history", { cache: "no-store" });
-      const html = await res.text();
-      content.innerHTML = html;
-    }catch(e){
-      content.innerHTML = "<p class='muted'>No se pudo cargar el historial.</p>";
-    }finally{
-      loading.style.display = "none";
-      loaded = true;
-    }
-  }
-
-  btn.addEventListener("click", async function(){
-    const isOpen = box.classList.toggle("open");
-    btn.textContent = isOpen ? "Ocultar historial" : "Ver el historial";
-    if(isOpen && !loaded) await loadHistory();
-  });
 })();
 </script>
 
