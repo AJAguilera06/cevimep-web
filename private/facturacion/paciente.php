@@ -45,41 +45,41 @@ if (!$patient) {
   die("Paciente no encontrado en esta sucursal.");
 }
 
-/* Facturas */
+/* =========================
+   PAGINACIÓN FACTURAS
+   ========================= */
+$per_page = 20;
+$page = max(1, (int)($_GET["page"] ?? 1));
+$offset = ($page - 1) * $per_page;
+
+/* Total facturas + monto total (global) */
+$stSum = $conn->prepare("
+  SELECT COUNT(*) AS c, COALESCE(SUM(total),0) AS s
+  FROM invoices
+  WHERE branch_id = ? AND patient_id = ?
+");
+$stSum->execute([$branch_id, $patient_id]);
+$sumRow = $stSum->fetch(PDO::FETCH_ASSOC);
+
+$total_invoices = (int)($sumRow["c"] ?? 0);
+$total_amount   = (float)($sumRow["s"] ?? 0);
+
+$total_pages = max(1, (int)ceil($total_invoices / $per_page));
+if ($page > $total_pages) $page = $total_pages;
+
+/* Facturas (página actual) */
+$invoices = [];
 $stI = $conn->prepare("
   SELECT id, invoice_date, payment_method, total, created_at
   FROM invoices
   WHERE branch_id = ? AND patient_id = ?
   ORDER BY id DESC
-  LIMIT 80
+  LIMIT $per_page OFFSET $offset
 ");
 $stI->execute([$branch_id, $patient_id]);
 $invoices = $stI->fetchAll(PDO::FETCH_ASSOC);
 
-/* Resumen */
-$invoice_count = count($invoices);
-$invoice_total = 0.0;
-
-$by_method = [
-  "EFECTIVO" => 0.0,
-  "TARJETA" => 0.0,
-  "TRANSFERENCIA" => 0.0,
-  "OTRO" => 0.0,
-];
-
-foreach ($invoices as $row) {
-  $t = (float)($row["total"] ?? 0);
-  $invoice_total += $t;
-
-  $m = strtoupper(trim((string)($row["payment_method"] ?? "")));
-  if ($m === "EFECTIVO" || $m === "TARJETA" || $m === "TRANSFERENCIA") {
-    $by_method[$m] += $t;
-  } else {
-    $by_method["OTRO"] += $t;
-  }
-}
-
-/* Flash (si usas) */
+/* Flash */
 $flash_ok = $_SESSION["flash_success"] ?? "";
 $flash_err = $_SESSION["flash_error"] ?? "";
 unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
@@ -91,15 +91,136 @@ unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Facturación - Paciente</title>
 
-  <!-- Dashboard base -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=50">
-  <!-- Facturación UI -->
-  <link rel="stylesheet" href="/assets/css/facturacion.css?v=50">
+  <!-- MISMO CSS QUE DASHBOARD -->
+  <link rel="stylesheet" href="/assets/css/styles.css?v=30">
+
+  <style>
+    .toolbar{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top:14px;
+    }
+
+    .btn-ui{
+      height:38px;
+      border:none;
+      border-radius:12px;
+      padding:0 14px;
+      font-weight:900;
+      cursor:pointer;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      transition: transform .12s ease, filter .15s ease;
+    }
+    .btn-ui:hover{ filter: brightness(.98); transform: translateY(-1px); }
+    .btn-ui:active{ transform: translateY(0); }
+
+    .btn-primary-ui{background:#0b4d87;color:#fff;}
+    .btn-secondary-ui{background:#eef2f6;color:#2b3b4a;}
+
+    .table-card{
+      background:#fff;
+      border-radius:16px;
+      box-shadow:0 12px 30px rgba(0,0,0,.08);
+      padding:14px;
+      margin-top:14px;
+    }
+
+    /* ✅ WRAPPER: evita que se rompa con muchas facturas */
+    .table-wrap{
+      width:100%;
+      overflow-x:auto;
+      overflow-y:auto;
+      max-height: 520px; /* ajusta si quieres más alto */
+      border-radius: 14px;
+      -webkit-overflow-scrolling: touch;
+      border:1px solid rgba(2,21,44,.06);
+    }
+
+    table{width:100%;border-collapse:separate;border-spacing:0; min-width: 720px;}
+    th,td{padding:12px 10px;border-bottom:1px solid #eef2f6;font-size:13px;}
+    th{
+      color:#0b4d87;text-align:left;font-weight:900;font-size:12px;
+      position: sticky; top: 0;
+      background: #ffffff;
+      z-index: 2;
+    }
+    tr:last-child td{border-bottom:none;}
+
+    .flash-ok{background:#e9fff1;border:1px solid #a7f0bf;color:#0a7a33;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:12px;font-weight:800;}
+    .flash-err{background:#ffecec;border:1px solid #ffb6b6;color:#a40000;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:12px;font-weight:800;}
+
+    .pill{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:6px 10px;border-radius:999px;
+      font-weight:900;font-size:12px;background:#eef6ff;color:#0b4d87;
+      border:1px solid rgba(2,21,44,.12);
+      text-decoration:none;
+      white-space: nowrap;
+    }
+
+    /* Resumen mini */
+    .summary{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:10px;
+      opacity:.9;
+      font-weight:800;
+      font-size:13px;
+    }
+    .summary .item{
+      background:#f8fafc;
+      border:1px solid rgba(2,21,44,.08);
+      border-radius:12px;
+      padding:8px 10px;
+    }
+
+    /* Paginación */
+    .pagination{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top:12px;
+    }
+    .pg-btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding:9px 12px;
+      border-radius:12px;
+      font-weight:900;
+      text-decoration:none;
+      border:1px solid rgba(2,21,44,.12);
+      background:#eef6ff;
+      color:#0b4d87;
+      transition: filter .15s ease, transform .12s ease;
+    }
+    .pg-btn:hover{ filter: brightness(.98); transform: translateY(-1px); }
+    .pg-btn:active{ transform: translateY(0); }
+    .pg-btn.disabled{
+      pointer-events:none;
+      opacity:.5;
+      transform:none;
+    }
+    .pg-info{
+      font-weight:900;
+      opacity:.85;
+    }
+  </style>
 </head>
 
 <body>
 
-<!-- TOPBAR -->
+<!-- NAVBAR (IGUAL AL dashboard.php) -->
 <div class="navbar">
   <div class="inner">
     <div class="brand">
@@ -114,7 +235,7 @@ unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
 
 <div class="layout">
 
-  <!-- SIDEBAR -->
+  <!-- SIDEBAR (IGUAL AL dashboard.php) -->
   <aside class="sidebar">
     <h3 class="menu-title">Menú</h3>
     <nav class="menu">
@@ -130,69 +251,85 @@ unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
 
   <main class="content">
 
-  <section class="fact-center">
-    <div class="fact-center-head">
+    <section class="hero">
       <h1>Facturación</h1>
       <p>Historial del paciente en esta sucursal</p>
-    </div>
+    </section>
 
-    <div class="fact-center-card">
+    <?php if ($flash_ok): ?><div class="flash-ok"><?= h($flash_ok) ?></div><?php endif; ?>
+    <?php if ($flash_err): ?><div class="flash-err"><?= h($flash_err) ?></div><?php endif; ?>
 
-      <div class="fact-center-card-title">
-        <h2><?= h($patient["full_name"] ?? "Paciente") ?></h2>
-        <span class="fact-badge-branch">Sucursal: <?= h($branch_name) ?></span>
+    <div class="toolbar">
+      <div>
+        <h3 style="margin:0 0 6px;"><?= h($patient["full_name"] ?? "Paciente") ?></h3>
+        <p class="muted" style="margin:0;">Sucursal: <strong><?= h($branch_name) ?></strong></p>
+
+        <div class="summary">
+          <div class="item">Total facturas: <strong><?= (int)$total_invoices ?></strong></div>
+          <div class="item">Monto total: <strong>RD$ <?= number_format((float)$total_amount, 2) ?></strong></div>
+        </div>
       </div>
 
-      <table class="fact-table fact-table-center">
-        <thead>
-          <tr>
-            <th style="width:110px;">ID</th>
-            <th style="width:160px;">Fecha</th>
-            <th style="width:190px;">Método</th>
-            <th style="width:170px;">Total</th>
-            <th style="width:140px;">Detalle</th>
-          </tr>
-        </thead>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <a class="btn-ui btn-secondary-ui" href="/private/facturacion/index.php">← Volver</a>
+        <a class="btn-ui btn-primary-ui" href="/private/facturacion/nueva.php?patient_id=<?= (int)$patient_id ?>">➕ Nueva factura</a>
+      </div>
+    </div>
 
-        <tbody>
-          <?php if (empty($invoices)): ?>
+    <div class="table-card">
+      <h3 style="margin:0 0 10px;">Facturas</h3>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
             <tr>
-              <td colspan="5" class="muted">Este paciente no tiene facturas en esta sucursal.</td>
+              <th style="width:110px;">ID</th>
+              <th style="width:140px;">Fecha</th>
+              <th style="width:160px;">Método</th>
+              <th style="width:160px;">Total</th>
+              <th style="width:160px;">Detalle</th>
             </tr>
-          <?php else: ?>
-            <?php foreach ($invoices as $inv): ?>
-              <?php
-                $pm_raw = strtoupper(trim((string)($inv["payment_method"] ?? "")));
-                $pm_class = "otro";
-                if ($pm_raw === "EFECTIVO") $pm_class = "efectivo";
-                elseif ($pm_raw === "TARJETA") $pm_class = "tarjeta";
-                elseif ($pm_raw === "TRANSFERENCIA") $pm_class = "transferencia";
-              ?>
-              <tr>
-                <td>#<?= (int)$inv["id"] ?></td>
-                <td><?= h($inv["invoice_date"]) ?></td>
-                <td><span class="fact-method <?= h($pm_class) ?>"><?= h($pm_raw ?: "OTRO") ?></span></td>
-                <td class="fact-money">RD$ <?= number_format((float)$inv["total"], 2) ?></td>
-                <td>
-                  <a class="fact-pill" target="_blank" href="/private/facturacion/print.php?id=<?= (int)$inv["id"] ?>">🧾 Ver</a>
-                </td>
-              </tr>
-            <?php endforeach; ?>
-          <?php endif; ?>
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            <?php if (empty($invoices)): ?>
+              <tr><td colspan="5" class="muted">Este paciente no tiene facturas en esta sucursal.</td></tr>
+            <?php else: ?>
+              <?php foreach ($invoices as $inv): ?>
+                <tr>
+                  <td>#<?= (int)$inv["id"] ?></td>
+                  <td><?= h($inv["invoice_date"]) ?></td>
+                  <td><?= h($inv["payment_method"]) ?></td>
+                  <td style="font-weight:900;white-space:nowrap;">RD$ <?= number_format((float)$inv["total"], 2) ?></td>
+                  <td>
+                    <a class="pill" target="_blank" href="/private/facturacion/print.php?id=<?= (int)$inv["id"] ?>">🧾 Ver</a>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            <?php endif; ?>
+          </tbody>
+        </table>
+      </div>
+
+      <?php if ($total_pages > 1): ?>
+        <?php
+          $base = "/private/facturacion/paciente.php?patient_id=".(int)$patient_id;
+          $prev = max(1, $page - 1);
+          $next = min($total_pages, $page + 1);
+        ?>
+        <div class="pagination">
+          <a class="pg-btn <?= $page <= 1 ? "disabled" : "" ?>" href="<?= $base ?>&page=<?= (int)$prev ?>">← Anterior</a>
+
+          <div class="pg-info">
+            Página <strong><?= (int)$page ?></strong> de <strong><?= (int)$total_pages ?></strong>
+          </div>
+
+          <a class="pg-btn <?= $page >= $total_pages ? "disabled" : "" ?>" href="<?= $base ?>&page=<?= (int)$next ?>">Siguiente →</a>
+        </div>
+      <?php endif; ?>
 
     </div>
 
-    <div class="fact-center-actions">
-      <a class="fact-btn secondary" href="/private/facturacion/index.php">← Volver</a>
-      <a class="fact-btn primary" href="/private/facturacion/nueva.php?patient_id=<?= (int)$patient_id ?>">➕ Nueva factura</a>
-    </div>
-
-  </section>
-
-</main>
-
+  </main>
 </div>
 
 <div class="footer">
