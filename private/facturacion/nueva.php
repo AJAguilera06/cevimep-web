@@ -94,8 +94,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if (!in_array($payment_method, ["EFECTIVO","TARJETA","TRANSFERENCIA"], true)) { $payment_method = "EFECTIVO"; }
     $cash_received = isset($_POST["cash_received"]) && $_POST["cash_received"] !== "" ? (float)$_POST["cash_received"] : null;
     if ($payment_method !== "EFECTIVO") { $cash_received = null; }
+
     // ✅ Cobertura (seguro): monto que cubre el seguro
     $coverage_amount = isset($_POST["coverage_amount"]) && $_POST["coverage_amount"] !== "" ? (float)$_POST["coverage_amount"] : 0.0;
+
     $representative = trim((string)($_POST["representative"] ?? ""));
 
     $item_ids = $_POST["item_id"] ?? [];
@@ -294,21 +296,99 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   <title>CEVIMEP | Nueva Factura</title>
 
   <!-- ✅ MISMO CSS QUE DASHBOARD -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=30">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=70">
 
   <style>
-    .card-box{
+    /* Contenedor centrado y limpio */
+    .fact-page{
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 22px 18px 12px;
+    }
+
+    /* Header bonito */
+    .fact-header{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap: 14px;
+      flex-wrap:wrap;
+      margin-bottom: 14px;
+    }
+    .fact-title h1{
+      margin:0;
+      font-size: 34px;
+      font-weight: 950;
+      letter-spacing: -.3px;
+    }
+    .fact-title p{
+      margin: 6px 0 0;
+      opacity:.78;
+      font-weight: 800;
+    }
+
+    .fact-actions{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+
+    .btn-ui{
+      height:38px;
+      border:none;
+      border-radius:12px;
+      padding:0 14px;
+      font-weight:900;
+      cursor:pointer;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      transition: transform .12s ease, filter .15s ease, box-shadow .18s ease;
+      white-space: nowrap;
+    }
+    .btn-ui:hover{ filter: brightness(.98); transform: translateY(-1px); box-shadow: 0 10px 22px rgba(0,0,0,.08); }
+    .btn-ui:active{ transform: translateY(0); box-shadow:none; }
+
+    .btn-primary-ui{ background:#0b4d87; color:#fff; }
+    .btn-secondary-ui{ background:#eef2f6; color:#2b3b4a; }
+
+    /* Cards */
+    .card{
       background:#fff;
-      border-radius:16px;
+      border-radius:18px;
       box-shadow:0 12px 30px rgba(0,0,0,.08);
       padding:16px;
-      margin-top:14px;
     }
+    .card + .card{ margin-top:14px; }
+    .card-head{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-bottom: 12px;
+    }
+    .card-head h3{
+      margin:0;
+      font-weight: 950;
+    }
+    .card-head .hint{
+      opacity:.72;
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    /* Form fields */
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-    .grid4{display:grid;grid-template-columns:1fr 1fr 1fr 160px;gap:12px;align-items:end;}
+    .grid4{display:grid;grid-template-columns:1fr 1fr 140px 160px;gap:12px;align-items:end;}
     @media(max-width:980px){.grid2{grid-template-columns:1fr;}.grid4{grid-template-columns:1fr;}}
+
     .field{display:flex;flex-direction:column;gap:6px;}
     .field label{font-weight:900;color:#0b2a4a;font-size:13px;}
+
     .input, select{
       height:40px;
       padding:0 12px;
@@ -320,23 +400,52 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     }
     .input:focus, select:focus{border-color:#7fb2ff;box-shadow:0 0 0 3px rgba(127,178,255,.20);}
 
-    .btn-ui{
-      height:38px;border:none;border-radius:12px;padding:0 14px;
-      font-weight:900;cursor:pointer;text-decoration:none;
-      display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    /* Tabla líneas: wrapper para que NO se rompa */
+    .table-wrap{
+      width:100%;
+      overflow-x:auto;
+      overflow-y:auto;
+      max-height: 420px;
+      border-radius: 14px;
+      border:1px solid rgba(2,21,44,.06);
+      -webkit-overflow-scrolling: touch;
+      margin-top: 10px;
     }
-    .btn-primary-ui{background:#0b4d87;color:#fff;}
-    .btn-secondary-ui{background:#eef2f6;color:#2b3b4a;}
-
-    table{width:100%;border-collapse:separate;border-spacing:0;margin-top:10px;}
+    table{width:100%;border-collapse:separate;border-spacing:0;min-width: 860px;}
     th,td{padding:12px 10px;border-bottom:1px solid #eef2f6;font-size:13px;}
-    th{color:#0b4d87;text-align:left;font-weight:900;font-size:12px;}
+    th{
+      color:#0b4d87;text-align:left;font-weight:950;font-size:12px;
+      position: sticky; top: 0; background:#fff; z-index:2;
+    }
     tr:last-child td{border-bottom:none;}
     .right{text-align:right;}
     .muted{opacity:.75}
-    .flash-ok{background:#e9fff1;border:1px solid #a7f0bf;color:#0a7a33;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:12px;}
-    .flash-err{background:#ffecec;border:1px solid #ffb6b6;color:#a40000;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:12px;}
-    .toolbar{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-top:14px;}
+
+    /* Totales */
+    .totals{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      padding: 12px;
+      border-radius: 16px;
+      background:#f8fafc;
+      border:1px solid rgba(2,21,44,.08);
+    }
+    .totals .row{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      font-weight: 850;
+    }
+    .totals .row.big{
+      margin-top:6px;
+      font-size:16px;
+      font-weight: 950;
+    }
+
+    /* Alertas */
+    .flash-ok{background:#e9fff1;border:1px solid #a7f0bf;color:#0a7a33;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:12px;font-weight:850;}
+    .flash-err{background:#ffecec;border:1px solid #ffb6b6;color:#a40000;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:12px;font-weight:850;}
   </style>
 </head>
 
@@ -365,138 +474,135 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   </aside>
 
   <main class="content">
+    <div class="fact-page">
 
-    <section class="hero">
-      <h1>Nueva factura</h1>
-      <p>Paciente: <strong><?= h($patient["full_name"]) ?></strong> — Sucursal: <strong><?= h($branch_name) ?></strong></p>
-    </section>
+      <div class="fact-header">
+        <div class="fact-title">
+          <h1>Nueva factura</h1>
+          <p>Paciente: <strong><?= h($patient["full_name"]) ?></strong> — Sucursal: <strong><?= h($branch_name) ?></strong></p>
+        </div>
 
-    <?php if ($flash_ok): ?><div class="flash-ok"><?= h($flash_ok) ?></div><?php endif; ?>
-    <?php if ($flash_error): ?><div class="flash-err"><?= h($flash_error) ?></div><?php endif; ?>
-
-    <div class="toolbar">
-      <div>
-        <h3 style="margin:0 0 6px;"><?= h($patient["full_name"]) ?></h3>
-        <p class="muted" style="margin:0;">Agrega productos y guarda la factura.</p>
+        <div class="fact-actions">
+          <a class="btn-ui btn-secondary-ui" href="/private/facturacion/paciente.php?patient_id=<?= (int)$patient_id ?>">← Volver</a>
+        </div>
       </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <a class="btn-ui btn-secondary-ui" href="/private/facturacion/paciente.php?patient_id=<?= (int)$patient_id ?>">← Volver</a>
-      </div>
+
+      <?php if ($flash_ok): ?><div class="flash-ok"><?= h($flash_ok) ?></div><?php endif; ?>
+      <?php if ($flash_error): ?><div class="flash-err"><?= h($flash_error) ?></div><?php endif; ?>
+
+      <form method="post" class="card" id="frmFactura">
+        <input type="hidden" name="patient_id" value="<?= (int)$patient_id ?>">
+
+        <div class="card-head">
+          <h3>Datos de la factura</h3>
+          <div class="hint">Completa la información y agrega productos</div>
+        </div>
+
+        <div class="grid2">
+          <div class="field">
+            <label>Fecha</label>
+            <input class="input" type="date" name="invoice_date" value="<?= h($today) ?>">
+          </div>
+
+          <div class="field">
+            <label>Método de pago</label>
+            <select name="payment_method" id="payment_method">
+              <option value="EFECTIVO">EFECTIVO</option>
+              <option value="TARJETA">TARJETA</option>
+              <option value="TRANSFERENCIA">TRANSFERENCIA</option>
+            </select>
+          </div>
+
+          <div class="field" id="cashField">
+            <label>Efectivo recibido (solo efectivo)</label>
+            <input class="input" type="number" step="0.01" min="0" name="cash_received" id="cash_received" placeholder="0.00">
+          </div>
+
+          <div class="field">
+            <label>Cobertura (RD$)</label>
+            <input class="input" type="number" step="0.01" min="0" name="coverage_amount" id="coverage_amount" value="0">
+          </div>
+
+          <div class="field" style="grid-column:1 / -1;">
+            <label>Representante (opcional)</label>
+            <input class="input" name="representative" placeholder="Nombre del representante / tutor">
+          </div>
+        </div>
+
+        <div class="card" style="box-shadow:none;border:1px solid rgba(2,21,44,.10); margin-top:14px;">
+          <div class="card-head">
+            <h3>Agregar productos</h3>
+            <div class="hint">Filtra por categoría y añade cantidades</div>
+          </div>
+
+          <div class="grid4">
+            <div class="field">
+              <label>Categoría (filtro)</label>
+              <select id="selCat">
+                <option value="0">Todas</option>
+                <?php foreach($categories as $c): ?>
+                  <option value="<?= (int)$c["id"] ?>"><?= h($c["name"]) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+
+            <div class="field">
+              <label>Producto</label>
+              <select id="selItem">
+                <option value="0">-- Seleccionar --</option>
+                <?php foreach($products as $p): $stk=(int)($p["stock_qty"] ?? 0); ?>
+                  <option value="<?= (int)$p["id"] ?>"
+                          data-price="<?= h($p["sale_price"]) ?>"
+                          data-cat-id="<?= (int)$p["category_id"] ?>"
+                          data-stock="<?= $stk ?>">
+                    <?= h($p["name"]) ?><?= ($stk <= 0 ? " (Sin stock)" : "") ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+
+            <div class="field">
+              <label>Cantidad</label>
+              <input class="input" id="qty" type="number" min="1" value="1">
+            </div>
+
+            <button type="button" class="btn-ui btn-primary-ui" id="btnAdd">Añadir</button>
+          </div>
+
+          <div class="table-wrap">
+            <table id="tblLines">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th class="right" style="width:120px;">Cantidad</th>
+                  <th class="right" style="width:160px;">Precio</th>
+                  <th class="right" style="width:160px;">Total</th>
+                  <th style="width:120px;"></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="grid2" style="margin-top:14px;">
+            <div></div>
+            <div class="totals">
+              <div class="row"><span class="muted">Subtotal</span><strong id="lblSubtotal">RD$ 0.00</strong></div>
+              <div class="row"><span class="muted">Cobertura</span><strong id="lblCoverage">RD$ 0.00</strong></div>
+              <div class="row big"><span>Total a pagar</span><strong id="lblTotal">RD$ 0.00</strong></div>
+              <div class="row" id="cashBox"><span class="muted">Cambio</span><strong id="lblChange">RD$ 0.00</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:14px;">
+          <a class="btn-ui btn-secondary-ui" href="/private/facturacion/paciente.php?patient_id=<?= (int)$patient_id ?>">Cancelar</a>
+          <button class="btn-ui btn-primary-ui" type="submit">Guardar y imprimir</button>
+        </div>
+
+      </form>
+
     </div>
-
-    <form method="post" class="card-box" id="frmFactura">
-      <input type="hidden" name="patient_id" value="<?= (int)$patient_id ?>">
-
-      <div class="grid2">
-        <div class="field">
-          <label>Fecha</label>
-          <input class="input" type="date" name="invoice_date" value="<?= h($today) ?>">
-        </div>
-
-        <div class="field">
-          <label>Método de pago</label>
-          <select name="payment_method" id="payment_method">
-            <option value="EFECTIVO">EFECTIVO</option>
-            <option value="TARJETA">TARJETA</option>
-            <option value="TRANSFERENCIA">TRANSFERENCIA</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label>Efectivo recibido (solo efectivo)</label>
-          <input class="input" type="number" step="0.01" min="0" name="cash_received" id="cash_received" placeholder="0.00">
-        </div>
-
-        <div class="field">
-          <label>Cobertura (RD$)</label>
-          <input class="input" type="number" step="0.01" min="0" name="coverage_amount" id="coverage_amount" value="0">
-        </div>
-
-        <div class="field" style="grid-column:1 / -1;">
-          <label>Representante (opcional)</label>
-          <input class="input" name="representative" placeholder="Nombre del representante / tutor">
-        </div>
-      </div>
-
-      <div class="card-box" style="box-shadow:none;border:1px solid rgba(2,21,44,.10);">
-        <h3 style="margin:0 0 10px;">Agregar productos</h3>
-
-        <div class="grid4">
-          <div class="field">
-            <label>Categoría (filtro)</label>
-            <select id="selCat">
-              <option value="0">Todas</option>
-              <?php foreach($categories as $c): ?>
-                <option value="<?= (int)$c["id"] ?>"><?= h($c["name"]) ?></option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-
-          <div class="field">
-            <label>Producto</label>
-            <select id="selItem">
-              <option value="0">-- Seleccionar --</option>
-              <?php foreach($products as $p): $stk=(int)($p["stock_qty"] ?? 0); ?>
-                <option value="<?= (int)$p["id"] ?>"
-                        data-price="<?= h($p["sale_price"]) ?>"
-                        data-cat-id="<?= (int)$p["category_id"] ?>"
-                        data-stock="<?= $stk ?>">
-                  <?= h($p["name"]) ?><?= ($stk <= 0 ? " (Sin stock)" : "") ?>
-                </option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-
-          <div class="field">
-            <label>Cantidad</label>
-            <input class="input" id="qty" type="number" min="1" value="1">
-          </div>
-
-          <button type="button" class="btn-ui btn-primary-ui" id="btnAdd">Añadir</button>
-        </div>
-
-        <table id="tblLines">
-          <thead>
-            <tr>
-              <th>Producto</th>
-              <th class="right" style="width:120px;">Cantidad</th>
-              <th class="right" style="width:160px;">Precio</th>
-              <th class="right" style="width:160px;">Total</th>
-              <th style="width:90px;"></th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-
-        <div class="grid2" style="margin-top:14px;">
-          <div></div>
-          <div>
-            <div style="display:flex;justify-content:space-between;margin:6px 0;">
-              <span class="muted">Subtotal</span>
-              <strong id="lblSubtotal">RD$ 0.00</strong>
-            </div>
-            <div style="display:flex;justify-content:space-between;margin:6px 0;">
-              <span class="muted">Cobertura</span>
-              <strong id="lblCoverage">RD$ 0.00</strong>
-            </div>
-            <div style="display:flex;justify-content:space-between;margin:10px 0;font-size:16px;">
-              <span>Total a pagar</span>
-              <strong id="lblTotal">RD$ 0.00</strong>
-            </div>
-            <div id="cashBox" style="display:flex;justify-content:space-between;margin:6px 0;">
-              <span class="muted">Cambio</span>
-              <strong id="lblChange">RD$ 0.00</strong>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:14px;">
-        <a class="btn-ui btn-secondary-ui" href="/private/facturacion/paciente.php?patient_id=<?= (int)$patient_id ?>">Cancelar</a>
-        <button class="btn-ui btn-primary-ui" type="submit">Guardar y imprimir</button>
-      </div>
-    </form>
-
   </main>
 </div>
 
@@ -521,6 +627,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   const lblTotal = document.getElementById('lblTotal');
   const lblChange = document.getElementById('lblChange');
   const cashBox = document.getElementById('cashBox');
+  const cashField = document.getElementById('cashField');
 
   function money(n){ return "RD$ " + (Number(n||0).toFixed(2)); }
 
@@ -541,6 +648,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       const lineTotal = Number(tr.dataset.total || 0);
       subtotal += lineTotal;
     });
+
     const cov = Math.max(0, Number(coverage.value || 0));
     const covApplied = Math.min(cov, subtotal);
     const total = Math.max(0, subtotal - covApplied);
@@ -550,8 +658,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     lblTotal.textContent = money(total);
 
     const isCash = (payment.value === "EFECTIVO");
-    // Mostrar/ocultar y desactivar "Efectivo recibido" si NO es efectivo
-    const cashField = cashReceived && cashReceived.closest ? cashReceived.closest('.field') : null;
+
     if (cashField) cashField.style.display = isCash ? '' : 'none';
     if (cashReceived) {
       cashReceived.disabled = !isCash;
@@ -559,7 +666,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       if (!isCash) cashReceived.value = "0.00";
     }
 
-    // Mostrar cambio solo si es efectivo
     cashBox.style.display = isCash ? 'flex' : 'none';
 
     if (isCash) {
