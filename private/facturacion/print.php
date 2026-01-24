@@ -65,11 +65,9 @@ if (!$inv) {
 
 /* =========================
    ITEMS (invoice_items -> inventory_items)
-   invoice_items: item_id, qty, unit_price, line_total
 ========================= */
 $itemNameExpr = "it.name";
 if (!colExists($conn, "inventory_items", "name")) {
-  // fallback por si tu inventory_items usa otro nombre
   if (colExists($conn, "inventory_items", "product_name")) $itemNameExpr = "it.product_name";
   elseif (colExists($conn, "inventory_items", "nombre")) $itemNameExpr = "it.nombre";
 }
@@ -98,8 +96,35 @@ $pago     = strtoupper((string)($inv["payment_method"] ?? "EFECTIVO"));
 $total    = (float)($inv["total"] ?? 0);
 $year     = date("Y");
 
-/* Logo */
-$logo = "../../public/assets/img/CEVIMEP.png";
+/* =========================
+   LOGO (FIX DEFINITIVO)
+   - En Railway /public NO es ruta web
+   - Linux es case-sensitive
+   - Usamos data URI para que siempre imprima
+========================= */
+$logoSrc = "";
+$logoCandidates = [
+  __DIR__ . "/../../public/assets/img/CEVIMEP.png",
+  __DIR__ . "/../../public/assets/img/cevimep.png",
+  __DIR__ . "/../../public/assets/img/logo.png",
+  __DIR__ . "/../../public/assets/img/Logo.png",
+  __DIR__ . "/../../public/assets/img/cevimep-logo.png",
+];
+
+foreach ($logoCandidates as $path) {
+  if (is_file($path)) {
+    $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    $mime = "image/png";
+    if ($ext === "jpg" || $ext === "jpeg") $mime = "image/jpeg";
+    elseif ($ext === "webp") $mime = "image/webp";
+
+    $data = @file_get_contents($path);
+    if ($data !== false) {
+      $logoSrc = "data:$mime;base64," . base64_encode($data);
+    }
+    break;
+  }
+}
 ?>
 <!doctype html>
 <html lang="es">
@@ -115,7 +140,7 @@ $logo = "../../public/assets/img/CEVIMEP.png";
   .right{text-align:right;}
   .bold{font-weight:700;}
   .divider{ border-top:1px dashed #000; margin:2mm 0; }
-  .logo{ max-width:46mm; display:block; margin:2mm auto 1mm auto; filter:grayscale(100%); }
+  .logo{ max-width:46mm; display:block; margin:2mm auto 1mm auto; }
   .title{ font-size:16px; font-weight:900; letter-spacing:.5px; margin:0; }
   .subtitle{ font-size:10px; margin:.5mm 0 0 0; }
   .branch{ font-size:12px; font-weight:900; margin-top:2mm; }
@@ -132,7 +157,9 @@ $logo = "../../public/assets/img/CEVIMEP.png";
 <body>
 <div class="ticket">
 
-  <img src="<?= h($logo) ?>" class="logo" alt="CEVIMEP">
+  <?php if ($logoSrc !== ""): ?>
+    <img src="<?= h($logoSrc) ?>" class="logo" alt="CEVIMEP">
+  <?php endif; ?>
 
   <div class="center title">CEVIMEP</div>
   <div class="center subtitle">CENTRO DE VACUNACIÓN INTEGRAL</div>
