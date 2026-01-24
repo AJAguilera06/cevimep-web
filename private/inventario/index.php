@@ -124,7 +124,7 @@ $year = date("Y");
 
       <div class="inv-grid">
 
-        <a class="inv-card" href="/private/inventario/inventario.php">
+        <a class="inv-card" href="/private/inventario/items.php">
           <div class="inv-ico">📋</div>
           <div class="inv-info">
             <h3>Inventario</h3>
