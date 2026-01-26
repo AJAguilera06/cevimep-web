@@ -168,6 +168,7 @@
 .inv-root{
   /* No tocamos colores ni navbar/sidebar.
      Solo layout interno para que todo inventario se vea “organizado”. */
+  position: relative; /* evita warning “regla vacía” */
 }
 
 /* Encabezado centrado (si lo usas) */
