@@ -1,247 +1,153 @@
 /* =========================================================
    inventario.css
-   - Alimenta TODO inventario sin romper el tema global
-   - BLOQUE A: LEGACY .cevimep-ui (se deja intacto)
-   - BLOQUE B: NUEVO estilo del sistema (navbar/sidebar/styles.css)
-     -> Requiere usar clases: inv-root + inv-entrada/inv-salida/etc
+   - Alimenta TODO inventario
+   - Nuevo estilo SOLO cuando el <main> tenga class="content inv-root ..."
    ========================================================= */
 
-
-/* =========================================================
-   BLOQUE A (LEGACY) - NO TOCAR
-   Solo aplica si la página usa <body class="cevimep-ui">
-   ========================================================= */
-
-/* SOLO PARA ENTRADA (no rompe dashboard/login) */
-.cevimep-ui * { box-sizing: border-box; }
-
-.cevimep-ui {
-  font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
-  background: #f4f6f9;
-  color: #333;
-  min-height: 100vh;
-}
-
-.cevimep-ui .wrap {
-  display: flex;
-  min-height: 100vh;
-}
-
-.cevimep-ui .sidebar {
-  width: 240px;
-  background: #0d6efd;
-  color: #fff;
-  flex-shrink: 0;
-  padding: 18px 0;
-}
-
-.cevimep-ui .sidebar .logo {
-  text-align: center;
-  padding: 0 18px 16px 18px;
-  border-bottom: 1px solid rgba(255,255,255,.15);
-}
-
-.cevimep-ui .sidebar .logo img {
-  max-width: 130px;
-  height: auto;
-}
-
-.cevimep-ui .sidebar a {
-  display: block;
-  color: #fff;
-  text-decoration: none;
-  padding: 12px 18px;
-  font-size: 14px;
-}
-
-.cevimep-ui .sidebar a:hover,
-.cevimep-ui .sidebar a.active {
-  background: rgba(255,255,255,.18);
-  border-left: 4px solid #fff;
-  padding-left: 14px;
-}
-
-.cevimep-ui .main {
-  flex: 1;
+/* ====== MODO NUEVO (Dashboard style) ======
+   Activa SOLO si el main usa:
+   <main class="content inv-root inv-entrada">
+*/
+.content.inv-root{
+  /* Rompemos el "centrado total" del dashboard SOLO para inventario */
+  align-items: flex-start;
+  justify-content: center;
+  text-align: left;
+  overflow: auto;
   padding: 22px;
 }
 
-.cevimep-ui .topbar {
-  background: #fff;
-  border-radius: 12px;
-  padding: 14px 18px;
-  box-shadow: 0 3px 12px rgba(0,0,0,.08);
-  margin-bottom: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.cevimep-ui .title {
-  font-size: 18px;
-  font-weight: 800;
-  color: #0d6efd;
-  margin: 0;
-}
-
-.cevimep-ui .card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 18px;
-  box-shadow: 0 3px 12px rgba(0,0,0,.08);
-  margin-bottom: 18px;
-}
-
-.cevimep-ui .grid {
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: 12px;
-}
-
-.cevimep-ui .col-12 { grid-column: span 12; }
-.cevimep-ui .col-6  { grid-column: span 6; }
-.cevimep-ui .col-4  { grid-column: span 4; }
-.cevimep-ui .col-3  { grid-column: span 3; }
-
-.cevimep-ui label {
-  display: block;
-  font-size: 13px;
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-
-.cevimep-ui input,
-.cevimep-ui select,
-.cevimep-ui textarea {
+/* Contenedor para que no se vaya a los lados */
+.content.inv-root .inv-wrap{
   width: 100%;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid #d0d7de;
-  font-size: 14px;
-  outline: none;
+  max-width: 1100px;
 }
 
-.cevimep-ui input:focus,
-.cevimep-ui select:focus,
-.cevimep-ui textarea:focus {
-  border-color: #0d6efd;
-  box-shadow: 0 0 0 3px rgba(13,110,253,.12);
-}
-
-.cevimep-ui .btn {
-  border: none;
-  border-radius: 10px;
-  padding: 10px 14px;
-  font-weight: 800;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.cevimep-ui .btn-primary { background: #0d6efd; color: #fff; }
-.cevimep-ui .btn-primary:hover { background: #0b5ed7; }
-
-.cevimep-ui .btn-secondary { background: #6c757d; color: #fff; }
-.cevimep-ui .btn-secondary:hover { background: #5c636a; }
-
-.cevimep-ui .table-wrap { overflow-x: auto; }
-.cevimep-ui table { width: 100%; border-collapse: collapse; }
-.cevimep-ui th, .cevimep-ui td { padding: 12px 12px; font-size: 14px; border-bottom: 1px solid #eee; }
-.cevimep-ui thead th { background: #0d6efd; color: #fff; }
-.cevimep-ui tbody tr:nth-child(even) { background: #f7f7f7; }
-
-@media (max-width: 900px) {
-  .cevimep-ui .sidebar { width: 210px; }
-  .cevimep-ui .col-6, .cevimep-ui .col-4, .cevimep-ui .col-3 { grid-column: span 12; }
-}
-
-
-/* =========================================================
-   BLOQUE B (NUEVO) - MISMO ESTILO DE TU SISTEMA
-   SOLO aplica si el main tiene: class="content inv-root ..."
-   Ejemplos:
-   - Entrada: <main class="content inv-root inv-entrada">
-   - Salida:  <main class="content inv-root inv-salida">
-   - Items:   <main class="content inv-root inv-items">
-   - Cats:    <main class="content inv-root inv-categorias">
-   ========================================================= */
-
-.inv-root{
-  /* No tocamos colores ni navbar/sidebar.
-     Solo layout interno para que todo inventario se vea “organizado”. */
-  position: relative; /* evita warning “regla vacía” */
-}
-
-/* Encabezado centrado (si lo usas) */
-.inv-root .page-head-center{
+/* Título centrado bonito como el sistema */
+.content.inv-root .inv-head{
   text-align: center;
+  margin-bottom: 14px;
 }
-.inv-root .page-head-center h1{
+.content.inv-root .inv-head h1{
   margin: 0;
-  font-size: 34px;
+  font-size: 38px;
   font-weight: 900;
 }
-.inv-root .page-head-center .sub{
+.content.inv-root .inv-head .sub{
   margin-top: 6px;
   font-weight: 700;
   opacity: .85;
 }
-.inv-root .page-head-center .branch{
+.content.inv-root .inv-head .branch{
   margin-top: 4px;
-  font-weight: 800;
+  font-weight: 900;
   opacity: .9;
 }
 
-/* Tabla wrapper */
-.inv-root .table-wrap{
-  margin-top: 10px;
-  overflow: auto;
+/* Cards usando el look del sistema (suave) */
+.content.inv-root .inv-card{
+  background: #fff;
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.08);
+  margin-top: 14px;
 }
 
-/* Botón pequeño (si no existe en styles.css) */
-.inv-root .btn-sm{
-  padding: 8px 12px !important;
-  border-radius: 10px !important;
-  font-weight: 800 !important;
-}
-
-/* Cards de sección */
-.inv-root .section-card{
-  margin-top: 16px;
-}
-
-.inv-root .section-head{
+/* Encabezado de sección */
+.content.inv-root .section-head{
   display:flex;
   justify-content: space-between;
-  align-items: center;
+  align-items:center;
   gap: 12px;
   flex-wrap: wrap;
+  margin-bottom: 10px;
 }
-
-.inv-root .section-head h3{
+.content.inv-root .section-head h3{
   margin: 0;
+  font-size: 18px;
+  font-weight: 900;
 }
-
-.inv-root .section-head .muted{
+.content.inv-root .muted{
   margin: 6px 0 0;
+  opacity: .75;
+  font-weight: 700;
+  font-size: 13px;
 }
 
-/* =========================================================
-   ENTRADA - Layout del formulario superior
-   ========================================================= */
+/* Tablas limpias */
+.content.inv-root .table-wrap{
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.06);
+}
+.content.inv-root table{
+  width:100%;
+  border-collapse: collapse;
+  background:#fff;
+}
+.content.inv-root thead th{
+  background: rgba(11,60,122,.08);
+  padding: 12px;
+  font-size: 13px;
+  text-transform: none;
+  font-weight: 900;
+}
+.content.inv-root tbody td{
+  padding: 12px;
+  border-top: 1px solid rgba(0,0,0,.06);
+  font-weight: 700;
+  font-size: 13px;
+}
+.content.inv-root tbody tr:hover{
+  background: rgba(20,184,166,.06);
+}
 
+/* Botón pequeño (por si no existe) */
+.content.inv-root .btn-sm{
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-weight: 900;
+  border: 0;
+  cursor:pointer;
+}
+
+/* ===== ENTRADA: GRID SUPERIOR ===== */
 .inv-entrada .entry-top{
   display: grid;
-  grid-template-columns: 1.05fr 1.9fr .75fr 1.15fr 1.15fr auto;
+  grid-template-columns: 1.1fr 2fr .8fr 1.2fr 1.2fr auto;
   gap: 14px;
   align-items: end;
-  margin-top: 16px;
 }
 
-.inv-entrada .muted2{
+.inv-entrada label{
+  display:block;
+  font-size: 13px;
+  font-weight: 900;
+  margin-bottom: 6px;
+  opacity: .9;
+}
+
+.inv-entrada select,
+.inv-entrada input{
+  width:100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.14);
+  outline:none;
+  font-weight: 700;
+}
+
+.inv-entrada select:focus,
+.inv-entrada input:focus{
+  border-color: rgba(20,184,166,.9);
+  box-shadow: 0 0 0 3px rgba(20,184,166,.15);
+}
+
+.inv-entrada .hint{
   margin-top: 6px;
   font-size: 12px;
-  font-weight: 700;
-  opacity: .78;
+  font-weight: 800;
+  opacity: .65;
 }
 
 .inv-entrada .entry-actions{
@@ -249,77 +155,28 @@
   justify-content:flex-end;
 }
 
+/* Fila guardar */
 .inv-entrada .save-row{
   display:flex;
-  justify-content: flex-end;
-  align-items: center;
-  margin-top: 14px;
-}
-
-/* Responsive Entrada */
-@media (max-width: 1100px){
-  .inv-entrada .entry-top{
-    grid-template-columns: 1fr 1fr;
-  }
-  .inv-entrada .entry-actions{
-    grid-column: 1 / -1;
-    justify-content:flex-end;
-  }
-}
-@media (max-width: 640px){
-  .inv-entrada .entry-top{
-    grid-template-columns: 1fr;
-  }
-  .inv-entrada .entry-actions{
-    grid-column: auto;
-  }
-}
-
-/* =========================================================
-   SALIDA - (lista para usar cuando copies salida.php)
-   Mantiene la misma estructura que entrada, por si quieres
-   nombres diferentes (exit-top, etc.). Si no, puedes reusar entry-top.
-   ========================================================= */
-
-.inv-salida .exit-top{
-  display: grid;
-  grid-template-columns: 1.05fr 1.9fr .75fr 1.15fr 1.15fr auto;
-  gap: 14px;
-  align-items: end;
-  margin-top: 16px;
-}
-.inv-salida .exit-actions{
-  display:flex;
   justify-content:flex-end;
+  margin-top: 12px;
 }
+
+/* Responsive */
 @media (max-width: 1100px){
-  .inv-salida .exit-top{
+  .inv-entrada .entry-top{
     grid-template-columns: 1fr 1fr;
   }
-  .inv-salida .exit-actions{
+  .inv-entrada .entry-actions{
     grid-column: 1 / -1;
-    justify-content:flex-end;
   }
 }
 @media (max-width: 640px){
-  .inv-salida .exit-top{
+  .content.inv-root{ padding: 14px; }
+  .inv-entrada .entry-top{
     grid-template-columns: 1fr;
   }
-  .inv-salida .exit-actions{
+  .inv-entrada .entry-actions{
     grid-column: auto;
   }
-}
-
-/* =========================================================
-   ITEMS / CATEGORÍAS (opcional)
-   Si quieres, aquí luego ponemos layout específico sin romper todo.
-   ========================================================= */
-.inv-items .toolbar,
-.inv-categorias .toolbar{
-  display:flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  margin-top: 10px;
 }
