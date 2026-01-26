@@ -1,3 +1,17 @@
+/* =========================================================
+   inventario.css
+   - Alimenta TODO inventario sin romper el tema global
+   - BLOQUE A: LEGACY .cevimep-ui (se deja intacto)
+   - BLOQUE B: NUEVO estilo del sistema (navbar/sidebar/styles.css)
+     -> Requiere usar clases: inv-root + inv-entrada/inv-salida/etc
+   ========================================================= */
+
+
+/* =========================================================
+   BLOQUE A (LEGACY) - NO TOCAR
+   Solo aplica si la página usa <body class="cevimep-ui">
+   ========================================================= */
+
 /* SOLO PARA ENTRADA (no rompe dashboard/login) */
 .cevimep-ui * { box-sizing: border-box; }
 
@@ -138,4 +152,173 @@
 @media (max-width: 900px) {
   .cevimep-ui .sidebar { width: 210px; }
   .cevimep-ui .col-6, .cevimep-ui .col-4, .cevimep-ui .col-3 { grid-column: span 12; }
+}
+
+
+/* =========================================================
+   BLOQUE B (NUEVO) - MISMO ESTILO DE TU SISTEMA
+   SOLO aplica si el main tiene: class="content inv-root ..."
+   Ejemplos:
+   - Entrada: <main class="content inv-root inv-entrada">
+   - Salida:  <main class="content inv-root inv-salida">
+   - Items:   <main class="content inv-root inv-items">
+   - Cats:    <main class="content inv-root inv-categorias">
+   ========================================================= */
+
+.inv-root{
+  /* No tocamos colores ni navbar/sidebar.
+     Solo layout interno para que todo inventario se vea “organizado”. */
+}
+
+/* Encabezado centrado (si lo usas) */
+.inv-root .page-head-center{
+  text-align: center;
+}
+.inv-root .page-head-center h1{
+  margin: 0;
+  font-size: 34px;
+  font-weight: 900;
+}
+.inv-root .page-head-center .sub{
+  margin-top: 6px;
+  font-weight: 700;
+  opacity: .85;
+}
+.inv-root .page-head-center .branch{
+  margin-top: 4px;
+  font-weight: 800;
+  opacity: .9;
+}
+
+/* Tabla wrapper */
+.inv-root .table-wrap{
+  margin-top: 10px;
+  overflow: auto;
+}
+
+/* Botón pequeño (si no existe en styles.css) */
+.inv-root .btn-sm{
+  padding: 8px 12px !important;
+  border-radius: 10px !important;
+  font-weight: 800 !important;
+}
+
+/* Cards de sección */
+.inv-root .section-card{
+  margin-top: 16px;
+}
+
+.inv-root .section-head{
+  display:flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.inv-root .section-head h3{
+  margin: 0;
+}
+
+.inv-root .section-head .muted{
+  margin: 6px 0 0;
+}
+
+/* =========================================================
+   ENTRADA - Layout del formulario superior
+   ========================================================= */
+
+.inv-entrada .entry-top{
+  display: grid;
+  grid-template-columns: 1.05fr 1.9fr .75fr 1.15fr 1.15fr auto;
+  gap: 14px;
+  align-items: end;
+  margin-top: 16px;
+}
+
+.inv-entrada .muted2{
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: .78;
+}
+
+.inv-entrada .entry-actions{
+  display:flex;
+  justify-content:flex-end;
+}
+
+.inv-entrada .save-row{
+  display:flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 14px;
+}
+
+/* Responsive Entrada */
+@media (max-width: 1100px){
+  .inv-entrada .entry-top{
+    grid-template-columns: 1fr 1fr;
+  }
+  .inv-entrada .entry-actions{
+    grid-column: 1 / -1;
+    justify-content:flex-end;
+  }
+}
+@media (max-width: 640px){
+  .inv-entrada .entry-top{
+    grid-template-columns: 1fr;
+  }
+  .inv-entrada .entry-actions{
+    grid-column: auto;
+  }
+}
+
+/* =========================================================
+   SALIDA - (lista para usar cuando copies salida.php)
+   Mantiene la misma estructura que entrada, por si quieres
+   nombres diferentes (exit-top, etc.). Si no, puedes reusar entry-top.
+   ========================================================= */
+
+.inv-salida .exit-top{
+  display: grid;
+  grid-template-columns: 1.05fr 1.9fr .75fr 1.15fr 1.15fr auto;
+  gap: 14px;
+  align-items: end;
+  margin-top: 16px;
+}
+.inv-salida .exit-actions{
+  display:flex;
+  justify-content:flex-end;
+}
+@media (max-width: 1100px){
+  .inv-salida .exit-top{
+    grid-template-columns: 1fr 1fr;
+  }
+  .inv-salida .exit-actions{
+    grid-column: 1 / -1;
+    justify-content:flex-end;
+  }
+}
+@media (max-width: 640px){
+  .inv-salida .exit-top{
+    grid-template-columns: 1fr;
+  }
+  .inv-salida .exit-actions{
+    grid-column: auto;
+  }
+}
+
+/* =========================================================
+   ITEMS / CATEGORÍAS (opcional)
+   Si quieres, aquí luego ponemos layout específico sin romper todo.
+   ========================================================= */
+.inv-items .toolbar,
+.inv-categorias .toolbar{
+  display:flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-top: 10px;
 }
