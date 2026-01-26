@@ -107,11 +107,68 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   <link rel="stylesheet" href="/assets/css/styles.css?v=30">
 
   <style>
-    .formGrid{ display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-top:14px; }
+    /* Contenedor centrado para evitar el “vacío” */
+    .pageWrap{
+      width:100%;
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 18px 18px 28px;
+    }
+
+    .hero{
+      text-align:center;
+      padding: 14px 10px;
+      border-radius: 18px;
+      background: radial-gradient(900px 240px at 50% 0%, rgba(127,178,255,.22), rgba(255,255,255,0));
+      margin-bottom: 14px;
+    }
+    .hero h1{
+      margin: 2px 0 6px;
+      font-size: 34px;
+      letter-spacing: .2px;
+      color:#0b2a4a;
+    }
+    .hero p{
+      margin:0;
+      color: rgba(11,42,74,.75);
+      font-weight: 800;
+    }
+
+    .card{
+      border-radius: 18px;
+      background:#fff;
+      border: 1px solid rgba(2,21,44,.10);
+      box-shadow: 0 18px 45px rgba(2,21,44,.08);
+      padding: 18px;
+    }
+
+    .cardHead{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-bottom: 10px;
+    }
+    .cardHead h3{
+      margin:0 0 6px;
+      font-size:18px;
+      color:#0b2a4a;
+      font-weight: 900;
+    }
+    .muted{ margin:0; color:rgba(11,42,74,.65); font-weight:700; }
+
+    /* Form */
+    .formGrid{
+      display:grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 14px;
+      margin-top: 14px;
+    }
     .field{ display:flex; flex-direction:column; gap:8px; }
     .field label{ font-weight:900; color:#0b2a4a; font-size:13px; }
     .field input, .field select{
-      height:40px;
+      height:42px;
       padding:0 12px;
       border-radius:14px;
       border:1px solid rgba(2,21,44,.12);
@@ -123,9 +180,60 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       border-color:#7fb2ff;
       box-shadow:0 0 0 3px rgba(127,178,255,.20);
     }
-    .actions{ display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; margin-top:16px; }
-    .err{ background:#ffecec; border:1px solid #ffb6b6; color:#a40000; border-radius:12px; padding:10px 12px; font-size:13px; margin-top:12px; }
-    @media (max-width: 820px){ .formGrid{ grid-template-columns:1fr; } }
+    .spanAll{ grid-column: 1 / -1; }
+
+    /* Botones bonitos */
+    .btnx{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      height:38px;
+      padding: 0 14px;
+      border-radius: 999px;
+      font-weight: 900;
+      border: 1px solid rgba(2,21,44,.14);
+      background: #fff;
+      color:#0b2a4a;
+      text-decoration:none;
+      cursor:pointer;
+      transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+      user-select:none;
+    }
+    .btnx:hover{ transform: translateY(-1px); box-shadow: 0 10px 20px rgba(2,21,44,.10); border-color: rgba(127,178,255,.55); }
+    .btnPrimary{
+      background: linear-gradient(180deg, #0f4f8a, #0b2a4a);
+      border-color: rgba(255,255,255,.18);
+      color:#fff;
+    }
+    .btnGhost{
+      background: transparent;
+    }
+
+    .actions{
+      display:flex;
+      gap:10px;
+      justify-content:flex-end;
+      flex-wrap:wrap;
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px dashed rgba(2,21,44,.12);
+    }
+
+    .err{
+      background:#ffecec;
+      border:1px solid #ffb6b6;
+      color:#a40000;
+      border-radius:14px;
+      padding:10px 12px;
+      font-size:13px;
+      margin: 10px 0 14px;
+      font-weight: 800;
+    }
+
+    @media (max-width: 820px){
+      .formGrid{ grid-template-columns:1fr; }
+      .hero h1{ font-size: 28px; }
+    }
   </style>
 </head>
 
@@ -163,69 +271,71 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   </aside>
 
   <main class="content">
+    <div class="pageWrap">
 
-    <section class="hero">
-      <h1>Inventario</h1>
-      <p>Editar producto — Sucursal: <strong><?= h($branch_name ?: "—") ?></strong></p>
-    </section>
+      <section class="hero">
+        <h1>Inventario</h1>
+        <p>Editar producto — Sucursal: <strong><?= h($branch_name ?: "—") ?></strong></p>
+      </section>
 
-    <?php if ($flash_error): ?>
-      <div class="err"><?= h($flash_error) ?></div>
-    <?php endif; ?>
+      <?php if ($flash_error): ?>
+        <div class="err"><?= h($flash_error) ?></div>
+      <?php endif; ?>
 
-    <div class="card" style="margin-top:14px;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
-        <div>
-          <h3 style="margin:0 0 6px;">Editar producto</h3>
-          <p class="muted" style="margin:0;">Actualiza la información del producto seleccionado.</p>
+      <div class="card">
+        <div class="cardHead">
+          <div>
+            <h3>Editar producto</h3>
+            <p class="muted">Actualiza la información del producto seleccionado.</p>
+          </div>
+          <a class="btnx btnGhost" href="/private/inventario/items.php">← Volver</a>
         </div>
-        <a class="btn btn-small" href="/private/inventario/items.php">← Volver</a>
+
+        <form method="post">
+          <div class="formGrid">
+
+            <div class="field spanAll">
+              <label>Nombre</label>
+              <input name="name" value="<?= h($item["name"] ?? "") ?>" required>
+            </div>
+
+            <div class="field">
+              <label>Categoría</label>
+              <select name="category_id">
+                <option value="0">— Sin categoría —</option>
+                <?php foreach ($categories as $c): ?>
+                  <option value="<?= (int)$c["id"] ?>" <?= ((int)($item["category_id"] ?? 0) === (int)$c["id"]) ? "selected" : "" ?>>
+                    <?= h($c["name"]) ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+
+            <div class="field">
+              <label>Min Stock</label>
+              <input type="number" value="3" readonly>
+            </div>
+
+            <div class="field">
+              <label>Precio compra</label>
+              <input type="number" step="0.01" min="0" name="purchase_price" value="<?= h($item["purchase_price"] ?? 0) ?>">
+            </div>
+
+            <div class="field">
+              <label>Precio venta</label>
+              <input type="number" step="0.01" min="0" name="sale_price" value="<?= h($item["sale_price"] ?? 0) ?>">
+            </div>
+
+          </div>
+
+          <div class="actions">
+            <a class="btnx" href="/private/inventario/items.php">Cancelar</a>
+            <button class="btnx btnPrimary" type="submit">Guardar cambios</button>
+          </div>
+        </form>
       </div>
 
-      <form method="post">
-        <div class="formGrid">
-
-          <div class="field" style="grid-column:1 / -1;">
-            <label>Nombre</label>
-            <input name="name" value="<?= h($item["name"] ?? "") ?>" required>
-          </div>
-
-          <div class="field">
-            <label>Categoría</label>
-            <select name="category_id">
-              <option value="0">— Sin categoría —</option>
-              <?php foreach ($categories as $c): ?>
-                <option value="<?= (int)$c["id"] ?>" <?= ((int)($item["category_id"] ?? 0) === (int)$c["id"]) ? "selected" : "" ?>>
-                  <?= h($c["name"]) ?>
-                </option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-
-          <div class="field">
-            <label>Min Stock</label>
-            <input type="number" value="3" readonly>
-          </div>
-
-          <div class="field">
-            <label>Precio compra</label>
-            <input type="number" step="0.01" min="0" name="purchase_price" value="<?= h($item["purchase_price"] ?? 0) ?>">
-          </div>
-
-          <div class="field">
-            <label>Precio venta</label>
-            <input type="number" step="0.01" min="0" name="sale_price" value="<?= h($item["sale_price"] ?? 0) ?>">
-          </div>
-
-        </div>
-
-        <div class="actions">
-          <a class="btn btn-small" href="/private/inventario/items.php">Cancelar</a>
-          <button class="btn btn-small" type="submit">Guardar cambios</button>
-        </div>
-      </form>
     </div>
-
   </main>
 </div>
 
