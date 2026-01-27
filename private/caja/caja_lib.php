@@ -87,16 +87,12 @@ if (!function_exists("caja_get_or_open_current_session")) {
 // Facturación -> Caja: registrar ingreso ligado a factura
 // =======================================================
 if (!function_exists('caja_registrar_ingreso_factura')) {
-  /**
-   * Registra un ingreso de caja relacionado a una factura.
-   * Es "tolerante": si no encuentra la tabla, no rompe la app.
-   */
   function caja_registrar_ingreso_factura(PDO $conn, int $branch_id, int $user_id, int $invoice_id, float $amount, string $method): bool
   {
     $amount = round((float)$amount, 2);
     if ($amount <= 0) return true;
 
-    // 1) Detectar tabla de caja (por si tu proyecto la nombró distinto)
+    // ✅ Detectar tabla usando information_schema (evita SHOW TABLES LIKE ?)
     $candidates = [
       'caja_movimientos',
       'caja_movements',
@@ -106,24 +102,44 @@ if (!function_exists('caja_registrar_ingreso_factura')) {
     ];
 
     $table = null;
-    foreach ($candidates as $t) {
-      $st = $conn->prepare("SHOW TABLES LIKE ?");
-      $st->execute([$t]);
-      if ($st->fetchColumn()) { $table = $t; break; }
+    try {
+      $st = $conn->prepare("
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = DATABASE()
+          AND table_name = ?
+        LIMIT 1
+      ");
+
+      foreach ($candidates as $t) {
+        $st->execute([$t]);
+        $found = $st->fetchColumn();
+        if ($found) { $table = $found; break; }
+      }
+    } catch (Throwable $e) {
+      // si falla, no rompemos la facturación
+      return true;
     }
 
-    // Si no existe ninguna tabla conocida, no rompemos (evita fatal error)
-    if (!$table) return true;
+    if (!$table) return true; // no hay tabla compatible
 
-    // 2) Obtener columnas reales de la tabla encontrada
+    // ✅ Obtener columnas reales con information_schema (más estable que SHOW COLUMNS)
     $cols = [];
-    $stCols = $conn->query("SHOW COLUMNS FROM `$table`");
-    foreach ($stCols->fetchAll(PDO::FETCH_ASSOC) as $row) {
-      $cols[] = $row['Field'];
+    try {
+      $stCols = $conn->prepare("
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = ?
+      ");
+      $stCols->execute([$table]);
+      $cols = $stCols->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    } catch (Throwable $e) {
+      return true;
     }
+
     $has = fn(string $c) => in_array($c, $cols, true);
 
-    // 3) Preparar data compatible con la mayoría de esquemas
     $now = date('Y-m-d H:i:s');
     $desc = "INGRESO POR FACTURA #{$invoice_id}";
     $tipoIngreso = 'INGRESO';
@@ -150,7 +166,7 @@ if (!function_exists('caja_registrar_ingreso_factura')) {
       if ($has($c)) { $data[$c] = $amount; break; }
     }
 
-    // type / movement_type
+    // type
     foreach (['type','movement_type','tipo','movimiento'] as $c) {
       if ($has($c)) { $data[$c] = $tipoIngreso; break; }
     }
@@ -160,7 +176,7 @@ if (!function_exists('caja_registrar_ingreso_factura')) {
       if ($has($c)) { $data[$c] = $method; break; }
     }
 
-    // description / note
+    // description
     foreach (['description','descripcion','note','nota','detalle','concepto'] as $c) {
       if ($has($c)) { $data[$c] = $desc; break; }
     }
@@ -170,13 +186,18 @@ if (!function_exists('caja_registrar_ingreso_factura')) {
       if ($has($c)) { $data[$c] = $now; break; }
     }
 
-    // 4) Insert dinámico (solo con columnas existentes)
     if (!$data) return true;
 
     $fields = array_keys($data);
     $placeholders = implode(',', array_fill(0, count($fields), '?'));
     $sql = "INSERT INTO `$table` (`" . implode('`,`', $fields) . "`) VALUES ($placeholders)";
-    $stIns = $conn->prepare($sql);
-    return $stIns->execute(array_values($data));
+
+    try {
+      $stIns = $conn->prepare($sql);
+      return $stIns->execute(array_values($data));
+    } catch (Throwable $e) {
+      // no romper facturación si caja falla
+      return true;
+    }
   }
 }
