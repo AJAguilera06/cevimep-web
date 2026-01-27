@@ -82,8 +82,6 @@ if (!function_exists("caja_get_or_open_current_session")) {
         return (int)$pdo->lastInsertId();
     }
 }
-<?php
-// ... (tu código existente arriba)
 
 // =======================================================
 // Facturación -> Caja: registrar ingreso ligado a factura
