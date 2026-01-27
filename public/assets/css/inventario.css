@@ -1,15 +1,31 @@
 /* =========================================================
    inventario.css
-   - Alimenta TODO inventario
-   - Nuevo estilo SOLO cuando el <main> tenga class="content inv-root ..."
+   - Mantiene legacy .cevimep-ui (por si se usa en otras pantallas)
+   - Nuevo modo dashboard: SOLO si <main class="content inv-root ...">
    ========================================================= */
 
-/* ====== MODO NUEVO (Dashboard style) ======
-   Activa SOLO si el main usa:
-   <main class="content inv-root inv-entrada">
-*/
+/* =========================
+   LEGACY (NO TOCAR)
+   ========================= */
+.cevimep-ui * { box-sizing: border-box; }
+.cevimep-ui {
+  font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+  background: #f4f6f9;
+  color: #333;
+  min-height: 100vh;
+}
+.cevimep-ui .wrap { display:flex; min-height:100vh; }
+.cevimep-ui .sidebar { width:240px; background:#0d6efd; color:#fff; flex-shrink:0; padding:18px 0; }
+.cevimep-ui .sidebar a { display:block; color:#fff; text-decoration:none; padding:12px 18px; font-size:14px; }
+.cevimep-ui .sidebar a:hover, .cevimep-ui .sidebar a.active { background:rgba(255,255,255,.18); border-left:4px solid #fff; padding-left:14px; }
+.cevimep-ui .main { flex:1; padding:22px; }
+.cevimep-ui .card { background:#fff; border-radius:12px; padding:18px; box-shadow:0 3px 12px rgba(0,0,0,.08); margin-bottom:18px; }
+
+/* =========================
+   NUEVO (Dashboard style)
+   ========================= */
 .content.inv-root{
-  /* Rompemos el "centrado total" del dashboard SOLO para inventario */
+  /* Evita que el dashboard te centre TODO */
   align-items: flex-start;
   justify-content: center;
   text-align: left;
@@ -17,26 +33,25 @@
   padding: 22px;
 }
 
-/* Contenedor para que no se vaya a los lados */
 .content.inv-root .inv-wrap{
   width: 100%;
-  max-width: 1100px;
+  max-width: 1120px;
 }
 
-/* Título centrado bonito como el sistema */
 .content.inv-root .inv-head{
-  text-align: center;
+  text-align:center;
   margin-bottom: 14px;
 }
 .content.inv-root .inv-head h1{
-  margin: 0;
-  font-size: 38px;
+  margin:0;
+  font-size: 40px;
   font-weight: 900;
+  letter-spacing: .3px;
 }
 .content.inv-root .inv-head .sub{
   margin-top: 6px;
-  font-weight: 700;
-  opacity: .85;
+  font-weight: 800;
+  opacity: .82;
 }
 .content.inv-root .inv-head .branch{
   margin-top: 4px;
@@ -44,16 +59,14 @@
   opacity: .9;
 }
 
-/* Cards usando el look del sistema (suave) */
 .content.inv-root .inv-card{
-  background: #fff;
-  border-radius: 14px;
+  background:#fff;
+  border-radius: 16px;
   padding: 16px;
-  box-shadow: 0 6px 20px rgba(0,0,0,.08);
+  box-shadow: 0 8px 24px rgba(0,0,0,.08);
   margin-top: 14px;
 }
 
-/* Encabezado de sección */
 .content.inv-root .section-head{
   display:flex;
   justify-content: space-between;
@@ -63,21 +76,20 @@
   margin-bottom: 10px;
 }
 .content.inv-root .section-head h3{
-  margin: 0;
+  margin:0;
   font-size: 18px;
   font-weight: 900;
 }
 .content.inv-root .muted{
   margin: 6px 0 0;
-  opacity: .75;
-  font-weight: 700;
+  opacity: .72;
+  font-weight: 800;
   font-size: 13px;
 }
 
-/* Tablas limpias */
 .content.inv-root .table-wrap{
-  overflow: auto;
-  border-radius: 12px;
+  overflow:auto;
+  border-radius: 14px;
   border: 1px solid rgba(0,0,0,.06);
 }
 .content.inv-root table{
@@ -89,77 +101,125 @@
   background: rgba(11,60,122,.08);
   padding: 12px;
   font-size: 13px;
-  text-transform: none;
   font-weight: 900;
 }
 .content.inv-root tbody td{
   padding: 12px;
   border-top: 1px solid rgba(0,0,0,.06);
-  font-weight: 700;
+  font-weight: 800;
   font-size: 13px;
 }
-.content.inv-root tbody tr:hover{
-  background: rgba(20,184,166,.06);
-}
+.content.inv-root tbody tr:hover{ background: rgba(20,184,166,.06); }
 
-/* Botón pequeño (por si no existe) */
-.content.inv-root .btn-sm{
-  padding: 8px 12px;
-  border-radius: 12px;
-  font-weight: 900;
-  border: 0;
-  cursor:pointer;
-}
-
-/* ===== ENTRADA: GRID SUPERIOR ===== */
-.inv-entrada .entry-top{
-  display: grid;
-  grid-template-columns: 1.1fr 2fr .8fr 1.2fr 1.2fr auto;
-  gap: 14px;
-  align-items: end;
-}
-
-.inv-entrada label{
+/* Inputs */
+.inv-root label{
   display:block;
   font-size: 13px;
   font-weight: 900;
   margin-bottom: 6px;
   opacity: .9;
 }
-
-.inv-entrada select,
-.inv-entrada input{
+.inv-root select,
+.inv-root input{
   width:100%;
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid rgba(0,0,0,.14);
   outline:none;
-  font-weight: 700;
+  font-weight: 800;
 }
-
-.inv-entrada select:focus,
-.inv-entrada input:focus{
-  border-color: rgba(20,184,166,.9);
+.inv-root select:focus,
+.inv-root input:focus{
+  border-color: rgba(20,184,166,.95);
   box-shadow: 0 0 0 3px rgba(20,184,166,.15);
 }
+.inv-root input[readonly]{
+  background: rgba(0,0,0,.03);
+}
 
-.inv-entrada .hint{
+/* Botones interactivos */
+.inv-root .btn-action{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap: 8px;
+  padding: 11px 16px;
+  border-radius: 999px;
+  font-weight: 900;
+  border: 1px solid rgba(20,184,166,.55);
+  background: rgba(20,184,166,.18);
+  cursor:pointer;
+  transition: transform .12s ease, filter .12s ease, box-shadow .12s ease;
+  user-select:none;
+  white-space: nowrap;
+}
+.inv-root .btn-action:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 10px 18px rgba(20,184,166,.18);
+  filter: brightness(1.03);
+}
+.inv-root .btn-action:active{
+  transform: translateY(0px) scale(.99);
+  filter: brightness(.98);
+}
+.inv-root .btn-action[disabled]{
+  opacity:.55;
+  cursor:not-allowed;
+  transform:none;
+  box-shadow:none;
+}
+
+.inv-root .btn-ghost{
+  border: 1px solid rgba(0,0,0,.18);
+  background: rgba(255,255,255,.85);
+}
+
+.inv-root .hint{
   margin-top: 6px;
   font-size: 12px;
   font-weight: 800;
   opacity: .65;
 }
 
+/* Grid: Entrada */
+.inv-entrada .entry-top{
+  display:grid;
+  grid-template-columns: 1.1fr 2fr .85fr 1.25fr 1.05fr 1.05fr auto;
+  gap: 14px;
+  align-items: end;
+}
 .inv-entrada .entry-actions{
   display:flex;
   justify-content:flex-end;
 }
-
-/* Fila guardar */
 .inv-entrada .save-row{
   display:flex;
   justify-content:flex-end;
   margin-top: 12px;
+}
+
+/* Acuse */
+.inv-root .acuse{
+  border: 1px solid rgba(20,184,166,.20);
+  background: rgba(20,184,166,.06);
+}
+.inv-root .acuse .row{
+  display:flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.inv-root .acuse .k{
+  font-size: 13px;
+  font-weight: 900;
+  opacity:.75;
+}
+.inv-root .acuse .v{
+  font-size: 14px;
+  font-weight: 900;
+}
+.inv-root .acuse table td{
+  font-weight: 900;
 }
 
 /* Responsive */
@@ -169,14 +229,11 @@
   }
   .inv-entrada .entry-actions{
     grid-column: 1 / -1;
+    justify-content:flex-end;
   }
 }
 @media (max-width: 640px){
   .content.inv-root{ padding: 14px; }
-  .inv-entrada .entry-top{
-    grid-template-columns: 1fr;
-  }
-  .inv-entrada .entry-actions{
-    grid-column: auto;
-  }
+  .inv-entrada .entry-top{ grid-template-columns: 1fr; }
+  .inv-entrada .entry-actions{ grid-column:auto; }
 }

@@ -1,43 +1,44 @@
 <?php
 declare(strict_types=1);
-require_once __DIR__ . "/../_guard.php";
 
+require_once __DIR__ . '/../_guard.php';
 $conn = $pdo;
 
-$user = $_SESSION["user"] ?? [];
-$branch_id = (int)($user["branch_id"] ?? 0);
-$rol = $user["role"] ?? "";
-$nombre = $user["full_name"] ?? "Usuario";
+$user = $_SESSION['user'] ?? [];
+$branch_id = (int)($user['branch_id'] ?? 0);
+$nombre = (string)($user['full_name'] ?? '');
 
-/* Nombre sucursal */
-$branch_name = "CEVIMEP";
-if ($branch_id > 0) {
-  $stB = $conn->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
-  $stB->execute([$branch_id]);
-  $bn = $stB->fetchColumn();
-  if ($bn) $branch_name = (string)$bn;
+/* Nombre sucursal real */
+$branch_name = (string)($user['branch_name'] ?? '');
+if ($branch_id > 0 && $branch_name === '') {
+  try {
+    $st = $conn->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
+    $st->execute([$branch_id]);
+    $bn = $st->fetchColumn();
+    if ($bn) $branch_name = (string)$bn;
+  } catch (Throwable $e) {}
+}
+if ($branch_name === '') $branch_name = 'Sucursal';
+
+if (!isset($_SESSION['entrada_cart']) || !is_array($_SESSION['entrada_cart'])) {
+  $_SESSION['entrada_cart'] = [];
 }
 
-if (!isset($_SESSION["entrada_cart"]) || !is_array($_SESSION["entrada_cart"])) {
-  $_SESSION["entrada_cart"] = [];
-}
+function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, "UTF-8"); }
 
 function table_columns(PDO $conn, string $table): array {
   $st = $conn->prepare("SHOW COLUMNS FROM `$table`");
   $st->execute();
-  $cols = [];
-  foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $cols[] = $r["Field"];
-  return $cols;
+  return array_map(fn($r) => $r['Field'], $st->fetchAll(PDO::FETCH_ASSOC));
 }
 function pick_col(array $cols, array $candidates): ?string {
-  $map = array_flip(array_map("strtolower", $cols));
+  $map = array_flip(array_map('strtolower', $cols));
   foreach ($candidates as $c) {
     $k = strtolower($c);
     if (isset($map[$k])) return $cols[$map[$k]];
   }
   return null;
 }
-function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, "UTF-8"); }
 
 $errors = [];
 
@@ -48,7 +49,7 @@ try {
   $categories = $stC ? $stC->fetchAll(PDO::FETCH_ASSOC) : [];
 } catch (Throwable $e) {}
 
-/* Productos SOLO de esta sucursal (por inventory_stock) */
+/* Productos SOLO sucursal actual (por inventory_stock) */
 $products = [];
 try {
   $stP = $conn->prepare("
@@ -62,13 +63,15 @@ try {
   $products = $stP->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {}
 
-$action = $_POST["action"] ?? "";
+/* ===== Acciones ===== */
+$action = $_POST['action'] ?? '';
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-  if ($action === "add") {
-    $item_id = (int)($_POST["item_id"] ?? 0);
-    $qty = (int)($_POST["qty"] ?? 0);
+  /* Añadir */
+  if ($action === 'add') {
+    $item_id = (int)($_POST['item_id'] ?? 0);
+    $qty = (int)($_POST['qty'] ?? 0);
 
     if ($item_id <= 0) $errors[] = "Selecciona un producto.";
     if ($qty <= 0) $errors[] = "La cantidad debe ser mayor que 0.";
@@ -87,104 +90,126 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       if (!$p) {
         $errors[] = "Ese producto no pertenece a esta sucursal.";
       } else {
-        if (!isset($_SESSION["entrada_cart"][$item_id])) {
-          $_SESSION["entrada_cart"][$item_id] = [
-            "item_id" => $item_id,
-            "name" => (string)$p["name"],
-            "qty" => $qty,
+        if (!isset($_SESSION['entrada_cart'][$item_id])) {
+          $_SESSION['entrada_cart'][$item_id] = [
+            'item_id' => $item_id,
+            'name' => (string)$p['name'],
+            'qty' => $qty
           ];
         } else {
-          $_SESSION["entrada_cart"][$item_id]["qty"] += $qty;
+          $_SESSION['entrada_cart'][$item_id]['qty'] += $qty;
         }
       }
     }
   }
 
-  if ($action === "clear") {
-    $_SESSION["entrada_cart"] = [];
+  /* Vaciar */
+  if ($action === 'clear') {
+    $_SESSION['entrada_cart'] = [];
     header("Location: entrada.php");
     exit;
   }
 
-  if ($action === "remove") {
-    $rid = (int)($_POST["remove_id"] ?? 0);
-    if ($rid > 0 && isset($_SESSION["entrada_cart"][$rid])) {
-      unset($_SESSION["entrada_cart"][$rid]);
+  /* Quitar */
+  if ($action === 'remove') {
+    $rid = (int)($_POST['remove_id'] ?? 0);
+    if ($rid > 0 && isset($_SESSION['entrada_cart'][$rid])) {
+      unset($_SESSION['entrada_cart'][$rid]);
     }
     header("Location: entrada.php");
     exit;
   }
 
-  if ($action === "save_print") {
-    $supplier = trim((string)($_POST["supplier"] ?? ""));
+  /* Guardar + Acuse */
+  if ($action === 'save_print') {
 
-    if (empty($_SESSION["entrada_cart"])) {
-      $errors[] = "No hay productos agregados.";
-    }
+    $supplier = trim((string)($_POST['supplier'] ?? ''));
+    $made_by = trim((string)($_POST['made_by'] ?? ''));   // <- ahora vacío para que lo llenes
+    $destino = trim((string)($_POST['destino'] ?? $branch_name)); // <- sucursal iniciada
+
+    if (empty($_SESSION['entrada_cart'])) $errors[] = "No hay productos agregados.";
 
     if (!$errors) {
-      $movCols = table_columns($conn, "inventory_movements");
-      $stockCols = table_columns($conn, "inventory_stock");
 
-      $mov_branch = pick_col($movCols, ["branch_id","sucursal_id"]);
-      $mov_item   = pick_col($movCols, ["item_id","product_id","inventory_item_id"]);
-      $mov_qty    = pick_col($movCols, ["quantity","qty","cantidad"]);
-      $mov_type   = pick_col($movCols, ["movement_type","type","mov_type","direction"]);
-      $mov_sup    = pick_col($movCols, ["supplier","suplidor","provider"]);
-      $mov_user   = pick_col($movCols, ["created_by","user_id","made_by"]);
-      $mov_date   = pick_col($movCols, ["created_at","date","fecha","created_on"]);
-      $mov_note   = pick_col($movCols, ["note","notes","detalle","description"]);
+      $movCols = table_columns($conn, 'inventory_movements');
+      $stockCols = table_columns($conn, 'inventory_stock');
 
-      $stk_branch = pick_col($stockCols, ["branch_id","sucursal_id"]);
-      $stk_item   = pick_col($stockCols, ["item_id","product_id","inventory_item_id"]);
-      $stk_qty    = pick_col($stockCols, ["quantity","qty","stock","existencia"]);
+      $mov_branch = pick_col($movCols, ['branch_id','sucursal_id']);
+      $mov_item   = pick_col($movCols, ['item_id','product_id','inventory_item_id']);
+      $mov_qty    = pick_col($movCols, ['quantity','qty','cantidad']);
+      $mov_type   = pick_col($movCols, ['movement_type','type','mov_type','direction']);
+      $mov_sup    = pick_col($movCols, ['supplier','suplidor','provider']);
+      $mov_user   = pick_col($movCols, ['created_by','user_id','made_by']);
+      $mov_date   = pick_col($movCols, ['created_at','date','fecha','created_on']);
+      $mov_note   = pick_col($movCols, ['note','notes','detalle','description']);
+
+      $stk_branch = pick_col($stockCols, ['branch_id','sucursal_id']);
+      $stk_item   = pick_col($stockCols, ['item_id','product_id','inventory_item_id']);
+      $stk_qty    = pick_col($stockCols, ['quantity','qty','stock','existencia']);
 
       if (!$mov_branch || !$mov_item || !$mov_qty) $errors[] = "inventory_movements sin columnas base (branch/item/qty).";
       if (!$stk_branch || !$stk_item || !$stk_qty) $errors[] = "inventory_stock sin columnas base (branch/item/qty).";
 
       if (!$errors) {
+
         $receipt_id = "ENT-" . date("Ymd-His") . "-" . $branch_id;
 
         try {
           $conn->beginTransaction();
 
+          /* Insert de movimiento dinámico */
           $baseCols = [$mov_branch, $mov_item, $mov_qty];
           $extraCols = [];
           $extraVals = [];
 
           if ($mov_type) { $extraCols[] = $mov_type; $extraVals[] = "IN"; }
           if ($mov_sup)  { $extraCols[] = $mov_sup;  $extraVals[] = $supplier; }
-          if ($mov_user) { $extraCols[] = $mov_user; $extraVals[] = (int)($user["id"] ?? 0); }
+          if ($mov_user) { $extraCols[] = $mov_user; $extraVals[] = ($made_by !== '' ? $made_by : (int)($user['id'] ?? 0)); }
           if ($mov_date) { $extraCols[] = $mov_date; $extraVals[] = date("Y-m-d H:i:s"); }
-          if ($mov_note) { $extraCols[] = $mov_note; $extraVals[] = $receipt_id; }
+          if ($mov_note) { $extraCols[] = $mov_note; $extraVals[] = $receipt_id . " | Destino: " . $destino; }
 
           $insCols = array_merge($baseCols, $extraCols);
           $ph = implode(",", array_fill(0, count($insCols), "?"));
           $sqlIns = "INSERT INTO inventory_movements (`" . implode("`,`", $insCols) . "`) VALUES ($ph)";
           $stIns = $conn->prepare($sqlIns);
 
+          /* Stock */
           $stChk = $conn->prepare("SELECT 1 FROM inventory_stock WHERE `$stk_branch`=? AND `$stk_item`=? LIMIT 1");
           $stUpd = $conn->prepare("UPDATE inventory_stock SET `$stk_qty` = `$stk_qty` + ? WHERE `$stk_branch`=? AND `$stk_item`=?");
           $stStockIns = $conn->prepare("INSERT INTO inventory_stock (`$stk_branch`,`$stk_item`,`$stk_qty`) VALUES (?,?,?)");
 
-          foreach ($_SESSION["entrada_cart"] as $row) {
-            $iid = (int)$row["item_id"];
-            $q = (int)$row["qty"];
+          $lines = [];
+          foreach ($_SESSION['entrada_cart'] as $row) {
+            $iid = (int)$row['item_id'];
+            $q   = (int)$row['qty'];
 
             $vals = array_merge([$branch_id, $iid, $q], $extraVals);
             $stIns->execute($vals);
 
             $stChk->execute([$branch_id, $iid]);
             $exists = (bool)$stChk->fetchColumn();
-
             if ($exists) $stUpd->execute([$q, $branch_id, $iid]);
             else $stStockIns->execute([$branch_id, $iid, $q]);
+
+            $lines[] = ['name' => (string)$row['name'], 'qty' => $q];
           }
 
           $conn->commit();
-          $_SESSION["entrada_cart"] = [];
 
-          header("Location: entrada.php");
+          /* Guardar acuse en sesión */
+          $_SESSION['last_entrada_receipt'] = [
+            'id' => $receipt_id,
+            'branch' => $branch_name,
+            'destino' => $destino,
+            'made_by' => $made_by,
+            'supplier' => $supplier,
+            'date' => date("Y-m-d H:i:s"),
+            'lines' => $lines
+          ];
+
+          $_SESSION['entrada_cart'] = [];
+
+          header("Location: entrada.php?acuse=1");
           exit;
 
         } catch (Throwable $e) {
@@ -196,16 +221,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   }
 }
 
-/* Historial últimos 50 */
+/* ===== Historial últimos 50 ===== */
 $history = [];
 try {
-  $movCols = table_columns($conn, "inventory_movements");
-  $mov_branch = pick_col($movCols, ["branch_id","sucursal_id"]);
-  $mov_item   = pick_col($movCols, ["item_id","product_id","inventory_item_id"]);
-  $mov_qty    = pick_col($movCols, ["quantity","qty","cantidad"]);
-  $mov_type   = pick_col($movCols, ["movement_type","type","mov_type","direction"]);
-  $mov_date   = pick_col($movCols, ["created_at","date","fecha","created_on"]);
-  $mov_note   = pick_col($movCols, ["note","notes","detalle","description"]);
+  $movCols = table_columns($conn, 'inventory_movements');
+  $mov_branch = pick_col($movCols, ['branch_id','sucursal_id']);
+  $mov_item   = pick_col($movCols, ['item_id','product_id','inventory_item_id']);
+  $mov_qty    = pick_col($movCols, ['quantity','qty','cantidad']);
+  $mov_type   = pick_col($movCols, ['movement_type','type','mov_type','direction']);
+  $mov_date   = pick_col($movCols, ['created_at','date','fecha','created_on']);
+  $mov_note   = pick_col($movCols, ['note','notes','detalle','description']);
 
   if ($mov_branch && $mov_item && $mov_qty) {
     $selDate = $mov_date ? "`$mov_date` AS mov_date" : "NULL AS mov_date";
@@ -228,7 +253,8 @@ try {
   }
 } catch (Throwable $e) {}
 
-$cart = $_SESSION["entrada_cart"];
+$cart = $_SESSION['entrada_cart'];
+$acuse = (isset($_GET['acuse']) && (int)$_GET['acuse'] === 1) ? ($_SESSION['last_entrada_receipt'] ?? null) : null;
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -236,24 +262,16 @@ $cart = $_SESSION["entrada_cart"];
   <meta charset="UTF-8">
   <title>Entrada | CEVIMEP</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-
-  <!-- MISMO CSS DEL DASHBOARD -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=30">
-  <!-- CSS SOLO INVENTARIO (encapsulado) -->
-  <link rel="stylesheet" href="/assets/css/inventario.css?v=30">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=50">
+  <link rel="stylesheet" href="/assets/css/inventario.css?v=50">
 </head>
 <body>
 
 <!-- TOPBAR (igual dashboard.php) -->
 <header class="navbar">
   <div class="inner">
-    <div class="brand">
-      <span class="dot"></span>
-      <span>CEVIMEP</span>
-    </div>
-    <div class="nav-right">
-      <a href="/logout.php" class="btn-pill">Salir</a>
-    </div>
+    <div class="brand"><span class="dot"></span><span>CEVIMEP</span></div>
+    <div class="nav-right"><a href="/logout.php" class="btn-pill">Salir</a></div>
   </div>
 </header>
 
@@ -273,7 +291,6 @@ $cart = $_SESSION["entrada_cart"];
     </nav>
   </aside>
 
-  <!-- CONTENT: activamos diseño organizado -->
   <main class="content inv-root inv-entrada">
     <div class="inv-wrap">
 
@@ -282,6 +299,45 @@ $cart = $_SESSION["entrada_cart"];
         <div class="sub">Registra entrada de inventario (sede actual)</div>
         <div class="branch">Sucursal: <strong><?= h($branch_name) ?></strong></div>
       </div>
+
+      <?php if ($acuse): ?>
+        <div class="inv-card acuse">
+          <div class="section-head">
+            <div>
+              <h3>Acuse de Entrada</h3>
+              <p class="muted">Recibo listo para imprimir</p>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <button class="btn-action" type="button" onclick="window.print()">🖨️ Imprimir</button>
+              <a class="btn-action btn-ghost" href="entrada.php" style="text-decoration:none;">Cerrar</a>
+            </div>
+          </div>
+
+          <div class="row">
+            <div><div class="k">Recibo</div><div class="v"><?= h($acuse['id']) ?></div></div>
+            <div><div class="k">Fecha</div><div class="v"><?= h($acuse['date']) ?></div></div>
+            <div><div class="k">Destino</div><div class="v"><?= h($acuse['destino']) ?></div></div>
+            <div><div class="k">Suplidor</div><div class="v"><?= h($acuse['supplier']) ?></div></div>
+            <div><div class="k">Hecha por</div><div class="v"><?= h($acuse['made_by']) ?></div></div>
+          </div>
+
+          <div class="table-wrap" style="margin-top:12px;">
+            <table>
+              <thead>
+                <tr><th>Producto</th><th style="width:140px;">Cantidad</th></tr>
+              </thead>
+              <tbody>
+                <?php foreach (($acuse['lines'] ?? []) as $ln): ?>
+                  <tr>
+                    <td><?= h($ln['name']) ?></td>
+                    <td><?= (int)$ln['qty'] ?></td>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      <?php endif; ?>
 
       <?php if (!empty($errors)): ?>
         <div class="inv-card" style="border:1px solid rgba(255,0,0,.15); background: rgba(255,0,0,.04);">
@@ -292,7 +348,7 @@ $cart = $_SESSION["entrada_cart"];
         </div>
       <?php endif; ?>
 
-      <!-- FORM -->
+      <!-- FORMULARIO -->
       <div class="inv-card">
         <div class="entry-top">
 
@@ -302,7 +358,7 @@ $cart = $_SESSION["entrada_cart"];
             <select id="category_id" name="category_id">
               <option value="">Todas</option>
               <?php foreach($categories as $c): ?>
-                <option value="<?= (int)$c["id"] ?>"><?= h($c["name"]) ?></option>
+                <option value="<?= (int)$c['id'] ?>"><?= h($c['name']) ?></option>
               <?php endforeach; ?>
             </select>
           </form>
@@ -312,8 +368,8 @@ $cart = $_SESSION["entrada_cart"];
             <select form="addForm" id="item_id" name="item_id" required>
               <option value="">Selecciona</option>
               <?php foreach($products as $p): ?>
-                <option value="<?= (int)$p["id"] ?>" data-cat="<?= (int)($p["category_id"] ?? 0) ?>">
-                  <?= h($p["name"]) ?>
+                <option value="<?= (int)$p['id'] ?>" data-cat="<?= (int)($p['category_id'] ?? 0) ?>">
+                  <?= h($p['name']) ?>
                 </option>
               <?php endforeach; ?>
             </select>
@@ -327,19 +383,26 @@ $cart = $_SESSION["entrada_cart"];
 
           <form method="post" id="saveForm">
             <input type="hidden" name="action" value="save_print">
+
             <label>Suplidor (opcional)</label>
             <input type="text" name="supplier" placeholder="Escribe el suplidor (opcional)">
+
+            <!-- campos que pediste -->
+            <input type="hidden" name="destino" value="<?= h($branch_name) ?>">
           </form>
 
           <div>
             <label>Hecha por</label>
-            <input type="text" value="<?= h($nombre) ?>" readonly>
+            <input form="saveForm" type="text" name="made_by" value="" placeholder="Escribe quién la hizo">
+          </div>
+
+          <div>
+            <label>Destino</label>
+            <input form="saveForm" type="text" value="<?= h($branch_name) ?>" readonly>
           </div>
 
           <div class="entry-actions">
-            <button type="submit" form="addForm" class="btn-pill" style="background: rgba(20,184,166,.25); border-color: rgba(20,184,166,.55);">
-              Añadir
-            </button>
+            <button class="btn-action" type="submit" form="addForm">➕ Añadir</button>
           </div>
 
         </div>
@@ -354,7 +417,7 @@ $cart = $_SESSION["entrada_cart"];
           </div>
           <form method="post" style="margin:0;">
             <input type="hidden" name="action" value="clear">
-            <button class="btn-pill" style="background: rgba(255,255,255,.1);" type="submit">Vaciar</button>
+            <button class="btn-action btn-ghost" type="submit">Vaciar</button>
           </form>
         </div>
 
@@ -375,13 +438,13 @@ $cart = $_SESSION["entrada_cart"];
                 <?php $i=1; foreach($cart as $row): ?>
                   <tr>
                     <td><?= $i++ ?></td>
-                    <td style="font-weight:900;"><?= h($row["name"]) ?></td>
-                    <td><?= (int)$row["qty"] ?></td>
+                    <td style="font-weight:900;"><?= h($row['name']) ?></td>
+                    <td><?= (int)$row['qty'] ?></td>
                     <td>
                       <form method="post" style="display:inline;">
                         <input type="hidden" name="action" value="remove">
-                        <input type="hidden" name="remove_id" value="<?= (int)$row["item_id"] ?>">
-                        <button class="btn-sm" type="submit">Quitar</button>
+                        <input type="hidden" name="remove_id" value="<?= (int)$row['item_id'] ?>">
+                        <button class="btn-action btn-ghost" type="submit">Quitar</button>
                       </form>
                     </td>
                   </tr>
@@ -392,9 +455,7 @@ $cart = $_SESSION["entrada_cart"];
         </div>
 
         <div class="save-row">
-          <button type="submit" form="saveForm" class="btn-pill" style="background: rgba(20,184,166,.25); border-color: rgba(20,184,166,.55);">
-            Guardar e imprimir
-          </button>
+          <button id="btnSave" class="btn-action" type="submit" form="saveForm">💾 Guardar e imprimir</button>
         </div>
       </div>
 
@@ -411,10 +472,10 @@ $cart = $_SESSION["entrada_cart"];
           <table>
             <thead>
               <tr>
-                <th style="width:220px;">Fecha</th>
+                <th style="width:230px;">Fecha</th>
                 <th>Producto</th>
                 <th style="width:120px;">Cantidad</th>
-                <th style="width:220px;">Recibo / Nota</th>
+                <th style="width:260px;">Recibo / Nota</th>
               </tr>
             </thead>
             <tbody>
@@ -423,10 +484,10 @@ $cart = $_SESSION["entrada_cart"];
               <?php else: ?>
                 <?php foreach($history as $r): ?>
                   <tr>
-                    <td><?= h($r["mov_date"] ?? "") ?></td>
-                    <td style="font-weight:900;"><?= h($r["item_name"] ?? "") ?></td>
-                    <td><?= (int)($r["qty"] ?? 0) ?></td>
-                    <td><?= h($r["mov_note"] ?? "") ?></td>
+                    <td><?= h($r['mov_date'] ?? '') ?></td>
+                    <td style="font-weight:900;"><?= h($r['item_name'] ?? '') ?></td>
+                    <td><?= (int)($r['qty'] ?? 0) ?></td>
+                    <td><?= h($r['mov_note'] ?? '') ?></td>
                   </tr>
                 <?php endforeach; ?>
               <?php endif; ?>
@@ -439,13 +500,12 @@ $cart = $_SESSION["entrada_cart"];
   </main>
 </div>
 
-<!-- FOOTER (igual dashboard.php) -->
 <footer class="footer">
-  © <?= (int)date("Y") ?> CEVIMEP. Todos los derechos reservados.
+  © <?= (int)date('Y') ?> CEVIMEP. Todos los derechos reservados.
 </footer>
 
 <script>
-  // Filtro front por categoría
+  // Filtro front-end por categoría
   (function(){
     const cat = document.getElementById('category_id');
     const item = document.getElementById('item_id');
@@ -464,6 +524,18 @@ $cart = $_SESSION["entrada_cart"];
     }
     cat.addEventListener('change', apply);
     apply();
+  })();
+
+  // Botón Guardar: evitar doble click
+  (function(){
+    const btn = document.getElementById('btnSave');
+    const form = document.getElementById('saveForm');
+    if(!btn || !form) return;
+
+    form.addEventListener('submit', function(){
+      btn.setAttribute('disabled','disabled');
+      btn.textContent = 'Guardando...';
+    });
   })();
 </script>
 
