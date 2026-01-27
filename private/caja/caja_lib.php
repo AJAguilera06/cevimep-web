@@ -1,28 +1,25 @@
 <?php
 // private/caja/caja_lib.php
 // Caja automática: abre/cierra por horario (Caja 1: 08:00-13:00, Caja 2: 13:00-18:00)
+
 date_default_timezone_set("America/Santo_Domingo");
 
-if (!function_exists("caja_get_current_caja_num")) {
+if (!function_exists('caja_get_current_caja_num')) {
   function caja_get_current_caja_num(): int {
     $now = date("H:i:s");
     if ($now >= "08:00:00" && $now < "13:00:00") return 1;
     if ($now >= "13:00:00" && $now < "18:00:00") return 2;
-    // Fuera de horario: deja la última (por defecto 2 si es tarde)
     return ($now >= "18:00:00") ? 2 : 1;
   }
 }
 
-if (!function_exists("caja_shift_times")) {
+if (!function_exists('caja_shift_times')) {
   function caja_shift_times(int $cajaNum): array {
     return ($cajaNum === 1) ? ["08:00:00","13:00:00"] : ["13:00:00","18:00:00"];
   }
 }
 
-/**
- * Cierra automáticamente las sesiones abiertas del día que ya pasaron su hora de cierre.
- */
-if (!function_exists("caja_auto_close_expired")) {
+if (!function_exists('caja_auto_close_expired')) {
   function caja_auto_close_expired(PDO $pdo, int $branchId, int $userId): void {
     $today = date("Y-m-d");
     $now   = date("H:i:s");
@@ -44,11 +41,11 @@ if (!function_exists("caja_auto_close_expired")) {
   }
 }
 
-/**
- * Devuelve la sesión activa actual del turno; si no existe, la crea.
- * Si está fuera de horario, NO abre nueva: devuelve la última abierta del día si existe; si no, devuelve 0.
- */
-if (!function_exists("caja_get_or_open_current_session")) {
+if (!function_exists('caja_get_or_open_current_session')) {
+  /**
+   * Devuelve ID de sesión activa del turno; si no existe, la crea (si está en horario).
+   * Si está fuera de horario: devuelve la última sesión abierta del día si existe; si no, 0.
+   */
   function caja_get_or_open_current_session(PDO $pdo, int $branchId, int $userId): int {
     caja_auto_close_expired($pdo, $branchId, $userId);
 
@@ -57,32 +54,28 @@ if (!function_exists("caja_get_or_open_current_session")) {
     $cajaNum = caja_get_current_caja_num();
     [$shiftStart, $shiftEnd] = caja_shift_times($cajaNum);
 
-    // Si no estamos dentro del rango, no abrimos nueva; usamos la última abierta del día si existe
+    // Fuera de horario: no abrir nueva
     if (!($now >= $shiftStart && $now < $shiftEnd)) {
       $st2 = $pdo->prepare("SELECT id FROM cash_sessions
                             WHERE branch_id=? AND date_open=? AND closed_at IS NULL
-                            ORDER BY opened_at DESC
-                            LIMIT 1");
+                            ORDER BY id DESC LIMIT 1");
       $st2->execute([$branchId, $today]);
-      $id = (int)($st2->fetchColumn() ?: 0);
-      return $id;
+      return (int)($st2->fetchColumn() ?: 0);
     }
 
-    // Buscar sesión del turno abierta
+    // Buscar sesión abierta del turno
     $st = $pdo->prepare("SELECT id FROM cash_sessions
-                         WHERE branch_id=? AND date_open=? AND caja_num=? AND closed_at IS NULL
-                         LIMIT 1");
-    $st->execute([$branchId, $today, $cajaNum]);
-    $id = (int)($st->fetchColumn() ?: 0);
-
-    if ($id > 0) return $id;
+                         WHERE branch_id=? AND date_open=? AND caja_num=? AND shift_start=? AND shift_end=? AND closed_at IS NULL
+                         ORDER BY id DESC LIMIT 1");
+    $st->execute([$branchId, $today, $cajaNum, $shiftStart, $shiftEnd]);
+    $sid = (int)($st->fetchColumn() ?: 0);
+    if ($sid > 0) return $sid;
 
     // Crear sesión
     $ins = $pdo->prepare("INSERT INTO cash_sessions
-      (branch_id, caja_num, date_open, shift_start, shift_end, opened_at, opened_by)
-      VALUES (?, ?, ?, ?, ?, NOW(), ?)");
-    $ins->execute([$branchId, $cajaNum, $today, $shiftStart, $shiftEnd, $userId]);
-
+                          (branch_id, caja_num, shift_start, shift_end, date_open, opened_at, opened_by)
+                          VALUES (?, ?, ?, ?, ?, NOW(), ?)");
+    $ins->execute([$branchId, $cajaNum, $shiftStart, $shiftEnd, $today, $userId]);
     return (int)$pdo->lastInsertId();
   }
 }
