@@ -82,3 +82,103 @@ if (!function_exists("caja_get_or_open_current_session")) {
         return (int)$pdo->lastInsertId();
     }
 }
+<?php
+// ... (tu código existente arriba)
+
+// =======================================================
+// Facturación -> Caja: registrar ingreso ligado a factura
+// =======================================================
+if (!function_exists('caja_registrar_ingreso_factura')) {
+  /**
+   * Registra un ingreso de caja relacionado a una factura.
+   * Es "tolerante": si no encuentra la tabla, no rompe la app.
+   */
+  function caja_registrar_ingreso_factura(PDO $conn, int $branch_id, int $user_id, int $invoice_id, float $amount, string $method): bool
+  {
+    $amount = round((float)$amount, 2);
+    if ($amount <= 0) return true;
+
+    // 1) Detectar tabla de caja (por si tu proyecto la nombró distinto)
+    $candidates = [
+      'caja_movimientos',
+      'caja_movements',
+      'cash_movements',
+      'caja_transacciones',
+      'caja_transactions',
+    ];
+
+    $table = null;
+    foreach ($candidates as $t) {
+      $st = $conn->prepare("SHOW TABLES LIKE ?");
+      $st->execute([$t]);
+      if ($st->fetchColumn()) { $table = $t; break; }
+    }
+
+    // Si no existe ninguna tabla conocida, no rompemos (evita fatal error)
+    if (!$table) return true;
+
+    // 2) Obtener columnas reales de la tabla encontrada
+    $cols = [];
+    $stCols = $conn->query("SHOW COLUMNS FROM `$table`");
+    foreach ($stCols->fetchAll(PDO::FETCH_ASSOC) as $row) {
+      $cols[] = $row['Field'];
+    }
+    $has = fn(string $c) => in_array($c, $cols, true);
+
+    // 3) Preparar data compatible con la mayoría de esquemas
+    $now = date('Y-m-d H:i:s');
+    $desc = "INGRESO POR FACTURA #{$invoice_id}";
+    $tipoIngreso = 'INGRESO';
+
+    $data = [];
+
+    // branch
+    foreach (['branch_id','sucursal_id','branch','sucursal'] as $c) {
+      if ($has($c)) { $data[$c] = $branch_id; break; }
+    }
+
+    // user / created_by
+    foreach (['created_by','user_id','usuario_id','created_user','hecho_por'] as $c) {
+      if ($has($c)) { $data[$c] = $user_id; break; }
+    }
+
+    // invoice reference
+    foreach (['invoice_id','factura_id','ref_invoice_id','reference_id','ref_id'] as $c) {
+      if ($has($c)) { $data[$c] = $invoice_id; break; }
+    }
+
+    // amount
+    foreach (['amount','monto','total','importe','valor'] as $c) {
+      if ($has($c)) { $data[$c] = $amount; break; }
+    }
+
+    // type / movement_type
+    foreach (['type','movement_type','tipo','movimiento'] as $c) {
+      if ($has($c)) { $data[$c] = $tipoIngreso; break; }
+    }
+
+    // method
+    foreach (['method','payment_method','metodo_pago','forma_pago'] as $c) {
+      if ($has($c)) { $data[$c] = $method; break; }
+    }
+
+    // description / note
+    foreach (['description','descripcion','note','nota','detalle','concepto'] as $c) {
+      if ($has($c)) { $data[$c] = $desc; break; }
+    }
+
+    // created_at / fecha
+    foreach (['created_at','fecha','created_on','date'] as $c) {
+      if ($has($c)) { $data[$c] = $now; break; }
+    }
+
+    // 4) Insert dinámico (solo con columnas existentes)
+    if (!$data) return true;
+
+    $fields = array_keys($data);
+    $placeholders = implode(',', array_fill(0, count($fields), '?'));
+    $sql = "INSERT INTO `$table` (`" . implode('`,`', $fields) . "`) VALUES ($placeholders)";
+    $stIns = $conn->prepare($sql);
+    return $stIns->execute(array_values($data));
+  }
+}
