@@ -8,6 +8,58 @@ $user = $_SESSION["user"] ?? [];
 $branch_id = (int)($user["branch_id"] ?? 0);
 $nombre = (string)($user["full_name"] ?? "Usuario");
 
+function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, "UTF-8"); }
+
+function table_columns(PDO $conn, string $table): array {
+  $st = $conn->prepare("SHOW COLUMNS FROM `$table`");
+  $st->execute();
+  $cols = [];
+  foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $cols[] = $r["Field"];
+  return $cols;
+}
+function pick_col(array $cols, array $candidates): ?string {
+  $lower = array_map("strtolower", $cols);
+  foreach ($candidates as $c) {
+    $i = array_search(strtolower($c), $lower, true);
+    if ($i !== false) return $cols[$i];
+  }
+  return null;
+}
+
+/**
+ * Extrae ORD-000123 (devuelve 123) desde cualquier texto.
+ */
+function extract_order_num(?string $text): ?int {
+  if (!$text) return null;
+  if (preg_match('/ORD-(\d{1,10})/i', $text, $m)) return (int)$m[1];
+  return null;
+}
+
+/**
+ * Calcula el siguiente # Orden secuencial por sucursal, leyendo notas recientes
+ * (no requiere columna nueva).
+ */
+function next_order_for_branch(PDO $conn, int $branch_id, string $mov_branch, ?string $mov_note): int {
+  // fallback
+  if (!$mov_note) return 1;
+
+  // Tomamos un bloque grande reciente y parseamos en PHP.
+  // (Evita depender de funciones SQL de substrings en diferentes motores)
+  $sql = "SELECT `$mov_note` AS note FROM inventory_movements WHERE `$mov_branch`=? ORDER BY id DESC LIMIT 800";
+  $st = $conn->prepare($sql);
+  $st->execute([$branch_id]);
+
+  $max = 0;
+  while ($r = $st->fetch(PDO::FETCH_ASSOC)) {
+    $n = extract_order_num($r["note"] ?? null);
+    if ($n !== null && $n > $max) $max = $n;
+  }
+  return $max + 1;
+}
+
+/* =========================
+   Sucursal actual
+========================= */
 $branch_name = "CEVIMEP";
 if ($branch_id > 0) {
   try {
@@ -20,24 +72,6 @@ if ($branch_id > 0) {
 
 if (!isset($_SESSION["entrada_cart"]) || !is_array($_SESSION["entrada_cart"])) {
   $_SESSION["entrada_cart"] = [];
-}
-
-function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, "UTF-8"); }
-
-function table_columns(PDO $conn, string $table): array {
-  $st = $conn->prepare("SHOW COLUMNS FROM `$table`");
-  $st->execute();
-  $cols = [];
-  foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $cols[] = $r["Field"];
-  return $cols;
-}
-function pick_col(array $cols, array $candidates): ?string {
-  $map = array_flip(array_map("strtolower", $cols));
-  foreach ($candidates as $c) {
-    $k = strtolower($c);
-    if (isset($map[$k])) return $cols[$map[$k]];
-  }
-  return null;
 }
 
 $errors = [];
@@ -83,7 +117,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if ($qty <= 0) $errors[] = "La cantidad debe ser mayor que 0.";
 
     if (!$errors) {
-      // valida que pertenece a la sucursal actual
       $st = $conn->prepare("
         SELECT i.id, i.name
         FROM inventory_items i
@@ -127,14 +160,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     exit;
   }
 
-  /* Guardar + mostrar ACUSE */
+  /* Guardar (sin acuse arriba, sin imprimir) */
   if ($action === "save_print") {
 
     $supplier = trim((string)($_POST["supplier"] ?? ""));
-    $made_by  = trim((string)($_POST["made_by"] ?? "")); // vacío para llenar
-    $destino  = trim((string)($_POST["destino"] ?? $branch_name)); // sucursal iniciada
+    $made_by  = trim((string)($_POST["made_by"] ?? "")); // puede ir vacío
+    $destino  = trim((string)($_POST["destino"] ?? $branch_name)); // sucursal actual
     $note     = trim((string)($_POST["note"] ?? ""));
-    $entry_date = trim((string)($_POST["entry_date"] ?? "")); // YYYY-MM-DD (opcional)
+    $entry_date = trim((string)($_POST["entry_date"] ?? "")); // YYYY-MM-DD
 
     if (empty($_SESSION["entrada_cart"])) {
       $errors[] = "No hay productos agregados.";
@@ -161,12 +194,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       if (!$stk_branch || !$stk_item || !$stk_qty) $errors[] = "inventory_stock sin columnas base (branch/item/qty).";
 
       if (!$errors) {
+
+        // === # ORDEN SECUENCIAL POR SUCURSAL ===
+        $order_num = next_order_for_branch($conn, $branch_id, $mov_branch, $mov_note);
+        $order_code = "ORD-" . str_pad((string)$order_num, 6, "0", STR_PAD_LEFT);
+
+        // ID interno (por si lo usas)
         $receipt_id = "ENT-" . date("Ymd-His") . "-" . $branch_id;
 
         try {
           $conn->beginTransaction();
 
-          // Armado de insert dinámico
+          // Insert dinámico
           $baseCols = [$mov_branch, $mov_item, $mov_qty];
           $extraCols = [];
           $extraVals = [];
@@ -184,9 +223,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $extraVals[] = $dt;
           }
 
+          // Guardamos el # Orden dentro de note para poder mostrarlo siempre
           if ($mov_note) {
             $extraCols[] = $mov_note;
-            $noteTxt = $receipt_id . " | Destino: " . $destino;
+            $noteTxt = $order_code . " | " . $receipt_id . " | Destino: " . $destino;
             if ($note !== "") $noteTxt .= " | Nota: " . $note;
             $extraVals[] = $noteTxt;
           }
@@ -196,12 +236,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           $sqlIns = "INSERT INTO inventory_movements (`" . implode("`,`", $insCols) . "`) VALUES ($ph)";
           $stIns = $conn->prepare($sqlIns);
 
-          // Stock upsert
+          // Stock update/insert
           $stChk = $conn->prepare("SELECT 1 FROM inventory_stock WHERE `$stk_branch`=? AND `$stk_item`=? LIMIT 1");
           $stUpd = $conn->prepare("UPDATE inventory_stock SET `$stk_qty` = `$stk_qty` + ? WHERE `$stk_branch`=? AND `$stk_item`=?");
           $stStockIns = $conn->prepare("INSERT INTO inventory_stock (`$stk_branch`,`$stk_item`,`$stk_qty`) VALUES (?,?,?)");
-
-          $receipt_lines = [];
 
           foreach ($_SESSION["entrada_cart"] as $row) {
             $iid = (int)$row["item_id"];
@@ -216,28 +254,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $exists = (bool)$stChk->fetchColumn();
             if ($exists) $stUpd->execute([$q, $branch_id, $iid]);
             else $stStockIns->execute([$branch_id, $iid, $q]);
-
-            $receipt_lines[] = ["name" => (string)$row["name"], "qty" => $q];
           }
 
           $conn->commit();
 
-          // Guardar acuse en sesión
-          $_SESSION["last_entrada_receipt"] = [
-            "id" => $receipt_id,
-            "branch" => $branch_name,
-            "destino" => $destino,
-            "date" => date("Y-m-d H:i:s"),
-            "supplier" => $supplier,
-            "made_by" => $made_by,
-            "lines" => $receipt_lines
-          ];
-
-          // limpiar carrito
+          // Limpia carrito (sin mostrar acuse arriba)
           $_SESSION["entrada_cart"] = [];
 
-          // mostrar acuse en misma pantalla
-          header("Location: entrada.php?acuse=1");
+          // Vuelve normal: el historial abajo ya lo mostrará con # Orden
+          header("Location: entrada.php");
           exit;
 
         } catch (Throwable $e) {
@@ -285,42 +310,13 @@ try {
   }
 } catch (Throwable $e) {}
 
-/* ===== Forzar que lo último guardado aparezca inmediatamente ===== */
-if (isset($_SESSION["last_entrada_receipt"]) && is_array($_SESSION["last_entrada_receipt"])) {
-  $r = $_SESSION["last_entrada_receipt"];
-  $rid = (string)($r["id"] ?? "");
-  $found = false;
-
-  foreach ($history as $hrow) {
-    if (!empty($hrow["mov_note"]) && strpos((string)$hrow["mov_note"], $rid) !== false) {
-      $found = true;
-      break;
-    }
-  }
-
-  if (!$found && $rid !== "") {
-    $fakeRows = [];
-    foreach (($r["lines"] ?? []) as $ln) {
-      $fakeRows[] = [
-        "mov_date"  => $r["date"] ?? date("Y-m-d H:i:s"),
-        "item_name" => $ln["name"] ?? "",
-        "qty"       => $ln["qty"] ?? 0,
-        "mov_note"  => $rid . " | Destino: " . ($r["destino"] ?? "")
-      ];
-    }
-    $history = array_merge($fakeRows, $history);
-  }
-}
-
 $cart = $_SESSION["entrada_cart"];
 
-// Mapas para mostrar categoría en el detalle
+// Mapas para mostrar categoría
 $catMap = [];
 foreach ($categories as $c) { $catMap[(int)$c["id"]] = (string)$c["name"]; }
 $prodCatMap = [];
 foreach ($products as $p) { $prodCatMap[(int)$p["id"]] = (int)($p["category_id"] ?? 0); }
-
-$acuse = (isset($_GET["acuse"]) && (int)$_GET["acuse"] === 1) ? ($_SESSION["last_entrada_receipt"] ?? null) : null;
 ?>
 <!doctype html>
 <html lang="es">
@@ -372,50 +368,7 @@ $acuse = (isset($_GET["acuse"]) && (int)$_GET["acuse"] === 1) ? ($_SESSION["last
         </div>
       <?php endif; ?>
 
-      <!-- ACUSE (aparece solo si ?acuse=1) -->
-      <?php if ($acuse): ?>
-        <div class="inv-card acuse">
-          <div class="section-head">
-            <div>
-              <h3>Acuse de Entrada</h3>
-              <p class="muted">Recibo listo para imprimir</p>
-            </div>
-            <div style="display:flex; gap:10px; align-items:center;">
-              <button class="btn-action" type="button" onclick="window.print()">🖨️ Imprimir</button>
-              <a class="btn-action btn-ghost" href="entrada.php" style="text-decoration:none;">Cerrar</a>
-            </div>
-          </div>
-
-          <div class="acuse row">
-            <div><div class="k">Recibo</div><div class="v"><?= h($acuse["id"] ?? "") ?></div></div>
-            <div><div class="k">Fecha</div><div class="v"><?= h($acuse["date"] ?? "") ?></div></div>
-            <div><div class="k">Destino</div><div class="v"><?= h($acuse["destino"] ?? "") ?></div></div>
-            <div><div class="k">Suplidor</div><div class="v"><?= h($acuse["supplier"] ?? "") ?></div></div>
-            <div><div class="k">Hecha por</div><div class="v"><?= h($acuse["made_by"] ?? "") ?></div></div>
-          </div>
-
-          <div class="table-wrap" style="margin-top:12px;">
-            <table>
-              <thead>
-                <tr>
-                  <th>Producto</th>
-                  <th style="width:140px;">Cantidad</th>
-                </tr>
-              </thead>
-              <tbody>
-                <?php foreach (($acuse["lines"] ?? []) as $ln): ?>
-                  <tr>
-                    <td><?= h($ln["name"] ?? "") ?></td>
-                    <td><?= (int)($ln["qty"] ?? 0) ?></td>
-                  </tr>
-                <?php endforeach; ?>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      <?php endif; ?>
-
-      <!-- FORMULARIO (como la imagen) -->
+      <!-- FORMULARIO -->
       <div class="inv-card">
         <div class="entry-card-title">Entrada</div>
         <div class="entry-card-sub">Registra entrada de inventario (sede actual)</div>
@@ -432,7 +385,6 @@ $acuse = (isset($_GET["acuse"]) && (int)$_GET["acuse"] === 1) ? ($_SESSION["last
           <input type="hidden" name="action" value="add">
         </form>
 
-        <!-- GRID SUPERIOR -->
         <div class="entry-grid">
           <div>
             <label>Fecha</label>
@@ -455,7 +407,6 @@ $acuse = (isset($_GET["acuse"]) && (int)$_GET["acuse"] === 1) ? ($_SESSION["last
           </div>
         </div>
 
-        <!-- FILA: categoría / producto / cantidad / añadir -->
         <div class="row-3" style="margin-top:18px">
           <div>
             <label>Categoría</label>
@@ -490,7 +441,6 @@ $acuse = (isset($_GET["acuse"]) && (int)$_GET["acuse"] === 1) ? ($_SESSION["last
           </div>
         </div>
 
-        <!-- DETALLE EN LA MISMA TARJETA -->
         <div class="table-wrap" style="margin-top:16px;">
           <table>
             <thead>
@@ -534,11 +484,11 @@ $acuse = (isset($_GET["acuse"]) && (int)$_GET["acuse"] === 1) ? ($_SESSION["last
             <input type="hidden" name="action" value="clear">
             <button class="btn-action btn-ghost" type="submit">Vaciar</button>
           </form>
-          <button id="btnSave" class="btn-action" type="submit" form="saveForm">Guardar e Imprimir</button>
+          <button id="btnSave" class="btn-action" type="submit" form="saveForm">Guardar</button>
         </div>
       </div>
 
-      <!-- HISTORIAL (colapsable) -->
+      <!-- HISTORIAL -->
       <div class="inv-card" style="margin-top:16px;">
         <div class="section-head">
           <div>
@@ -560,7 +510,7 @@ $acuse = (isset($_GET["acuse"]) && (int)$_GET["acuse"] === 1) ? ($_SESSION["last
                   <th style="width:230px;">Fecha</th>
                   <th>Producto</th>
                   <th style="width:120px;">Cantidad</th>
-                  <th style="width:260px;">Recibo / Nota</th>
+                  <th style="width:140px;"># Orden</th>
                 </tr>
               </thead>
               <tbody>
@@ -568,11 +518,15 @@ $acuse = (isset($_GET["acuse"]) && (int)$_GET["acuse"] === 1) ? ($_SESSION["last
                   <tr><td colspan="4" style="text-align:center; padding:18px;">No hay registros.</td></tr>
                 <?php else: ?>
                   <?php foreach($history as $r): ?>
+                    <?php
+                      $ord = extract_order_num($r["mov_note"] ?? null);
+                      $ord_txt = $ord ? ("#" . $ord) : "—";
+                    ?>
                     <tr>
                       <td><?= h($r["mov_date"] ?? "") ?></td>
                       <td style="font-weight:900;"><?= h($r["item_name"] ?? "") ?></td>
                       <td><?= (int)($r["qty"] ?? 0) ?></td>
-                      <td><?= h($r["mov_note"] ?? "") ?></td>
+                      <td style="font-weight:900;"><?= h($ord_txt) ?></td>
                     </tr>
                   <?php endforeach; ?>
                 <?php endif; ?>
@@ -591,7 +545,7 @@ $acuse = (isset($_GET["acuse"]) && (int)$_GET["acuse"] === 1) ? ($_SESSION["last
 </footer>
 
 <script>
-  // Filtro front-end por categoría
+  // Filtro por categoría (front)
   (function(){
     const cat = document.getElementById('category_id');
     const item = document.getElementById('item_id');
@@ -613,7 +567,7 @@ $acuse = (isset($_GET["acuse"]) && (int)$_GET["acuse"] === 1) ? ($_SESSION["last
     apply();
   })();
 
-  // Evitar doble click Guardar
+  // Evitar doble click en Guardar
   (function(){
     const btn = document.getElementById('btnSave');
     const form = document.getElementById('saveForm');
