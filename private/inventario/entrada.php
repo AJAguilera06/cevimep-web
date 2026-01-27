@@ -26,26 +26,26 @@ function pick_col(array $cols, array $candidates): ?string {
   return null;
 }
 
-/**
- * Extrae ORD-000123 (devuelve 123) desde cualquier texto.
- */
-function extract_order_num(?string $text): ?int {
+function extract_order_code(?string $text): ?string {
   if (!$text) return null;
-  if (preg_match('/ORD-(\d{1,10})/i', $text, $m)) return (int)$m[1];
+  if (preg_match('/(ORD-\d{1,10})/i', $text, $m)) return strtoupper($m[1]);
+  return null;
+}
+function extract_order_num(?string $text): ?int {
+  $code = extract_order_code($text);
+  if (!$code) return null;
+  if (preg_match('/ORD-(\d{1,10})/i', $code, $m)) return (int)$m[1];
   return null;
 }
 
 /**
- * Calcula el siguiente # Orden secuencial por sucursal, leyendo notas recientes
- * (no requiere columna nueva).
+ * Siguiente # Orden secuencial POR SUCURSAL leyendo notas recientes.
+ * No requiere columnas nuevas.
  */
 function next_order_for_branch(PDO $conn, int $branch_id, string $mov_branch, ?string $mov_note): int {
-  // fallback
   if (!$mov_note) return 1;
 
-  // Tomamos un bloque grande reciente y parseamos en PHP.
-  // (Evita depender de funciones SQL de substrings en diferentes motores)
-  $sql = "SELECT `$mov_note` AS note FROM inventory_movements WHERE `$mov_branch`=? ORDER BY id DESC LIMIT 800";
+  $sql = "SELECT `$mov_note` AS note FROM inventory_movements WHERE `$mov_branch`=? ORDER BY id DESC LIMIT 1200";
   $st = $conn->prepare($sql);
   $st->execute([$branch_id]);
 
@@ -160,7 +160,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     exit;
   }
 
-  /* Guardar (sin acuse arriba, sin imprimir) */
+  /* Guardar + IMPRIMIR AUTOMÁTICO (sin mostrar acuse arriba) */
   if ($action === "save_print") {
 
     $supplier = trim((string)($_POST["supplier"] ?? ""));
@@ -196,10 +196,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       if (!$errors) {
 
         // === # ORDEN SECUENCIAL POR SUCURSAL ===
-        $order_num = next_order_for_branch($conn, $branch_id, $mov_branch, $mov_note);
+        $order_num  = next_order_for_branch($conn, $branch_id, $mov_branch, $mov_note);
         $order_code = "ORD-" . str_pad((string)$order_num, 6, "0", STR_PAD_LEFT);
 
-        // ID interno (por si lo usas)
+        // ID interno adicional
         $receipt_id = "ENT-" . date("Ymd-His") . "-" . $branch_id;
 
         try {
@@ -214,16 +214,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           if ($mov_sup)  { $extraCols[] = $mov_sup;  $extraVals[] = $supplier; }
           if ($mov_user) { $extraCols[] = $mov_user; $extraVals[] = ($made_by !== "" ? $made_by : (int)($user["id"] ?? 0)); }
 
-          if ($mov_date) {
-            $extraCols[] = $mov_date;
-            $dt = date("Y-m-d H:i:s");
-            if ($entry_date !== "" && preg_match("/^\\d{4}-\\d{2}-\\d{2}$/", $entry_date)) {
-              $dt = $entry_date . " " . date("H:i:s");
-            }
-            $extraVals[] = $dt;
+          $dt = date("Y-m-d H:i:s");
+          if ($entry_date !== "" && preg_match("/^\\d{4}-\\d{2}-\\d{2}$/", $entry_date)) {
+            $dt = $entry_date . " " . date("H:i:s");
           }
+          if ($mov_date) { $extraCols[] = $mov_date; $extraVals[] = $dt; }
 
-          // Guardamos el # Orden dentro de note para poder mostrarlo siempre
+          // Guardamos el # Orden dentro de note para historial y trazabilidad
+          $noteTxt = "";
           if ($mov_note) {
             $extraCols[] = $mov_note;
             $noteTxt = $order_code . " | " . $receipt_id . " | Destino: " . $destino;
@@ -241,6 +239,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           $stUpd = $conn->prepare("UPDATE inventory_stock SET `$stk_qty` = `$stk_qty` + ? WHERE `$stk_branch`=? AND `$stk_item`=?");
           $stStockIns = $conn->prepare("INSERT INTO inventory_stock (`$stk_branch`,`$stk_item`,`$stk_qty`) VALUES (?,?,?)");
 
+          // Para imprimir (detalle)
+          $print_lines = [];
+
           foreach ($_SESSION["entrada_cart"] as $row) {
             $iid = (int)$row["item_id"];
             $q = (int)$row["qty"];
@@ -254,15 +255,33 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $exists = (bool)$stChk->fetchColumn();
             if ($exists) $stUpd->execute([$q, $branch_id, $iid]);
             else $stStockIns->execute([$branch_id, $iid, $q]);
+
+            $print_lines[] = [
+              "name" => (string)$row["name"],
+              "qty"  => $q
+            ];
           }
 
           $conn->commit();
 
-          // Limpia carrito (sin mostrar acuse arriba)
+          // Guardar acuse SOLO para imprimir automático (oculto)
+          $_SESSION["entrada_last_print"] = [
+            "order_code" => $order_code,
+            "receipt_id" => $receipt_id,
+            "branch"     => $branch_name,
+            "destino"    => $destino,
+            "date"       => $dt,
+            "supplier"   => $supplier,
+            "made_by"    => $made_by,
+            "note_txt"   => $noteTxt,
+            "lines"      => $print_lines
+          ];
+
+          // Limpia carrito
           $_SESSION["entrada_cart"] = [];
 
-          // Vuelve normal: el historial abajo ya lo mostrará con # Orden
-          header("Location: entrada.php");
+          // Redirige para disparar impresión automática
+          header("Location: entrada.php?autoprint=1");
           exit;
 
         } catch (Throwable $e) {
@@ -317,6 +336,10 @@ $catMap = [];
 foreach ($categories as $c) { $catMap[(int)$c["id"]] = (string)$c["name"]; }
 $prodCatMap = [];
 foreach ($products as $p) { $prodCatMap[(int)$p["id"]] = (int)($p["category_id"] ?? 0); }
+
+// Datos para impresión automática (oculto)
+$autoPrint = (isset($_GET["autoprint"]) && (int)$_GET["autoprint"] === 1);
+$printData = $_SESSION["entrada_last_print"] ?? null;
 ?>
 <!doctype html>
 <html lang="es">
@@ -326,6 +349,15 @@ foreach ($products as $p) { $prodCatMap[(int)$p["id"]] = (int)($p["category_id"]
   <title>Entrada | CEVIMEP</title>
   <link rel="stylesheet" href="/assets/css/styles.css?v=60">
   <link rel="stylesheet" href="/assets/css/inventario.css?v=60">
+
+  <style>
+    /* Acuse NO visible en pantalla */
+    .acuse-hidden { display:none; }
+    /* En impresión debe aparecer */
+    @media print {
+      .acuse-hidden { display:block !important; }
+    }
+  </style>
 </head>
 <body>
 
@@ -365,6 +397,49 @@ foreach ($products as $p) { $prodCatMap[(int)$p["id"]] = (int)($p["category_id"]
           <ul style="margin:8px 0 0 18px;">
             <?php foreach($errors as $e): ?><li><?= h($e) ?></li><?php endforeach; ?>
           </ul>
+        </div>
+      <?php endif; ?>
+
+      <!-- ACUSE OCULTO SOLO PARA IMPRIMIR AUTOMÁTICO -->
+      <?php if ($autoPrint && is_array($printData)): ?>
+        <div class="inv-card acuse acuse-hidden" id="acusePrint">
+          <div class="section-head">
+            <div>
+              <h3>Acuse de Entrada</h3>
+              <p class="muted">Impresión automática</p>
+            </div>
+          </div>
+
+          <div class="acuse row">
+            <div><div class="k"># Orden</div><div class="v"><?= h($printData["order_code"] ?? "") ?></div></div>
+            <div><div class="k">Fecha</div><div class="v"><?= h($printData["date"] ?? "") ?></div></div>
+            <div><div class="k">Destino</div><div class="v"><?= h($printData["destino"] ?? "") ?></div></div>
+            <div><div class="k">Suplidor</div><div class="v"><?= h($printData["supplier"] ?? "") ?></div></div>
+            <div><div class="k">Hecha por</div><div class="v"><?= h($printData["made_by"] ?? "") ?></div></div>
+          </div>
+
+          <div class="table-wrap" style="margin-top:12px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th style="width:140px;">Cantidad</th>
+                </tr>
+              </thead>
+              <tbody>
+                <?php foreach (($printData["lines"] ?? []) as $ln): ?>
+                  <tr>
+                    <td><?= h($ln["name"] ?? "") ?></td>
+                    <td><?= (int)($ln["qty"] ?? 0) ?></td>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="muted" style="margin-top:10px;">
+            <?= h($printData["receipt_id"] ?? "") ?>
+          </div>
         </div>
       <?php endif; ?>
 
@@ -484,7 +559,9 @@ foreach ($products as $p) { $prodCatMap[(int)$p["id"]] = (int)($p["category_id"]
             <input type="hidden" name="action" value="clear">
             <button class="btn-action btn-ghost" type="submit">Vaciar</button>
           </form>
-          <button id="btnSave" class="btn-action" type="submit" form="saveForm">Guardar</button>
+
+          <!-- ✅ Texto como pediste -->
+          <button id="btnSave" class="btn-action" type="submit" form="saveForm">Guardar e Imprimir</button>
         </div>
       </div>
 
@@ -519,8 +596,8 @@ foreach ($products as $p) { $prodCatMap[(int)$p["id"]] = (int)($p["category_id"]
                 <?php else: ?>
                   <?php foreach($history as $r): ?>
                     <?php
-                      $ord = extract_order_num($r["mov_note"] ?? null);
-                      $ord_txt = $ord ? ("#" . $ord) : "—";
+                      $code = extract_order_code($r["mov_note"] ?? null);
+                      $ord_txt = $code ? $code : "—";
                     ?>
                     <tr>
                       <td><?= h($r["mov_date"] ?? "") ?></td>
@@ -576,6 +653,21 @@ foreach ($products as $p) { $prodCatMap[(int)$p["id"]] = (int)($p["category_id"]
       btn.disabled = true;
       btn.textContent = 'Guardando...';
     });
+  })();
+
+  // ✅ IMPRIMIR AUTOMÁTICO si venimos de ?autoprint=1
+  (function(){
+    const url = new URL(window.location.href);
+    const ap = url.searchParams.get('autoprint');
+    if(ap === '1'){
+      // Deja que cargue el DOM y dispara impresión
+      setTimeout(function(){
+        window.print();
+        // Limpia el query para que no imprima otra vez al refrescar
+        url.searchParams.delete('autoprint');
+        window.history.replaceState({}, document.title, url.toString());
+      }, 250);
+    }
   })();
 </script>
 
