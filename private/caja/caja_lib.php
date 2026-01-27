@@ -13,8 +13,12 @@ if (!function_exists("caja_get_current_caja_num")) {
 
 if (!function_exists("caja_shift_times")) {
     function caja_shift_times(int $cajaNum): array {
-        return ($cajaNum === 1) ? ["08:00:00","13:00:00"] : ["13:00:00","18:00:00"];
-    }
+    // Caja 1 normal
+    if ($cajaNum === 1) return ["08:00:00","13:00:00"];
+    // Caja 2 se queda abierta hasta 11:59:59 PM para facturar de noche sin romper
+    return ["13:00:00","23:59:59"];
+}
+
 }
 
 if (!function_exists("caja_auto_close_expired")) {
@@ -92,83 +96,68 @@ if (!function_exists('caja_registrar_ingreso_factura')) {
     $amount = round((float)$amount, 2);
     if ($amount <= 0) return true;
 
-    // ✅ Detectar tabla usando information_schema (evita SHOW TABLES LIKE ?)
-    $candidates = [
-      'caja_movimientos',
-      'caja_movements',
-      'cash_movements',
-      'caja_transacciones',
-      'caja_transactions',
-    ];
+    // ✅ Asegurar sesión abierta
+    $session_id = 0;
+    if (function_exists('caja_get_or_open_current_session')) {
+      $session_id = (int)caja_get_or_open_current_session($conn, $branch_id, $user_id);
+    }
 
+    // ✅ Prioriza cash_movements (lo más probable en tu sistema)
+    $candidates = ['cash_movements','caja_movimientos','caja_movements','caja_transacciones','caja_transactions'];
+
+    // Buscar tabla existente (information_schema)
     $table = null;
-    try {
-      $st = $conn->prepare("
-        SELECT table_name
-        FROM information_schema.tables
-        WHERE table_schema = DATABASE()
-          AND table_name = ?
-        LIMIT 1
-      ");
-
-      foreach ($candidates as $t) {
-        $st->execute([$t]);
-        $found = $st->fetchColumn();
-        if ($found) { $table = $found; break; }
-      }
-    } catch (Throwable $e) {
-      // si falla, no rompemos la facturación
-      return true;
+    $stT = $conn->prepare("
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = DATABASE() AND table_name = ?
+      LIMIT 1
+    ");
+    foreach ($candidates as $t) {
+      $stT->execute([$t]);
+      if ($stT->fetchColumn()) { $table = $t; break; }
     }
+    if (!$table) return true; // no romper facturación
 
-    if (!$table) return true; // no hay tabla compatible
-
-    // ✅ Obtener columnas reales con information_schema (más estable que SHOW COLUMNS)
-    $cols = [];
-    try {
-      $stCols = $conn->prepare("
-        SELECT column_name
-        FROM information_schema.columns
-        WHERE table_schema = DATABASE()
-          AND table_name = ?
-      ");
-      $stCols->execute([$table]);
-      $cols = $stCols->fetchAll(PDO::FETCH_COLUMN) ?: [];
-    } catch (Throwable $e) {
-      return true;
-    }
-
+    // Columnas de la tabla
+    $stC = $conn->prepare("
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE() AND table_name = ?
+    ");
+    $stC->execute([$table]);
+    $cols = $stC->fetchAll(PDO::FETCH_COLUMN) ?: [];
     $has = fn(string $c) => in_array($c, $cols, true);
 
     $now = date('Y-m-d H:i:s');
     $desc = "INGRESO POR FACTURA #{$invoice_id}";
-    $tipoIngreso = 'INGRESO';
+    $tipo = 'INGRESO';
 
     $data = [];
 
+    // session (si existe columna)
+    foreach (['session_id','cash_session_id','caja_session_id'] as $c) {
+      if ($has($c) && $session_id > 0) { $data[$c] = $session_id; break; }
+    }
+
     // branch
-    foreach (['branch_id','sucursal_id','branch','sucursal'] as $c) {
+    foreach (['branch_id','sucursal_id'] as $c) {
       if ($has($c)) { $data[$c] = $branch_id; break; }
     }
 
-    // user / created_by
-    foreach (['created_by','user_id','usuario_id','created_user','hecho_por'] as $c) {
+    // user
+    foreach (['user_id','created_by','usuario_id'] as $c) {
       if ($has($c)) { $data[$c] = $user_id; break; }
     }
 
-    // invoice reference
-    foreach (['invoice_id','factura_id','ref_invoice_id','reference_id','ref_id'] as $c) {
+    // invoice
+    foreach (['invoice_id','factura_id'] as $c) {
       if ($has($c)) { $data[$c] = $invoice_id; break; }
     }
 
-    // amount
-    foreach (['amount','monto','total','importe','valor'] as $c) {
-      if ($has($c)) { $data[$c] = $amount; break; }
-    }
-
     // type
-    foreach (['type','movement_type','tipo','movimiento'] as $c) {
-      if ($has($c)) { $data[$c] = $tipoIngreso; break; }
+    foreach (['type','tipo','movement_type'] as $c) {
+      if ($has($c)) { $data[$c] = $tipo; break; }
     }
 
     // method
@@ -176,13 +165,18 @@ if (!function_exists('caja_registrar_ingreso_factura')) {
       if ($has($c)) { $data[$c] = $method; break; }
     }
 
+    // amount
+    foreach (['amount','monto','total','importe','valor'] as $c) {
+      if ($has($c)) { $data[$c] = $amount; break; }
+    }
+
     // description
     foreach (['description','descripcion','note','nota','detalle','concepto'] as $c) {
       if ($has($c)) { $data[$c] = $desc; break; }
     }
 
-    // created_at / fecha
-    foreach (['created_at','fecha','created_on','date'] as $c) {
+    // created_at
+    foreach (['created_at','fecha','date','created_on'] as $c) {
       if ($has($c)) { $data[$c] = $now; break; }
     }
 
@@ -191,13 +185,7 @@ if (!function_exists('caja_registrar_ingreso_factura')) {
     $fields = array_keys($data);
     $placeholders = implode(',', array_fill(0, count($fields), '?'));
     $sql = "INSERT INTO `$table` (`" . implode('`,`', $fields) . "`) VALUES ($placeholders)";
-
-    try {
-      $stIns = $conn->prepare($sql);
-      return $stIns->execute(array_values($data));
-    } catch (Throwable $e) {
-      // no romper facturación si caja falla
-      return true;
-    }
+    $st = $conn->prepare($sql);
+    return $st->execute(array_values($data));
   }
 }
