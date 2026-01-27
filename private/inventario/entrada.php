@@ -133,6 +133,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $supplier = trim((string)($_POST["supplier"] ?? ""));
     $made_by  = trim((string)($_POST["made_by"] ?? "")); // vacío para llenar
     $destino  = trim((string)($_POST["destino"] ?? $branch_name)); // sucursal iniciada
+    $note     = trim((string)($_POST["note"] ?? ""));
+    $entry_date = trim((string)($_POST["entry_date"] ?? "")); // YYYY-MM-DD (opcional)
 
     if (empty($_SESSION["entrada_cart"])) {
       $errors[] = "No hay productos agregados.";
@@ -172,8 +174,22 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           if ($mov_type) { $extraCols[] = $mov_type; $extraVals[] = "IN"; }
           if ($mov_sup)  { $extraCols[] = $mov_sup;  $extraVals[] = $supplier; }
           if ($mov_user) { $extraCols[] = $mov_user; $extraVals[] = ($made_by !== "" ? $made_by : (int)($user["id"] ?? 0)); }
-          if ($mov_date) { $extraCols[] = $mov_date; $extraVals[] = date("Y-m-d H:i:s"); }
-          if ($mov_note) { $extraCols[] = $mov_note; $extraVals[] = $receipt_id . " | Destino: " . $destino; }
+
+          if ($mov_date) {
+            $extraCols[] = $mov_date;
+            $dt = date("Y-m-d H:i:s");
+            if ($entry_date !== "" && preg_match("/^\\d{4}-\\d{2}-\\d{2}$/", $entry_date)) {
+              $dt = $entry_date . " " . date("H:i:s");
+            }
+            $extraVals[] = $dt;
+          }
+
+          if ($mov_note) {
+            $extraCols[] = $mov_note;
+            $noteTxt = $receipt_id . " | Destino: " . $destino;
+            if ($note !== "") $noteTxt .= " | Nota: " . $note;
+            $extraVals[] = $noteTxt;
+          }
 
           $insCols = array_merge($baseCols, $extraCols);
           $ph = implode(",", array_fill(0, count($insCols), "?"));
@@ -297,6 +313,13 @@ if (isset($_SESSION["last_entrada_receipt"]) && is_array($_SESSION["last_entrada
 }
 
 $cart = $_SESSION["entrada_cart"];
+
+// Mapas para mostrar categoría en el detalle
+$catMap = [];
+foreach ($categories as $c) { $catMap[(int)$c["id"]] = (string)$c["name"]; }
+$prodCatMap = [];
+foreach ($products as $p) { $prodCatMap[(int)$p["id"]] = (int)($p["category_id"] ?? 0); }
+
 $acuse = (isset($_GET["acuse"]) && (int)$_GET["acuse"] === 1) ? ($_SESSION["last_entrada_receipt"] ?? null) : null;
 ?>
 <!doctype html>
@@ -337,7 +360,7 @@ $acuse = (isset($_GET["acuse"]) && (int)$_GET["acuse"] === 1) ? ($_SESSION["last
       <div class="inv-head">
         <h1>Entrada</h1>
         <div class="sub">Registra entrada de inventario (sede actual)</div>
-        <div class="branch">Sucursal: <strong><?= h($branch_name) ?></strong></div>
+        <div class="branch"><?= h($branch_name) ?></div>
       </div>
 
       <?php if (!empty($errors)): ?>
@@ -392,32 +415,69 @@ $acuse = (isset($_GET["acuse"]) && (int)$_GET["acuse"] === 1) ? ($_SESSION["last
         </div>
       <?php endif; ?>
 
-      <!-- FORMULARIO -->
+      <!-- FORMULARIO (como la imagen) -->
       <div class="inv-card">
-        <div class="entry-top">
+        <div class="entry-card-title">Entrada</div>
+        <div class="entry-card-sub">Registra entrada de inventario (sede actual)</div>
 
-          <form method="post" id="addForm">
-            <input type="hidden" name="action" value="add">
+        <!-- save -->
+        <form method="post" id="saveForm">
+          <input type="hidden" name="action" value="save_print">
+          <input type="hidden" name="destino" value="<?= h($branch_name) ?>">
+          <input type="hidden" name="made_by" value="">
+        </form>
+
+        <!-- add -->
+        <form method="post" id="addForm">
+          <input type="hidden" name="action" value="add">
+        </form>
+
+        <!-- GRID SUPERIOR -->
+        <div class="entry-grid">
+          <div>
+            <label>Fecha</label>
+            <input form="saveForm" type="date" name="entry_date" value="<?= h(date("Y-m-d")) ?>">
+          </div>
+
+          <div>
+            <label>Suplidor</label>
+            <input form="saveForm" type="text" name="supplier" value="<?= h("Almacén " . $branch_name) ?>">
+          </div>
+
+          <div>
+            <label>Área de destino</label>
+            <input type="text" value="<?= h($branch_name) ?>" readonly>
+          </div>
+
+          <div>
+            <label>Nota (opcional)</label>
+            <input form="saveForm" type="text" name="note" placeholder="Observación...">
+          </div>
+        </div>
+
+        <!-- FILA: categoría / producto / cantidad / añadir -->
+        <div class="row-3" style="margin-top:18px">
+          <div>
             <label>Categoría</label>
-            <select id="category_id" name="category_id">
-              <option value="">Todas</option>
+            <select form="addForm" id="category_id" name="category_id">
+              <option value="">— Todas —</option>
               <?php foreach($categories as $c): ?>
                 <option value="<?= (int)$c["id"] ?>"><?= h($c["name"]) ?></option>
               <?php endforeach; ?>
             </select>
-          </form>
+          </div>
 
           <div>
             <label>Producto</label>
             <select form="addForm" id="item_id" name="item_id" required>
-              <option value="">Selecciona</option>
+              <option value="">— Seleccionar —</option>
               <?php foreach($products as $p): ?>
                 <option value="<?= (int)$p["id"] ?>" data-cat="<?= (int)($p["category_id"] ?? 0) ?>">
                   <?= h($p["name"]) ?>
                 </option>
               <?php endforeach; ?>
             </select>
-            <div class="hint">Solo productos de esta sucursal.</div>
+            <div class="hint-small">Al añadir, se mantiene seleccionado el producto y la cantidad.</div>
           </div>
 
           <div>
@@ -425,50 +485,17 @@ $acuse = (isset($_GET["acuse"]) && (int)$_GET["acuse"] === 1) ? ($_SESSION["last
             <input form="addForm" type="number" name="qty" min="1" step="1" value="1" required>
           </div>
 
-          <form method="post" id="saveForm">
-            <input type="hidden" name="action" value="save_print">
-            <input type="hidden" name="destino" value="<?= h($branch_name) ?>">
-
-            <label>Suplidor (opcional)</label>
-            <input type="text" name="supplier" placeholder="Escribe el suplidor (opcional)">
-          </form>
-
-          <div>
-            <label>Hecha por</label>
-            <input form="saveForm" type="text" name="made_by" value="" placeholder="Escribe quién la hizo">
-          </div>
-
-          <div>
-            <label>Destino</label>
-            <input form="saveForm" type="text" value="<?= h($branch_name) ?>" readonly>
-          </div>
-
           <div class="entry-actions">
-            <button class="btn-action" type="submit" form="addForm">➕ Añadir</button>
+            <button class="btn-action btn-primary" type="submit" form="addForm">Añadir</button>
           </div>
-
-        </div>
-      </div>
-
-      <!-- DETALLE -->
-      <div class="inv-card">
-        <div class="section-head">
-          <div>
-            <h3>Detalle</h3>
-            <p class="muted">Productos agregados</p>
-          </div>
-
-          <form method="post" style="margin:0;">
-            <input type="hidden" name="action" value="clear">
-            <button class="btn-action btn-ghost" type="submit">Vaciar</button>
-          </form>
         </div>
 
-        <div class="table-wrap">
+        <!-- DETALLE EN LA MISMA TARJETA -->
+        <div class="table-wrap" style="margin-top:16px;">
           <table>
             <thead>
               <tr>
-                <th style="width:70px;">#</th>
+                <th>Categoría</th>
                 <th>Producto</th>
                 <th style="width:140px;">Cantidad</th>
                 <th style="width:140px;">Acción</th>
@@ -478,9 +505,14 @@ $acuse = (isset($_GET["acuse"]) && (int)$_GET["acuse"] === 1) ? ($_SESSION["last
               <?php if (empty($cart)): ?>
                 <tr><td colspan="4" style="text-align:center; padding:18px;">No hay productos agregados.</td></tr>
               <?php else: ?>
-                <?php $i=1; foreach($cart as $row): ?>
+                <?php foreach($cart as $row): ?>
+                  <?php
+                    $iid = (int)$row["item_id"];
+                    $cid = (int)($prodCatMap[$iid] ?? 0);
+                    $cname = $cid > 0 ? ($catMap[$cid] ?? "") : "";
+                  ?>
                   <tr>
-                    <td><?= $i++ ?></td>
+                    <td><?= h($cname) ?></td>
                     <td style="font-weight:900;"><?= h($row["name"]) ?></td>
                     <td><?= (int)$row["qty"] ?></td>
                     <td>
@@ -497,45 +529,56 @@ $acuse = (isset($_GET["acuse"]) && (int)$_GET["acuse"] === 1) ? ($_SESSION["last
           </table>
         </div>
 
-        <div class="save-row">
-          <button id="btnSave" class="btn-action" type="submit" form="saveForm">💾 Guardar e imprimir</button>
+        <div class="save-row" style="gap:10px;">
+          <form method="post" style="margin:0;">
+            <input type="hidden" name="action" value="clear">
+            <button class="btn-action btn-ghost" type="submit">Vaciar</button>
+          </form>
+          <button id="btnSave" class="btn-action" type="submit" form="saveForm">Guardar e Imprimir</button>
         </div>
       </div>
 
-      <!-- HISTORIAL -->
-      <div class="inv-card">
+      <!-- HISTORIAL (colapsable) -->
+      <div class="inv-card" style="margin-top:16px;">
         <div class="section-head">
           <div>
             <h3>Historial de Entradas</h3>
             <p class="muted">Últimos 50 registros (sede actual)</p>
           </div>
+
+          <button class="btn-action btn-ghost" type="button"
+            onclick="document.getElementById('histBody').classList.toggle('show')">
+            Ver el historial
+          </button>
         </div>
 
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th style="width:230px;">Fecha</th>
-                <th>Producto</th>
-                <th style="width:120px;">Cantidad</th>
-                <th style="width:260px;">Recibo / Nota</th>
-              </tr>
-            </thead>
-            <tbody>
-              <?php if (empty($history)): ?>
-                <tr><td colspan="4" style="text-align:center; padding:18px;">No hay registros.</td></tr>
-              <?php else: ?>
-                <?php foreach($history as $r): ?>
-                  <tr>
-                    <td><?= h($r["mov_date"] ?? "") ?></td>
-                    <td style="font-weight:900;"><?= h($r["item_name"] ?? "") ?></td>
-                    <td><?= (int)($r["qty"] ?? 0) ?></td>
-                    <td><?= h($r["mov_note"] ?? "") ?></td>
-                  </tr>
-                <?php endforeach; ?>
-              <?php endif; ?>
-            </tbody>
-          </table>
+        <div id="histBody" class="hist-body">
+          <div class="table-wrap" style="margin-top:12px;">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:230px;">Fecha</th>
+                  <th>Producto</th>
+                  <th style="width:120px;">Cantidad</th>
+                  <th style="width:260px;">Recibo / Nota</th>
+                </tr>
+              </thead>
+              <tbody>
+                <?php if (empty($history)): ?>
+                  <tr><td colspan="4" style="text-align:center; padding:18px;">No hay registros.</td></tr>
+                <?php else: ?>
+                  <?php foreach($history as $r): ?>
+                    <tr>
+                      <td><?= h($r["mov_date"] ?? "") ?></td>
+                      <td style="font-weight:900;"><?= h($r["item_name"] ?? "") ?></td>
+                      <td><?= (int)($r["qty"] ?? 0) ?></td>
+                      <td><?= h($r["mov_note"] ?? "") ?></td>
+                    </tr>
+                  <?php endforeach; ?>
+                <?php endif; ?>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 

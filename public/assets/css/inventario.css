@@ -307,3 +307,100 @@
   .inv-card.acuse button,
   .inv-card.acuse a { display:none !important; }
 }
+/* =========================
+   ENTRADA (layout tipo “form card”)
+   ========================= */
+.inv-entrada .inv-card{
+  border-radius: 18px;
+}
+
+.inv-entrada .entry-card-title{
+  font-size: 18px;
+  font-weight: 900;
+  margin-bottom: 2px;
+}
+
+.inv-entrada .entry-card-sub{
+  color: rgba(0,0,0,.55);
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.inv-entrada .entry-grid{
+  display: grid;
+  grid-template-columns: 1.2fr 1.2fr;
+  gap: 14px 18px;
+  align-items: end;
+}
+
+.inv-entrada .entry-grid .full{
+  grid-column: 1 / -1;
+}
+
+.inv-entrada label{
+  display:block;
+  font-weight: 800;
+  font-size: 13px;
+  margin-bottom: 6px;
+  color: rgba(0,0,0,.72);
+}
+
+.inv-entrada input[type="text"],
+.inv-entrada input[type="number"],
+.inv-entrada input[type="date"],
+.inv-entrada select,
+.inv-entrada textarea{
+  width: 100%;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.12);
+  padding: 10px 12px;
+  outline: none;
+  background: rgba(255,255,255,.9);
+}
+
+.inv-entrada textarea{
+  height: 44px;
+  resize: none;
+}
+
+.inv-entrada .row-3{
+  display:grid;
+  grid-template-columns: 260px 1fr 180px 160px;
+  gap: 12px;
+  align-items:end;
+}
+
+.inv-entrada .hint-small{
+  font-size: 12px;
+  color: rgba(0,0,0,.55);
+  margin-top: 6px;
+}
+
+/* Botones más “suaves” e interactivos */
+.inv-entrada .btn-action{
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-weight: 900;
+  border: 1px solid rgba(0,0,0,.10);
+  cursor: pointer;
+  transition: transform .12s ease, filter .12s ease, box-shadow .12s ease;
+}
+.inv-entrada .btn-action:hover{
+  transform: translateY(-1px);
+  filter: brightness(1.02);
+  box-shadow: 0 10px 22px rgba(0,0,0,.10);
+}
+.inv-entrada .btn-action:active{
+  transform: translateY(0px) scale(.99);
+}
+.inv-entrada .btn-primary{
+  background: rgba(120, 227, 215, .35);
+}
+.inv-entrada .btn-dark{
+  background: rgba(0,0,0,.08);
+}
+
+/* Historial colapsable */
+.inv-entrada .hist-body{ display:none; }
+.inv-entrada .hist-body.show{ display:block; }
