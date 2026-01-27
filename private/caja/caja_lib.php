@@ -41,6 +41,10 @@ if (!function_exists("caja_auto_close_expired")) {
 }
 
 if (!function_exists("caja_get_or_open_current_session")) {
+    /**
+     * Devuelve ID de sesión activa del turno; si no existe, la crea (si está en horario).
+     * Si está fuera de horario: devuelve la última sesión abierta del día si existe; si no, 0.
+     */
     function caja_get_or_open_current_session(PDO $pdo, int $branchId, int $userId): int {
         caja_auto_close_expired($pdo, $branchId, $userId);
 
