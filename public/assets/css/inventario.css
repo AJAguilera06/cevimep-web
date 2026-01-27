@@ -237,3 +237,55 @@
   .inv-entrada .entry-top{ grid-template-columns: 1fr; }
   .inv-entrada .entry-actions{ grid-column:auto; }
 }
+/* =========================
+   PRINT: imprimir SOLO el acuse
+   ========================= */
+@media print {
+
+  /* Ocultar layout del sistema */
+  .navbar,
+  .sidebar,
+  .footer,
+  .inv-head,
+  .inv-card:not(.acuse),
+  #btnSave,
+  .menu-title,
+  nav.menu {
+    display: none !important;
+  }
+
+  /* Quitar fondo/espacios */
+  body, html {
+    background: #fff !important;
+  }
+
+  .layout {
+    display: block !important;
+  }
+
+  .content.inv-root {
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+
+  .content.inv-root .inv-wrap {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* El acuse centrado y limpio */
+  .inv-card.acuse {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+    margin: 0 !important;
+    border-radius: 10px !important;
+    page-break-inside: avoid;
+  }
+
+  /* Botones dentro del acuse no deben imprimirse */
+  .inv-card.acuse button,
+  .inv-card.acuse a {
+    display: none !important;
+  }
+}

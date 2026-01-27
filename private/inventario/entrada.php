@@ -252,6 +252,35 @@ try {
     $history = $stH->fetchAll(PDO::FETCH_ASSOC);
   }
 } catch (Throwable $e) {}
+/* ===== FIX: asegurar que lo último guardado aparezca en historial ===== */
+if (isset($_SESSION['last_entrada_receipt']) && is_array($_SESSION['last_entrada_receipt'])) {
+  $r = $_SESSION['last_entrada_receipt'];
+  $rid = (string)($r['id'] ?? '');
+
+  // Si el historial no contiene el recibo, lo "inyectamos" arriba
+  $found = false;
+  foreach ($history as $hrow) {
+    if (!empty($hrow['mov_note']) && strpos((string)$hrow['mov_note'], $rid) !== false) {
+      $found = true;
+      break;
+    }
+  }
+
+  if (!$found && $rid !== '') {
+    $fakeRows = [];
+    foreach (($r['lines'] ?? []) as $ln) {
+      $fakeRows[] = [
+        'mov_date'  => $r['date'] ?? date("Y-m-d H:i:s"),
+        'item_name' => $ln['name'] ?? '',
+        'qty'       => $ln['qty'] ?? 0,
+        'mov_note'  => $rid . " | Destino: " . ($r['destino'] ?? '')
+      ];
+    }
+    // prepend
+    $history = array_merge($fakeRows, $history);
+  }
+}
+
 
 $cart = $_SESSION['entrada_cart'];
 $acuse = (isset($_GET['acuse']) && (int)$_GET['acuse'] === 1) ? ($_SESSION['last_entrada_receipt'] ?? null) : null;
@@ -455,7 +484,7 @@ $acuse = (isset($_GET['acuse']) && (int)$_GET['acuse'] === 1) ? ($_SESSION['last
         </div>
 
         <div class="save-row">
-          <button id="btnSave" class="btn-action" type="submit" form="saveForm">💾 Guardar e imprimir</button>
+          <button class="btn-action" type="button" onclick="window.print()">🖨️ Imprimir</button>
         </div>
       </div>
 
