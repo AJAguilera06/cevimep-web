@@ -3,19 +3,11 @@ declare(strict_types=1);
 
 require_once __DIR__ . "/../_guard.php";
 require_once __DIR__ . "/../caja/caja_lib.php";
+
 $conn = $pdo;
 
 function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8"); }
 
-/* ===== contexto ===== */
-$user = $_SESSION["user"] ?? [];
-$year = date("Y");
-$today = date("Y-m-d");
-$now_dt = date("Y-m-d H:i:s");
-$branch_id = (int)($user["branch_id"] ?? 0);
-$created_by = (int)($user["id"] ?? 0);
-
-/* ===== helpers ===== */
 function columnExists(PDO $pdo, string $table, string $column): bool {
   try {
     $st = $pdo->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
@@ -26,38 +18,139 @@ function columnExists(PDO $pdo, string $table, string $column): bool {
   }
 }
 
+function tableColumns(PDO $pdo, string $table): array {
+  try {
+    $rows = $pdo->query("SHOW COLUMNS FROM `$table`")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $cols = [];
+    foreach ($rows as $r) $cols[] = $r["Field"];
+    return $cols;
+  } catch (Throwable $e) {
+    return [];
+  }
+}
+
 function number0($v): float {
   if ($v === null) return 0.0;
   if (is_string($v)) $v = str_replace([",", " "], ["", ""], $v);
   return (float)$v;
 }
 
-/* ===== input ===== */
-$patient_id = (int)($_GET["patient_id"] ?? 0);
-$patient_q = trim((string)($_GET["q"] ?? ""));
+/**
+ * Devuelve expresiones SQL seguras para nombre/documento/teléfono/nacionalidad
+ * según las columnas que existan en la tabla patients.
+ */
+function patientsSelectParts(PDO $pdo): array {
+  $cols = tableColumns($pdo, "patients");
+  $has = fn($c) => in_array($c, $cols, true);
+
+  // Nombre
+  $nameSelect = "CAST(id AS CHAR) AS full_name";
+  $nameWhere  = "CAST(id AS CHAR)";
+
+  if ($has("full_name")) {
+    $nameSelect = "full_name";
+    $nameWhere  = "full_name";
+  } elseif ($has("name")) {
+    $nameSelect = "name AS full_name";
+    $nameWhere  = "name";
+  } elseif ($has("paciente")) {
+    $nameSelect = "paciente AS full_name";
+    $nameWhere  = "paciente";
+  } elseif ($has("nombres") && $has("apellidos")) {
+    $nameSelect = "CONCAT(nombres,' ',apellidos) AS full_name";
+    $nameWhere  = "CONCAT(nombres,' ',apellidos)";
+  } elseif ($has("nombre") && $has("apellido")) {
+    $nameSelect = "CONCAT(nombre,' ',apellido) AS full_name";
+    $nameWhere  = "CONCAT(nombre,' ',apellido)";
+  } elseif ($has("nombre_completo")) {
+    $nameSelect = "nombre_completo AS full_name";
+    $nameWhere  = "nombre_completo";
+  } elseif ($has("nombre")) {
+    $nameSelect = "nombre AS full_name";
+    $nameWhere  = "nombre";
+  }
+
+  // Documento
+  $docSelect = "NULL AS document_no";
+  if ($has("document_no")) $docSelect = "document_no";
+  elseif ($has("cedula"))  $docSelect = "cedula AS document_no";
+  elseif ($has("documento")) $docSelect = "documento AS document_no";
+  elseif ($has("dni")) $docSelect = "dni AS document_no";
+
+  // Teléfono
+  $phoneSelect = "NULL AS phone";
+  if ($has("phone")) $phoneSelect = "phone";
+  elseif ($has("telefono")) $phoneSelect = "telefono AS phone";
+  elseif ($has("celular")) $phoneSelect = "celular AS phone";
+  elseif ($has("movil")) $phoneSelect = "movil AS phone";
+
+  // Nacionalidad
+  $natSelect = "NULL AS nationality";
+  if ($has("nationality")) $natSelect = "nationality";
+  elseif ($has("nacionalidad")) $natSelect = "nacionalidad AS nationality";
+
+  return [
+    "name_select" => $nameSelect,
+    "name_where"  => $nameWhere,
+    "doc_select"  => $docSelect,
+    "phone_select"=> $phoneSelect,
+    "nat_select"  => $natSelect,
+  ];
+}
+
+/* ===== contexto ===== */
+$user = $_SESSION["user"] ?? [];
+$today = date("Y-m-d");
+$now_dt = date("Y-m-d H:i:s");
+
+$branch_id = (int)($user["branch_id"] ?? 0);
+$created_by = (int)($user["id"] ?? 0);
 
 $err = "";
-$ok = "";
+$ok  = "";
 
-/* ===== cargar paciente ===== */
+/* ===== input ===== */
+$patient_id = (int)($_GET["patient_id"] ?? 0);
+$patient_q  = trim((string)($_GET["q"] ?? ""));
+
+/* ===== cargar paciente (CORREGIDO full_name) ===== */
 $patient = null;
-if ($patient_id > 0) {
-  $st = $conn->prepare("SELECT id, full_name, document_no, phone, nationality FROM patients WHERE id=? LIMIT 1");
-  $st->execute([$patient_id]);
-  $patient = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+
+try {
+  $p = patientsSelectParts($conn);
+
+  if ($patient_id > 0) {
+    $sql = "SELECT id,
+                   {$p["name_select"]} ,
+                   {$p["doc_select"]},
+                   {$p["phone_select"]},
+                   {$p["nat_select"]}
+            FROM patients
+            WHERE id=? LIMIT 1";
+    $st = $conn->prepare($sql);
+    $st->execute([$patient_id]);
+    $patient = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+  }
+
+  if (!$patient && $patient_q !== "") {
+    $sql = "SELECT id,
+                   {$p["name_select"]} ,
+                   {$p["doc_select"]},
+                   {$p["phone_select"]},
+                   {$p["nat_select"]}
+            FROM patients
+            WHERE {$p["name_where"]} LIKE ?
+            ORDER BY id DESC LIMIT 1";
+    $st = $conn->prepare($sql);
+    $st->execute(["%{$patient_q}%"]);
+    $patient = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+    if ($patient) $patient_id = (int)$patient["id"];
+  }
+} catch (Throwable $e) {
+  $err = "Error cargando paciente: " . $e->getMessage();
 }
 
-if (!$patient && $patient_q !== "") {
-  $st = $conn->prepare("SELECT id, full_name, document_no, phone, nationality
-                        FROM patients
-                        WHERE full_name LIKE ?
-                        ORDER BY id DESC LIMIT 1");
-  $st->execute(["%{$patient_q}%"]);
-  $patient = $st->fetch(PDO::FETCH_ASSOC) ?: null;
-  if ($patient) $patient_id = (int)$patient["id"];
-}
-
-if (!$patient) {
+if (!$patient && !$err) {
   $err = "Paciente no encontrado.";
 }
 
@@ -86,11 +179,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
     $cash_received = number0($_POST["cash_received"] ?? 0);
     $representative = trim((string)($_POST["representative"] ?? ""));
 
-    // líneas (items)
     $lines = $_POST["lines"] ?? [];
     if (!is_array($lines) || count($lines) === 0) throw new Exception("Debe agregar al menos un producto.");
 
-    // Validar cantidades
     $cleanLines = [];
     foreach ($lines as $k => $v) {
       $iid = (int)$k;
@@ -99,7 +190,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
     }
     if (count($cleanLines) === 0) throw new Exception("Debe agregar al menos un producto con cantidad válida.");
 
-    // Mapa de items
     $ids = array_keys($cleanLines);
     $in = implode(",", array_fill(0, count($ids), "?"));
     $stMap = $conn->prepare("SELECT id, category_id, name, sale_price FROM inventory_items WHERE id IN ($in)");
@@ -108,7 +198,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
     $map = [];
     foreach ($mapRows as $r) $map[(int)$r["id"]] = $r;
 
-    // Calcular subtotal
     $subtotal = 0.0;
     foreach ($cleanLines as $iid => $q) {
       if (!isset($map[(int)$iid])) continue;
@@ -118,14 +207,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
 
     $total = max(0.0, $subtotal - $coverage_amount);
 
-    // efectivo y cambio
     $change_due = 0.0;
     if (mb_strtoupper($payment_method) === "EFECTIVO") {
       $change_due = $cash_received - $total;
-      if ($change_due < 0) {
-        // permitir si quieres, pero normalmente se valida
-        // throw new Exception("Efectivo recibido insuficiente. Falta: " . number_format(abs($change_due), 2));
-      }
     } else {
       $cash_received = null;
       $change_due = null;
@@ -133,8 +217,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
 
     $conn->beginTransaction();
 
-    // Inserción flexible
-    $motivo = 'FACTURA';
+    // ===== INSERT CABECERA (con motivo si existe) =====
+    $motivo = "FACTURA";
+
     $cols = [
       "branch_id", "patient_id", "invoice_date", "payment_method",
       "subtotal", "total", "cash_received", "change_due", "created_by"
@@ -144,20 +229,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
       $subtotal, $total, $cash_received, $change_due, $created_by
     ];
 
-    // Guardamos cobertura en discount_amount si existe
     if (columnExists($conn, "invoices", "discount_amount")) {
       $cols[] = "discount_amount";
       $vals[] = $coverage_amount;
-    }
-
-    if (columnExists($conn, "invoices", "card_fee_amount")) {
-      $cols[] = "card_fee_amount";
-      $vals[] = 0.00;
-    }
-
-    if (columnExists($conn, "invoices", "card_fee_pct")) {
-      $cols[] = "card_fee_pct";
-      $vals[] = 0.00;
     }
 
     if ($representative !== "" && columnExists($conn, "invoices", "representative_name")) {
@@ -169,7 +243,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
       $vals[] = $representative;
     }
 
-    // Motivo (requerido en algunas instalaciones)
     if (columnExists($conn, "invoices", "motivo")) {
       $cols[] = "motivo";
       $vals[] = $motivo;
@@ -188,9 +261,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
     $sql = "INSERT INTO invoices (" . implode(",", $cols) . ") VALUES ($ph)";
     $stInv = $conn->prepare($sql);
     $stInv->execute($vals);
-
     $invoice_id = (int)$conn->lastInsertId();
 
+    // ===== ITEMS =====
     $stItem = $conn->prepare("
       INSERT INTO invoice_items (invoice_id, item_id, category_id, qty, unit_price, line_total)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -211,17 +284,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
 
       $stItem->execute([$invoice_id, (int)$iid, $catId, (int)$q, $price, $line_total]);
 
-      // actualizar stock
       try { $stU->execute([(int)$q, (int)$iid, $branch_id]); } catch (Throwable $e) {}
 
-      // registrar movimiento
       $note = "Factura #{$invoice_id}";
       try { $stMov->execute([(int)$iid, $branch_id, (int)$q, $note, $created_by]); } catch (Throwable $e) {}
     }
 
     $conn->commit();
 
-    // imprimir
     header("Location: imprimir.php?id=" . $invoice_id);
     exit;
 
@@ -261,7 +331,7 @@ $patient_name = $patient ? ($patient["full_name"] ?? "") : "";
     .btnrow{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
     .btn{border:none;border-radius:12px;padding:10px 14px;font-weight:900;cursor:pointer}
     .btn.primary{background:#0b4aa2;color:#fff}
-    .btn.light{background:#eef2ff;color:#0b4aa2}
+    .btn.light{background:#eef2ff;color:#0b4aa2;text-decoration:none;display:inline-flex;align-items:center}
     .tbl{width:100%;border-collapse:separate;border-spacing:0 8px}
     .tbl th{font-size:12px;color:#334155;text-align:left;padding:0 10px}
     .tbl td{background:#f8fafc;padding:10px;border:1px solid #e2e8f0}
@@ -275,9 +345,10 @@ $patient_name = $patient ? ($patient["full_name"] ?? "") : "";
 </head>
 <body>
 
-<?php include __DIR__ . "/../partials/_topbar.php"; ?>
+<?php if (file_exists(__DIR__ . "/../partials/_topbar.php")) include __DIR__ . "/../partials/_topbar.php"; ?>
+
 <div class="layout">
-  <?php include __DIR__ . "/../partials/_sidebar.php"; ?>
+  <?php if (file_exists(__DIR__ . "/../partials/_sidebar.php")) include __DIR__ . "/../partials/_sidebar.php"; ?>
 
   <main class="content">
     <div class="page-wrap">
@@ -401,7 +472,6 @@ $patient_name = $patient ? ($patient["full_name"] ?? "") : "";
             </div>
           </div>
 
-          <!-- inputs hidden de líneas -->
           <div id="hiddenLines"></div>
         </form>
       </div>
@@ -428,7 +498,7 @@ $patient_name = $patient ? ($patient["full_name"] ?? "") : "";
   const tTotal = document.getElementById('tTotal');
   const tChange = document.getElementById('tChange');
 
-  let lines = {}; // {item_id: {name, cat, price, qty}}
+  let lines = {}; // {item_id: {id,name,price,qty}}
 
   function filterItems(){
     const c = Number(cat.value||0);
@@ -458,7 +528,6 @@ $patient_name = $patient ? ($patient["full_name"] ?? "") : "";
     }
     tChange.textContent = fmt(change);
 
-    // hidden inputs para POST
     hidden.innerHTML = '';
     Object.values(lines).forEach(l=>{
       const inp = document.createElement('input');
@@ -476,10 +545,13 @@ $patient_name = $patient ? ($patient["full_name"] ?? "") : "";
 
       const td1 = document.createElement('td');
       td1.textContent = l.name;
+
       const td2 = document.createElement('td');
       td2.textContent = l.qty;
+
       const td3 = document.createElement('td');
       td3.textContent = fmt(l.price);
+
       const td4 = document.createElement('td');
       td4.textContent = fmt(l.price * l.qty);
 
