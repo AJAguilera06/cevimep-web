@@ -115,11 +115,49 @@ try {
  */
 $invCols = tableColumns($conn, "inventory_items");
 
-$colItemId   = "id";
-$colCat      = in_array("category_id", $invCols, true) ? "category_id" : (in_array("cat_id", $invCols, true) ? "cat_id" : (in_array("category", $invCols, true) ? "category" : "category_id"));
-$colName     = in_array("name", $invCols, true) ? "name" : (in_array("item_name", $invCols, true) ? "item_name" : (in_array("descripcion", $invCols, true) ? "descripcion" : "name"));
-$colPrice    = in_array("sale_price", $invCols, true) ? "sale_price" : (in_array("price", $invCols, true) ? "price" : (in_array("unit_price", $invCols, true) ? "unit_price" : (in_array("precio", $invCols, true) ? "precio" : "sale_price")));
-$colActive   = in_array("active", $invCols, true) ? "active" : (in_array("is_active", $invCols, true) ? "is_active" : (in_array("status", $invCols, true) ? "status" : null);
+$colItemId = "id";
+
+// category
+$colCat = "category_id";
+if (in_array("category_id", $invCols, true)) {
+  $colCat = "category_id";
+} elseif (in_array("cat_id", $invCols, true)) {
+  $colCat = "cat_id";
+} elseif (in_array("category", $invCols, true)) {
+  $colCat = "category";
+}
+
+// name
+$colName = "name";
+if (in_array("name", $invCols, true)) {
+  $colName = "name";
+} elseif (in_array("item_name", $invCols, true)) {
+  $colName = "item_name";
+} elseif (in_array("descripcion", $invCols, true)) {
+  $colName = "descripcion";
+}
+
+// price
+$colPrice = "sale_price";
+if (in_array("sale_price", $invCols, true)) {
+  $colPrice = "sale_price";
+} elseif (in_array("price", $invCols, true)) {
+  $colPrice = "price";
+} elseif (in_array("unit_price", $invCols, true)) {
+  $colPrice = "unit_price";
+} elseif (in_array("precio", $invCols, true)) {
+  $colPrice = "precio";
+}
+
+// active/status (puede no existir)
+$colActive = null;
+if (in_array("active", $invCols, true)) {
+  $colActive = "active";
+} elseif (in_array("is_active", $invCols, true)) {
+  $colActive = "is_active";
+} elseif (in_array("status", $invCols, true)) {
+  $colActive = "status";
+}
 
 $items_all = [];
 try {
@@ -131,8 +169,6 @@ try {
   $sql .= " ORDER BY $colName ASC";
   $items_all = $conn->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Throwable $e) {}
-
-/* Si no cargó ningún item, mostramos un aviso visual en el formulario (abajo). */
 
 /* ===== POST: guardar ===== */
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["action"] === "save_invoice") {
@@ -237,15 +273,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
     }
 
     // ===== CAJA: registrar ingreso si aplica (si tu caja_lib lo maneja) =====
-    // Si tienes una función existente, mantenemos compat sin romper:
     if (function_exists("caja_registrar_ingreso_factura")) {
       @caja_registrar_ingreso_factura($conn, $invoice_id);
     }
 
     $conn->commit();
 
-    // Imprimir automáticamente y redirigir si tú ya tienes print.php / recibo.php:
-    // Ajusta según tu ruta real. Por defecto, mostramos OK y dejamos el botón imprimir.
     $ok = "Factura creada (#{$invoice_id}).";
   } catch (Throwable $e) {
     if ($conn->inTransaction()) $conn->rollBack();
@@ -291,10 +324,8 @@ $today = date("Y-m-d");
     .money{white-space:nowrap;font-weight:900}
     .totals{max-width:260px;margin-left:auto;background:#f8fafc;border:1px solid rgba(2,21,44,.08);border-radius:14px;padding:12px}
     .totals .row{display:flex;justify-content:space-between;gap:10px;margin:6px 0;font-weight:900}
-    .muted{opacity:.7;font-weight:800}
     .mini{font-size:12px;opacity:.75;font-weight:700}
 
-    /* Ajustes para que el contenido pueda scrollear dentro del layout (styles.css) */
     .content{
       align-items:flex-start;
       justify-content:center;
@@ -304,11 +335,7 @@ $today = date("Y-m-d");
     }
     .page-wrap{max-width:1100px;margin:0 auto;padding:18px;width:100%;}
     .card{border-radius:18px;}
-    /* Inputs un poco más "dashboard" */
-    input,select,textarea{
-      font-family:inherit;
-    }
-    /* Botón principal */
+    input,select,textarea{font-family:inherit;}
     .btn.primary{background:#0b4d87;}
   </style>
 </head>
