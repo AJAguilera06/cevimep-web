@@ -36,115 +36,64 @@ function number0($v): float {
 }
 
 /**
- * Devuelve expresiones SQL seguras para nombre/documento/teléfono/nacionalidad
- * según las columnas que existan en la tabla patients.
+ * Devuelve expresiones SQL seguras para nombre/documento/teléfono/nac
+ * sin asumir el esquema exacto de `patients`.
  */
-function patientsSelectParts(PDO $pdo): array {
+function patientExprs(PDO $pdo): array {
   $cols = tableColumns($pdo, "patients");
-  $has = fn($c) => in_array($c, $cols, true);
 
-  // Nombre
-  $nameSelect = "CAST(id AS CHAR) AS full_name";
-  $nameWhere  = "CAST(id AS CHAR)";
+  $first = in_array("first_name", $cols, true) ? "first_name" : (in_array("nombres", $cols, true) ? "nombres" : null);
+  $last  = in_array("last_name",  $cols, true) ? "last_name"  : (in_array("apellidos", $cols, true) ? "apellidos" : null);
+  $full  = in_array("full_name",  $cols, true) ? "full_name"  : (in_array("nombre", $cols, true) ? "nombre" : null);
 
-  if ($has("full_name")) {
-    $nameSelect = "full_name";
-    $nameWhere  = "full_name";
-  } elseif ($has("name")) {
-    $nameSelect = "name AS full_name";
-    $nameWhere  = "name";
-  } elseif ($has("paciente")) {
-    $nameSelect = "paciente AS full_name";
-    $nameWhere  = "paciente";
-  } elseif ($has("nombres") && $has("apellidos")) {
-    $nameSelect = "CONCAT(nombres,' ',apellidos) AS full_name";
-    $nameWhere  = "CONCAT(nombres,' ',apellidos)";
-  } elseif ($has("nombre") && $has("apellido")) {
-    $nameSelect = "CONCAT(nombre,' ',apellido) AS full_name";
-    $nameWhere  = "CONCAT(nombre,' ',apellido)";
-  } elseif ($has("nombre_completo")) {
-    $nameSelect = "nombre_completo AS full_name";
-    $nameWhere  = "nombre_completo";
-  } elseif ($has("nombre")) {
-    $nameSelect = "nombre AS full_name";
-    $nameWhere  = "nombre";
+  $doc   = in_array("document",   $cols, true) ? "document"   : (in_array("cedula", $cols, true) ? "cedula" : (in_array("pasaporte", $cols, true) ? "pasaporte" : null));
+  $tel   = in_array("phone",      $cols, true) ? "phone"      : (in_array("telefono", $cols, true) ? "telefono" : (in_array("tel", $cols, true) ? "tel" : null));
+  $nac   = in_array("nationality",$cols, true) ? "nationality": (in_array("nacionalidad", $cols, true) ? "nacionalidad" : null);
+
+  if ($full) {
+    $nameExpr = "COALESCE(NULLIF(TRIM($full),''),'')";
+  } elseif ($first || $last) {
+    $parts = [];
+    if ($first) $parts[] = "COALESCE(NULLIF(TRIM($first),''),'')";
+    if ($last)  $parts[] = "COALESCE(NULLIF(TRIM($last),''),'')";
+    $nameExpr = "TRIM(CONCAT(" . implode(",' ',", $parts) . "))";
+  } else {
+    $nameExpr = "''";
   }
 
-  // Documento
-  $docSelect = "NULL AS document_no";
-  if ($has("document_no")) $docSelect = "document_no";
-  elseif ($has("cedula"))  $docSelect = "cedula AS document_no";
-  elseif ($has("documento")) $docSelect = "documento AS document_no";
-  elseif ($has("dni")) $docSelect = "dni AS document_no";
+  $docExpr = $doc ? "COALESCE(NULLIF(TRIM($doc),''),'')" : "''";
+  $telExpr = $tel ? "COALESCE(NULLIF(TRIM($tel),''),'')" : "''";
+  $nacExpr = $nac ? "COALESCE(NULLIF(TRIM($nac),''),'')" : "''";
 
-  // Teléfono
-  $phoneSelect = "NULL AS phone";
-  if ($has("phone")) $phoneSelect = "phone";
-  elseif ($has("telefono")) $phoneSelect = "telefono AS phone";
-  elseif ($has("celular")) $phoneSelect = "celular AS phone";
-  elseif ($has("movil")) $phoneSelect = "movil AS phone";
-
-  // Nacionalidad
-  $natSelect = "NULL AS nationality";
-  if ($has("nationality")) $natSelect = "nationality";
-  elseif ($has("nacionalidad")) $natSelect = "nacionalidad AS nationality";
-
-  return [
-    "name_select" => $nameSelect,
-    "name_where"  => $nameWhere,
-    "doc_select"  => $docSelect,
-    "phone_select"=> $phoneSelect,
-    "nat_select"  => $natSelect,
-  ];
+  return [$nameExpr, $docExpr, $telExpr, $nacExpr];
 }
 
-/* ===== contexto ===== */
 $user = $_SESSION["user"] ?? [];
-$today = date("Y-m-d");
-$now_dt = date("Y-m-d H:i:s");
-
-$branch_id = (int)($user["branch_id"] ?? 0);
-$created_by = (int)($user["id"] ?? 0);
+$patient_id = (int)($_GET["patient_id"] ?? 0);
 
 $err = "";
 $ok  = "";
 
-/* ===== input ===== */
-$patient_id = (int)($_GET["patient_id"] ?? 0);
-$patient_q  = trim((string)($_GET["q"] ?? ""));
-
-/* ===== cargar paciente (CORREGIDO full_name) ===== */
+/* ===== cargar paciente ===== */
 $patient = null;
-
+$patient_name = "";
 try {
-  $p = patientsSelectParts($conn);
-
   if ($patient_id > 0) {
-    $sql = "SELECT id,
-                   {$p["name_select"]} ,
-                   {$p["doc_select"]},
-                   {$p["phone_select"]},
-                   {$p["nat_select"]}
-            FROM patients
-            WHERE id=? LIMIT 1";
-    $st = $conn->prepare($sql);
+    [$nameExpr, $docExpr, $telExpr, $nacExpr] = patientExprs($conn);
+    $st = $conn->prepare("
+      SELECT
+        id,
+        $nameExpr AS _name,
+        $docExpr  AS _doc,
+        $telExpr  AS _phone,
+        $nacExpr  AS _nat
+      FROM patients
+      WHERE id=?
+      LIMIT 1
+    ");
     $st->execute([$patient_id]);
     $patient = $st->fetch(PDO::FETCH_ASSOC) ?: null;
-  }
-
-  if (!$patient && $patient_q !== "") {
-    $sql = "SELECT id,
-                   {$p["name_select"]} ,
-                   {$p["doc_select"]},
-                   {$p["phone_select"]},
-                   {$p["nat_select"]}
-            FROM patients
-            WHERE {$p["name_where"]} LIKE ?
-            ORDER BY id DESC LIMIT 1";
-    $st = $conn->prepare($sql);
-    $st->execute(["%{$patient_q}%"]);
-    $patient = $st->fetch(PDO::FETCH_ASSOC) ?: null;
-    if ($patient) $patient_id = (int)$patient["id"];
+    $patient_name = (string)($patient["_name"] ?? "");
   }
 } catch (Throwable $e) {
   $err = "Error cargando paciente: " . $e->getMessage();
@@ -160,23 +109,43 @@ try {
   $cats = $conn->query("SELECT id, name FROM inventory_categories ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Throwable $e) {}
 
+/**
+ * Inventario (compat): en algunos ambientes la columna `active` no existe.
+ * También normalizamos nombres de columnas para no romper el selector de productos.
+ */
+$invCols = tableColumns($conn, "inventory_items");
+
+$colItemId   = "id";
+$colCat      = in_array("category_id", $invCols, true) ? "category_id" : (in_array("cat_id", $invCols, true) ? "cat_id" : (in_array("category", $invCols, true) ? "category" : "category_id"));
+$colName     = in_array("name", $invCols, true) ? "name" : (in_array("item_name", $invCols, true) ? "item_name" : (in_array("descripcion", $invCols, true) ? "descripcion" : "name"));
+$colPrice    = in_array("sale_price", $invCols, true) ? "sale_price" : (in_array("price", $invCols, true) ? "price" : (in_array("unit_price", $invCols, true) ? "unit_price" : (in_array("precio", $invCols, true) ? "precio" : "sale_price")));
+$colActive   = in_array("active", $invCols, true) ? "active" : (in_array("is_active", $invCols, true) ? "is_active" : (in_array("status", $invCols, true) ? "status" : null);
+
 $items_all = [];
 try {
-  $items_all = $conn->query("SELECT id, category_id, name, sale_price FROM inventory_items WHERE active=1 ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+  $sql = "SELECT $colItemId AS id, $colCat AS category_id, $colName AS name, $colPrice AS sale_price FROM inventory_items";
+  if ($colActive !== null) {
+    // status/active típico: 1 = activo
+    $sql .= " WHERE $colActive=1";
+  }
+  $sql .= " ORDER BY $colName ASC";
+  $items_all = $conn->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Throwable $e) {}
+
+/* Si no cargó ningún item, mostramos un aviso visual en el formulario (abajo). */
 
 /* ===== POST: guardar ===== */
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["action"] === "save_invoice") {
   try {
     if ($patient_id <= 0) throw new Exception("Paciente inválido.");
 
-    $invoice_date = trim((string)($_POST["invoice_date"] ?? $today));
-    if ($invoice_date === "") $invoice_date = $today;
-
-    $payment_method = trim((string)($_POST["payment_method"] ?? "EFECTIVO"));
+    $invoice_date    = trim((string)($_POST["invoice_date"] ?? date("Y-m-d")));
+    $payment_method  = trim((string)($_POST["payment_method"] ?? "EFECTIVO"));
+    $cash_received   = ($_POST["cash_received"] ?? null);
     $coverage_amount = number0($_POST["coverage_amount"] ?? 0);
 
-    $cash_received = number0($_POST["cash_received"] ?? 0);
+    $cash_received = ($cash_received === "" || $cash_received === null) ? null : number0($cash_received);
+
     $representative = trim((string)($_POST["representative"] ?? ""));
 
     $lines = $_POST["lines"] ?? [];
@@ -192,7 +161,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
 
     $ids = array_keys($cleanLines);
     $in = implode(",", array_fill(0, count($ids), "?"));
-    $stMap = $conn->prepare("SELECT id, category_id, name, sale_price FROM inventory_items WHERE id IN ($in)");
+    $stMap = $conn->prepare("SELECT $colItemId AS id, $colCat AS category_id, $colName AS name, $colPrice AS sale_price FROM inventory_items WHERE $colItemId IN ($in)");
     $stMap->execute($ids);
     $mapRows = $stMap->fetchAll(PDO::FETCH_ASSOC) ?: [];
     $map = [];
@@ -209,7 +178,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
 
     $change_due = 0.0;
     if (mb_strtoupper($payment_method) === "EFECTIVO") {
-      $change_due = $cash_received - $total;
+      $change_due = (float)number0($cash_received ?? 0) - $total;
     } else {
       $cash_received = null;
       $change_due = null;
@@ -218,91 +187,73 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
     $conn->beginTransaction();
 
     // ===== INSERT CABECERA (con motivo si existe) =====
-    $motivo = "FACTURA";
+    $motivo = "";
+    if (isset($_POST["motivo"])) $motivo = trim((string)$_POST["motivo"]);
 
-    $cols = [
-      "branch_id", "patient_id", "invoice_date", "payment_method",
-      "subtotal", "total", "cash_received", "change_due", "created_by"
-    ];
-    $vals = [
-      $branch_id, $patient_id, $invoice_date, $payment_method,
-      $subtotal, $total, $cash_received, $change_due, $created_by
-    ];
+    // Compat: invoices puede variar. Intentamos lo más estable.
+    $invCols2 = tableColumns($conn, "invoices");
+    $hasMotivo = in_array("motivo", $invCols2, true);
+    $hasRep = in_array("representative", $invCols2, true);
+    $hasCov = in_array("coverage_amount", $invCols2, true);
+    $hasCash = in_array("cash_received", $invCols2, true);
+    $hasChange = in_array("change_due", $invCols2, true);
 
-    if (columnExists($conn, "invoices", "discount_amount")) {
-      $cols[] = "discount_amount";
-      $vals[] = $coverage_amount;
-    }
+    $fields = ["patient_id","invoice_date","payment_method","subtotal","total"];
+    $vals   = [$patient_id,$invoice_date,$payment_method,$subtotal,$total];
 
-    if ($representative !== "" && columnExists($conn, "invoices", "representative_name")) {
-      $cols[] = "representative_name";
-      $vals[] = $representative;
-    }
-    if ($representative !== "" && columnExists($conn, "invoices", "representative")) {
-      $cols[] = "representative";
-      $vals[] = $representative;
-    }
+    if ($hasCov)   { $fields[]="coverage_amount"; $vals[]=$coverage_amount; }
+    if ($hasCash)  { $fields[]="cash_received"; $vals[]=$cash_received; }
+    if ($hasChange){ $fields[]="change_due"; $vals[]=$change_due; }
+    if ($hasRep)   { $fields[]="representative"; $vals[]=$representative; }
+    if ($hasMotivo){ $fields[]="motivo"; $vals[]=$motivo; }
 
-    if (columnExists($conn, "invoices", "motivo")) {
-      $cols[] = "motivo";
-      $vals[] = $motivo;
-    }
-
-    if (columnExists($conn, "invoices", "created_at")) {
-      $cols[] = "created_at";
-      $vals[] = $now_dt;
-    }
-    if (columnExists($conn, "invoices", "created_on")) {
-      $cols[] = "created_on";
-      $vals[] = $now_dt;
-    }
-
-    $ph = implode(",", array_fill(0, count($cols), "?"));
-    $sql = "INSERT INTO invoices (" . implode(",", $cols) . ") VALUES ($ph)";
-    $stInv = $conn->prepare($sql);
-    $stInv->execute($vals);
+    $place = implode(",", array_fill(0, count($fields), "?"));
+    $sqlInv = "INSERT INTO invoices (" . implode(",", $fields) . ") VALUES ($place)";
+    $stIns = $conn->prepare($sqlInv);
+    $stIns->execute($vals);
     $invoice_id = (int)$conn->lastInsertId();
 
-    // ===== ITEMS =====
-    $stItem = $conn->prepare("
-      INSERT INTO invoice_items (invoice_id, item_id, category_id, qty, unit_price, line_total)
-      VALUES (?, ?, ?, ?, ?, ?)
-    ");
+    // ===== INSERT LÍNEAS =====
+    // Compat: invoice_lines puede variar
+    $lineCols = tableColumns($conn, "invoice_lines");
+    $hasUnit = in_array("unit_price", $lineCols, true);
+    $hasLineTotal = in_array("line_total", $lineCols, true);
 
-    $stU = $conn->prepare("UPDATE inventory_stock SET quantity = quantity - ? WHERE item_id=? AND branch_id=?");
-
-    $stMov = $conn->prepare("
-      INSERT INTO inventory_movements (item_id, branch_id, movement_type, qty, note, created_by)
-      VALUES (?, ?, 'OUT', ?, ?, ?)
+    $stLine = $conn->prepare("
+      INSERT INTO invoice_lines (invoice_id, item_id, qty" . ($hasUnit ? ", unit_price" : "") . ($hasLineTotal ? ", line_total" : "") . ")
+      VALUES (?" . ", ?" . ", ?" . ($hasUnit ? ", ?" : "") . ($hasLineTotal ? ", ?" : "") . ")
     ");
 
     foreach ($cleanLines as $iid => $q) {
       if (!isset($map[(int)$iid])) continue;
-      $price = (float)$map[(int)$iid]["sale_price"];
-      $catId = (int)($map[(int)$iid]["category_id"] ?? 0);
-      $line_total = $price * (int)$q;
+      $unit = (float)$map[(int)$iid]["sale_price"];
+      $lt   = $unit * (int)$q;
 
-      $stItem->execute([$invoice_id, (int)$iid, $catId, (int)$q, $price, $line_total]);
+      $args = [$invoice_id, (int)$iid, (int)$q];
+      if ($hasUnit) $args[] = $unit;
+      if ($hasLineTotal) $args[] = $lt;
 
-      try { $stU->execute([(int)$q, (int)$iid, $branch_id]); } catch (Throwable $e) {}
+      $stLine->execute($args);
+    }
 
-      $note = "Factura #{$invoice_id}";
-      try { $stMov->execute([(int)$iid, $branch_id, (int)$q, $note, $created_by]); } catch (Throwable $e) {}
+    // ===== CAJA: registrar ingreso si aplica (si tu caja_lib lo maneja) =====
+    // Si tienes una función existente, mantenemos compat sin romper:
+    if (function_exists("caja_registrar_ingreso_factura")) {
+      @caja_registrar_ingreso_factura($conn, $invoice_id);
     }
 
     $conn->commit();
 
-    header("Location: imprimir.php?id=" . $invoice_id);
-    exit;
-
+    // Imprimir automáticamente y redirigir si tú ya tienes print.php / recibo.php:
+    // Ajusta según tu ruta real. Por defecto, mostramos OK y dejamos el botón imprimir.
+    $ok = "Factura creada (#{$invoice_id}).";
   } catch (Throwable $e) {
     if ($conn->inTransaction()) $conn->rollBack();
     $err = $e->getMessage();
   }
 }
 
-/* ===== UI ===== */
-$patient_name = $patient ? ($patient["full_name"] ?? "") : "";
+$today = date("Y-m-d");
 ?>
 <!doctype html>
 <html lang="es">
@@ -310,7 +261,8 @@ $patient_name = $patient ? ($patient["full_name"] ?? "") : "";
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Nueva factura - CEVIMEP</title>
-  <link rel="stylesheet" href="/public/assets/css/paciente.css?v=<?php echo time(); ?>">
+  <link rel="stylesheet" href="/public/assets/css/styles.css?v=<?php echo time(); ?>">
+  <link rel="stylesheet" href="/public/assets/css/facturacion.css?v=<?php echo time(); ?>">
   <style>
     .page-wrap{max-width:1100px;margin:0 auto;padding:18px}
     .card{background:#fff;border-radius:18px;box-shadow:0 10px 25px rgba(0,0,0,.08);padding:18px}
@@ -328,19 +280,36 @@ $patient_name = $patient ? ($patient["full_name"] ?? "") : "";
     input:focus,select:focus{border-color:#2563eb;box-shadow:0 0 0 4px rgba(37,99,235,.12)}
     .section{margin-top:14px}
     .section h3{margin:0 0 10px;font-size:15px;font-weight:900;color:#0f172a}
-    .btnrow{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
-    .btn{border:none;border-radius:12px;padding:10px 14px;font-weight:900;cursor:pointer}
-    .btn.primary{background:#0b4aa2;color:#fff}
-    .btn.light{background:#eef2ff;color:#0b4aa2;text-decoration:none;display:inline-flex;align-items:center}
-    .tbl{width:100%;border-collapse:separate;border-spacing:0 8px}
-    .tbl th{font-size:12px;color:#334155;text-align:left;padding:0 10px}
-    .tbl td{background:#f8fafc;padding:10px;border:1px solid #e2e8f0}
-    .tbl td:first-child{border-top-left-radius:12px;border-bottom-left-radius:12px}
-    .tbl td:last-child{border-top-right-radius:12px;border-bottom-right-radius:12px}
-    .totals{margin-top:10px;display:flex;justify-content:flex-end}
-    .totbox{min-width:260px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px}
-    .totline{display:flex;justify-content:space-between;margin:6px 0;font-weight:800}
-    .totline.big{font-size:14px}
+    .btnrow{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
+    .btn{height:40px;border-radius:12px;border:1px solid transparent;padding:0 14px;font-weight:900;cursor:pointer}
+    .btn.primary{background:#0b4d87;color:#fff}
+    .btn.light{background:#eef2ff;color:#1e3a8a;border-color:#dbeafe}
+    .lines{width:100%;border-collapse:separate;border-spacing:0;margin-top:10px}
+    .lines th,.lines td{padding:10px 10px;border-bottom:1px solid #eef2f6;font-size:13px}
+    .lines th{color:#0b4d87;text-align:left;font-weight:900;font-size:12px}
+    .lines tr:last-child td{border-bottom:none}
+    .money{white-space:nowrap;font-weight:900}
+    .totals{max-width:260px;margin-left:auto;background:#f8fafc;border:1px solid rgba(2,21,44,.08);border-radius:14px;padding:12px}
+    .totals .row{display:flex;justify-content:space-between;gap:10px;margin:6px 0;font-weight:900}
+    .muted{opacity:.7;font-weight:800}
+    .mini{font-size:12px;opacity:.75;font-weight:700}
+
+    /* Ajustes para que el contenido pueda scrollear dentro del layout (styles.css) */
+    .content{
+      align-items:flex-start;
+      justify-content:center;
+      text-align:left;
+      overflow:auto;
+      padding:24px 0;
+    }
+    .page-wrap{max-width:1100px;margin:0 auto;padding:18px;width:100%;}
+    .card{border-radius:18px;}
+    /* Inputs un poco más "dashboard" */
+    input,select,textarea{
+      font-family:inherit;
+    }
+    /* Botón principal */
+    .btn.primary{background:#0b4d87;}
   </style>
 </head>
 <body>
@@ -365,46 +334,46 @@ $patient_name = $patient ? ($patient["full_name"] ?? "") : "";
           <div class="alert ok"><?php echo h($ok); ?></div>
         <?php endif; ?>
 
-        <form method="post" id="frmInvoice" autocomplete="off">
+        <form method="post" id="invoiceForm" autocomplete="off">
           <input type="hidden" name="action" value="save_invoice">
 
           <div class="section">
             <h3>Datos de la factura</h3>
-
             <div class="grid">
               <div>
                 <label>Fecha</label>
-                <input type="date" name="invoice_date" value="<?php echo h($_POST["invoice_date"] ?? $today); ?>">
+                <input type="date" name="invoice_date" value="<?php echo h($today); ?>">
               </div>
               <div>
                 <label>Método de pago</label>
                 <select name="payment_method" id="payment_method">
-                  <?php
-                  $pm = strtoupper((string)($_POST["payment_method"] ?? "EFECTIVO"));
-                  $methods = ["EFECTIVO", "TARJETA", "TRANSFERENCIA"];
-                  foreach ($methods as $mth) {
-                    $sel = ($pm === $mth) ? "selected" : "";
-                    echo "<option value=\"{$mth}\" {$sel}>{$mth}</option>";
-                  }
-                  ?>
+                  <option value="EFECTIVO">EFECTIVO</option>
+                  <option value="TARJETA">TARJETA</option>
+                  <option value="TRANSFERENCIA">TRANSFERENCIA</option>
                 </select>
               </div>
-            </div>
 
-            <div class="grid">
-              <div>
+              <div id="cash_box">
                 <label>Efectivo recibido (solo efectivo)</label>
-                <input type="number" step="0.01" name="cash_received" id="cash_received" value="<?php echo h($_POST["cash_received"] ?? "0.00"); ?>">
+                <input type="number" step="0.01" name="cash_received" id="cash_received" value="0.00">
               </div>
+
               <div>
                 <label>Cobertura (RD$)</label>
-                <input type="number" step="0.01" name="coverage_amount" id="coverage_amount" value="<?php echo h($_POST["coverage_amount"] ?? "0.00"); ?>">
+                <input type="number" step="0.01" name="coverage_amount" id="coverage_amount" value="0.00">
               </div>
-            </div>
 
-            <div>
-              <label>Representante (opcional)</label>
-              <input type="text" name="representative" value="<?php echo h($_POST["representative"] ?? ""); ?>" placeholder="Nombre del representante / tutor">
+              <div style="grid-column:1 / -1;">
+                <label>Representante (opcional)</label>
+                <input type="text" name="representative" placeholder="Nombre del representante / tutor">
+              </div>
+
+              <?php if (columnExists($conn, "invoices", "motivo")): ?>
+                <div style="grid-column:1 / -1;">
+                  <label>Motivo (opcional)</label>
+                  <input type="text" name="motivo" placeholder="Ej: Vacuna / Consulta / Procedimiento...">
+                </div>
+              <?php endif; ?>
             </div>
           </div>
 
@@ -434,6 +403,12 @@ $patient_name = $patient ? ($patient["full_name"] ?? "") : "";
                 </select>
               </div>
 
+              <?php if (empty($items_all)): ?>
+                <div class="alert err" style="margin-top:10px;">
+                  No se pudieron cargar los productos del inventario. Verifica la tabla <b>inventory_items</b> (columnas y/o estado activo).
+                </div>
+              <?php endif; ?>
+
               <div>
                 <label>Cantidad</label>
                 <input type="number" id="qty" value="1" min="1">
@@ -444,31 +419,29 @@ $patient_name = $patient ? ($patient["full_name"] ?? "") : "";
               </div>
             </div>
 
-            <table class="tbl" style="margin-top:10px;">
+            <table class="lines" id="linesTable">
               <thead>
                 <tr>
-                  <th>Producto</th>
-                  <th style="width:110px;">Cantidad</th>
-                  <th style="width:140px;">Precio</th>
-                  <th style="width:140px;">Total</th>
-                  <th style="width:60px;"></th>
+                  <th style="width:55%;">Producto</th>
+                  <th style="width:15%;">Cantidad</th>
+                  <th style="width:15%;">Precio</th>
+                  <th style="width:15%;">Total</th>
                 </tr>
               </thead>
-              <tbody id="linesBody"></tbody>
+              <tbody></tbody>
             </table>
 
-            <div class="totals">
-              <div class="totbox">
-                <div class="totline"><span>Subtotal</span><span id="tSubtotal">RD$ 0.00</span></div>
-                <div class="totline"><span>Cobertura</span><span id="tCoverage">RD$ 0.00</span></div>
-                <div class="totline big"><span>Total a pagar</span><span id="tTotal">RD$ 0.00</span></div>
-                <div class="totline"><span>Cambio</span><span id="tChange">RD$ 0.00</span></div>
-              </div>
+            <div class="totals" style="margin-top:12px;">
+              <div class="row"><span>Subtotal</span><span class="money" id="t_sub">RD$ 0.00</span></div>
+              <div class="row"><span>Cobertura</span><span class="money" id="t_cov">RD$ 0.00</span></div>
+              <div class="row"><span>Total a pagar</span><span class="money" id="t_total">RD$ 0.00</span></div>
+              <div class="row"><span>Cambio</span><span class="money" id="t_change">RD$ 0.00</span></div>
+              <div class="mini">* El cambio solo aplica en EFECTIVO.</div>
             </div>
 
             <div class="btnrow">
-              <a href="index.php" class="btn light">Cancelar</a>
-              <button type="submit" class="btn primary">Guardar y imprimir</button>
+              <a class="btn light" href="/private/facturacion/index.php">Cancelar</a>
+              <button type="submit" class="btn primary" id="btnSave">Guardar y imprimir</button>
             </div>
           </div>
 
@@ -479,124 +452,139 @@ $patient_name = $patient ? ($patient["full_name"] ?? "") : "";
   </main>
 </div>
 
+<?php if (file_exists(__DIR__ . "/../partials/_footer.php")) include __DIR__ . "/../partials/_footer.php"; ?>
+
 <script>
 (function(){
-  const fmt = (n)=> 'RD$ ' + (Number(n||0).toFixed(2));
-  const cat = document.getElementById('cat_filter');
-  const sel = document.getElementById('item_select');
-  const qty = document.getElementById('qty');
-  const btn = document.getElementById('btnAdd');
-  const body = document.getElementById('linesBody');
-  const hidden = document.getElementById('hiddenLines');
+  const money = (n)=> {
+    n = Number(n||0);
+    return "RD$ " + n.toFixed(2);
+  };
 
-  const cashInput = document.getElementById('cash_received');
-  const covInput = document.getElementById('coverage_amount');
-  const pmSelect = document.getElementById('payment_method');
+  const payment = document.getElementById("payment_method");
+  const cashBox = document.getElementById("cash_box");
+  const cashInp = document.getElementById("cash_received");
+  const covInp  = document.getElementById("coverage_amount");
 
-  const tSubtotal = document.getElementById('tSubtotal');
-  const tCoverage = document.getElementById('tCoverage');
-  const tTotal = document.getElementById('tTotal');
-  const tChange = document.getElementById('tChange');
+  const catFilter = document.getElementById("cat_filter");
+  const itemSel   = document.getElementById("item_select");
+  const qtyInp    = document.getElementById("qty");
+  const btnAdd    = document.getElementById("btnAdd");
 
-  let lines = {}; // {item_id: {id,name,price,qty}}
+  const tbody     = document.querySelector("#linesTable tbody");
+  const hidden    = document.getElementById("hiddenLines");
+
+  const tSub    = document.getElementById("t_sub");
+  const tCov    = document.getElementById("t_cov");
+  const tTotal  = document.getElementById("t_total");
+  const tChange = document.getElementById("t_change");
+
+  let lines = {}; // {id: {name, price, qty, cat}}
+
+  function syncPaymentUI(){
+    const m = (payment.value || "").toUpperCase();
+    const isCash = (m === "EFECTIVO");
+    cashBox.style.display = isCash ? "block" : "none";
+    if (!isCash) cashInp.value = "";
+    recalc();
+  }
 
   function filterItems(){
-    const c = Number(cat.value||0);
-    [...sel.options].forEach((op, i)=>{
-      if(i===0) return;
-      const oc = Number(op.dataset.cat||0);
-      op.hidden = (c!==0 && oc!==c);
+    const c = Number(catFilter.value||0);
+    [...itemSel.options].forEach((opt, idx)=>{
+      if (idx===0) return;
+      const oc = Number(opt.dataset.cat||0);
+      opt.hidden = (c>0 && oc!==c);
     });
-    if (sel.selectedOptions[0] && sel.selectedOptions[0].hidden) sel.value = "0";
+    if (itemSel.selectedOptions[0] && itemSel.selectedOptions[0].hidden) itemSel.value="0";
+  }
+
+  function render(){
+    tbody.innerHTML = "";
+    hidden.innerHTML = "";
+    Object.keys(lines).forEach((id)=>{
+      const it = lines[id];
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><strong>${it.name}</strong></td>
+        <td>
+          <input type="number" min="1" value="${it.qty}" style="max-width:90px"
+            data-id="${id}" class="qtyLine">
+        </td>
+        <td class="money">${money(it.price)}</td>
+        <td class="money">${money(it.price*it.qty)}</td>
+      `;
+      tbody.appendChild(tr);
+
+      const inp = document.createElement("input");
+      inp.type="hidden";
+      inp.name = `lines[${id}]`;
+      inp.value = String(it.qty);
+      hidden.appendChild(inp);
+    });
+
+    [...document.querySelectorAll(".qtyLine")].forEach(inp=>{
+      inp.addEventListener("input", ()=>{
+        const id = inp.dataset.id;
+        const q  = Math.max(1, parseInt(inp.value||"1",10));
+        lines[id].qty = q;
+        render();
+        recalc();
+      });
+    });
   }
 
   function recalc(){
     let subtotal = 0;
-    Object.values(lines).forEach(l => subtotal += (l.price * l.qty));
-    const coverage = Number(covInput.value||0);
-    const total = Math.max(0, subtotal - coverage);
+    Object.keys(lines).forEach((id)=>{
+      const it = lines[id];
+      subtotal += (Number(it.price)||0) * (Number(it.qty)||0);
+    });
 
-    tSubtotal.textContent = fmt(subtotal);
-    tCoverage.textContent = fmt(coverage);
-    tTotal.textContent = fmt(total);
+    const cov = Math.max(0, Number(covInp.value||0));
+    const total = Math.max(0, subtotal - cov);
 
     let change = 0;
-    if ((pmSelect.value||'').toUpperCase() === 'EFECTIVO') {
-      change = Number(cashInput.value||0) - total;
+    if ((payment.value||"").toUpperCase()==="EFECTIVO"){
+      const cash = Number(cashInp.value||0);
+      change = cash - total;
     } else {
       change = 0;
     }
-    tChange.textContent = fmt(change);
 
-    hidden.innerHTML = '';
-    Object.values(lines).forEach(l=>{
-      const inp = document.createElement('input');
-      inp.type = 'hidden';
-      inp.name = 'lines['+l.id+']';
-      inp.value = l.qty;
-      hidden.appendChild(inp);
-    });
+    tSub.textContent = money(subtotal);
+    tCov.textContent = money(cov);
+    tTotal.textContent = money(total);
+    tChange.textContent = money(change);
   }
 
-  function render(){
-    body.innerHTML = '';
-    Object.values(lines).forEach(l=>{
-      const tr = document.createElement('tr');
+  btnAdd.addEventListener("click", ()=>{
+    const opt = itemSel.selectedOptions[0];
+    const id  = Number(itemSel.value||0);
+    const qty = Math.max(1, parseInt(qtyInp.value||"1",10));
+    if (!id || !opt) return;
 
-      const td1 = document.createElement('td');
-      td1.textContent = l.name;
+    const name = opt.textContent.trim();
+    const price = Number(opt.dataset.price||0);
+    const cat = Number(opt.dataset.cat||0);
 
-      const td2 = document.createElement('td');
-      td2.textContent = l.qty;
+    if (!lines[id]) lines[id] = {name, price, qty:0, cat};
+    lines[id].qty += qty;
 
-      const td3 = document.createElement('td');
-      td3.textContent = fmt(l.price);
-
-      const td4 = document.createElement('td');
-      td4.textContent = fmt(l.price * l.qty);
-
-      const td5 = document.createElement('td');
-      const x = document.createElement('button');
-      x.type='button'; x.textContent='✕';
-      x.className='btn light';
-      x.style.padding='6px 10px';
-      x.onclick=()=>{ delete lines[l.id]; render(); recalc(); };
-      td5.appendChild(x);
-
-      tr.appendChild(td1);
-      tr.appendChild(td2);
-      tr.appendChild(td3);
-      tr.appendChild(td4);
-      tr.appendChild(td5);
-      body.appendChild(tr);
-    });
-  }
-
-  btn.addEventListener('click', ()=>{
-    const id = Number(sel.value||0);
-    if(!id) return;
-    const op = sel.selectedOptions[0];
-    const name = op.textContent.trim();
-    const price = Number(op.dataset.price||0);
-    const q = Math.max(1, Number(qty.value||1));
-
-    if(lines[id]) lines[id].qty += q;
-    else lines[id] = {id, name, price, qty:q};
-
-    render(); recalc();
-  });
-
-  cat.addEventListener('change', filterItems);
-  covInput.addEventListener('input', recalc);
-  cashInput.addEventListener('input', recalc);
-  pmSelect.addEventListener('change', ()=>{
-    const isCash = (pmSelect.value||'').toUpperCase() === 'EFECTIVO';
-    cashInput.disabled = !isCash;
-    if(!isCash) cashInput.value = '0.00';
+    render();
     recalc();
   });
 
+  payment.addEventListener("change", syncPaymentUI);
+  cashInp.addEventListener("input", recalc);
+  covInp.addEventListener("input", recalc);
+  catFilter.addEventListener("change", ()=>{
+    filterItems();
+  });
+
+  // init
   filterItems();
+  syncPaymentUI();
   recalc();
 })();
 </script>
