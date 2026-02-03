@@ -11,7 +11,7 @@ $user = $_SESSION["user"] ?? [];
 $branch_id = (int)($user["branch_id"] ?? 0);
 
 $id  = (int)($_GET["id"] ?? 0);
-$rep_get = trim((string)($_GET["rep"] ?? ""));
+$rep = trim((string)($_GET["rep"] ?? ""));
 
 if ($branch_id <= 0) { die("Sucursal inválida."); }
 if ($id <= 0) { die("Factura inválida."); }
@@ -45,14 +45,8 @@ if (colExists($conn, "patients", "full_name")) {
 /* =========================
    CABECERA FACTURA (invoices)
 ========================= */
-$invHasRep = colExists($conn, "invoices", "representative");
-$invHasCreatedAt = colExists($conn, "invoices", "created_at");
-$selectExtra = "";
-if ($invHasRep) { $selectExtra .= ", i.representative"; }
-if ($invHasCreatedAt) { $selectExtra .= ", i.created_at"; }
-
 $sql = "
-SELECT i.id, i.invoice_date, i.payment_method, i.subtotal, i.total{$selectExtra},
+SELECT i.id, i.invoice_date, i.payment_method, i.subtotal, i.total,
        {$patientNameExpr} AS patient_name,
        b.name AS branch_name
 FROM invoices i
@@ -99,17 +93,6 @@ $fecha    = (string)($inv["invoice_date"] ?? "");
 $paciente = (string)($inv["patient_name"] ?? "");
 $sucursal = (string)($inv["branch_name"] ?? "");
 $pago     = strtoupper((string)($inv["payment_method"] ?? "EFECTIVO"));
-$rep_db  = ($invHasRep && isset($inv["representative"])) ? trim((string)$inv["representative"]) : "";
-$rep     = ($rep_get !== "") ? $rep_get : $rep_db;
-$hora    = "";
-if ($invHasCreatedAt && !empty($inv["created_at"])) {
-  try {
-    $dt = new DateTime((string)$inv["created_at"]);
-    $hora = $dt->format('h:i A');
-  } catch (Exception $e) {
-    $hora = "";
-  }
-}
 $total    = (float)($inv["total"] ?? 0);
 $year     = date("Y");
 
@@ -178,7 +161,8 @@ foreach ($logoCandidates as $path) {
     <img src="<?= h($logoSrc) ?>" class="logo" alt="CEVIMEP">
   <?php endif; ?>
 
-    <div class="center subtitle">CENTRO DE VACUNACIÓN INTEGRAL</div>
+  <div class="center title">CEVIMEP</div>
+  <div class="center subtitle">CENTRO DE VACUNACIÓN INTEGRAL</div>
   <div class="center subtitle">Y MEDICINA PREVENTIVA</div>
   <div class="center branch"><?= h($sucursal) ?></div>
 
@@ -186,9 +170,6 @@ foreach ($logoCandidates as $path) {
 
   <div><span class="bold">Factura:</span> #<?= (int)$id ?></div>
   <div><span class="bold">Fecha:</span> <?= h($fecha) ?></div>
-  <?php if ($hora !== ""): ?>
-    <div><span class="bold">Hora:</span> <?= h($hora) ?></div>
-  <?php endif; ?>
   <div><span class="bold">Paciente:</span> <?= h($paciente) ?></div>
 
   <?php if ($rep !== ""): ?>
