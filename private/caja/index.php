@@ -254,7 +254,7 @@ try {
 
           <div class="actions">
             <!-- ✅ Mantengo tus links tal cual -->
-            <a class="btn-pill" href="/private/caja/desembolso.php">Desembolso</a>
+            <a class="btn-pill" href="/private/caja/desembolso.php">Desembolsos</a>
             <a class="btn-pill" href="/private/caja/reporte_diario.php">Reporte diario</a>
             <a class="btn-pill" href="/private/caja/reporte_mensual.php">Reporte mensual</a>
           </div>
