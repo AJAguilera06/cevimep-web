@@ -177,7 +177,7 @@ if (!function_exists('caja_registrar_ingreso_factura')) {
     }
 
     // description
-    foreach (['description','descripcion','note','nota','detalle','concepto'] as $c) {
+    foreach (['motivo','description','descripcion','note','nota','detalle','concepto','reason'] as $c) {
       if ($has($c)) { $data[$c] = $desc; break; }
     }
 
