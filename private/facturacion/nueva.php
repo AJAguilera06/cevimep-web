@@ -195,7 +195,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
 
     $representative = trim((string)($_POST["representative"] ?? ""));
 
-    $lines = $_POST["lines"] ?? [];
+    
+    if ($representative === "") throw new Exception("Debe ingresar el representante.");
+$lines = $_POST["lines"] ?? [];
     if (!is_array($lines) || count($lines) === 0) throw new Exception("Debe agregar al menos un producto.");
 
     $cleanLines = [];
@@ -253,7 +255,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
     $hasCash    = in_array("cash_received", $invCols2, true);
     $hasChange  = in_array("change_due", $invCols2, true);
     $hasNotes   = in_array("notes", $invCols2, true);
-    $hasCreated = in_array("created_by", $invCols2, true);
+    
+    // Si la columna representative no existe, guardamos el representante dentro de notes para no perderlo.
+    if (!$hasRep && $representative !== "" && $hasNotes) {
+      $notes = trim((string)$notes);
+      $tag = "Representante: " . $representative;
+      if ($notes === "") {
+        $notes = $tag;
+      } elseif (stripos($notes, "Representante:") === false) {
+        $notes .= " | " . $tag;
+      }
+    }
+$hasCreated = in_array("created_by", $invCols2, true);
 
     // branch_id: debe venir de la sesión (no del formulario)
     $branch_id = (int)($user["branch_id"] ?? 0);
@@ -515,7 +528,7 @@ $today = date("Y-m-d");
               </div>
 
               <div style="grid-column:1 / -1;">
-                <label>Representante (opcional)</label>
+                <label>Representante</label>
                 <input type="text" name="representative" placeholder="Nombre del representante / tutor">
               </div>
 
