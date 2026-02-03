@@ -131,7 +131,13 @@ if (!function_exists('caja_registrar_ingreso_factura')) {
 
     $now = date('Y-m-d H:i:s');
     $desc = "INGRESO POR FACTURA #{$invoice_id}";
-    $tipo = 'INGRESO';
+    // Normalizar para que coincida con los reportes de caja (index.php)
+    $tipo = 'ingreso';
+    $method = strtolower(trim($method));
+    // aliases comunes
+    if (in_array($method, ['tc','card','tarjeta_debito','tarjeta_credito'], true)) $method = 'tarjeta';
+    if (in_array($method, ['transf','transfer'], true)) $method = 'transferencia';
+    if (in_array($method, ['cash'], true)) $method = 'efectivo';
 
     $data = [];
 
