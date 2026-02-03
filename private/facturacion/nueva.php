@@ -295,12 +295,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
 
     // ===== INSERT LÍNEAS =====
     // Compat: puede llamarse invoice_items o invoice_lines (según el esquema)
-    $linesTable = tableExists($conn, "invoice_items") ? "invoice_items" : (tableExists($conn, "invoice_lines") ? "invoice_lines" : "");
-    if ($linesTable === "") throw new RuntimeException("No existe la tabla de detalle de factura (invoice_items/invoice_lines).");
-
+    $linesTable = "invoice_items"; // esquema actual
     $lineCols = tableColumns($conn, $linesTable);
-
-    $colItem = in_array("item_id", $lineCols, true) ? "item_id" : (in_array("inventory_item_id", $lineCols, true) ? "inventory_item_id" : "item_id");
+    if (!$lineCols) throw new RuntimeException("No se pudo leer la estructura de invoice_items.");
+$colItem = in_array("item_id", $lineCols, true) ? "item_id" : (in_array("inventory_item_id", $lineCols, true) ? "inventory_item_id" : "item_id");
     $colQty  = in_array("qty", $lineCols, true) ? "qty" : (in_array("quantity", $lineCols, true) ? "quantity" : "qty");
 
     $hasUnit = in_array("unit_price", $lineCols, true) || in_array("price", $lineCols, true);
