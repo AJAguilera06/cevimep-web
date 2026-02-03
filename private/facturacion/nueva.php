@@ -353,6 +353,7 @@ if (function_exists('caja_registrar_ingreso_factura')) {
 
 $conn->commit();
 
+    $last_invoice_id = $invoice_id;
     $ok = "Factura creada (#{$invoice_id}).";
   } catch (Throwable $e) {
     if ($conn->inTransaction()) $conn->rollBack();
@@ -473,6 +474,15 @@ $today = date("Y-m-d");
         <?php endif; ?>
         <?php if ($ok): ?>
           <div class="alert ok"><?php echo h($ok); ?></div>
+        <?php endif; ?>
+
+        <?php if ($ok && !empty($last_invoice_id)): ?>
+          <script>
+          (function(){
+            var url = "/private/facturacion/imprimir.php?id=<?php echo (int)$last_invoice_id; ?>";
+            window.open(url, "_blank");
+          })();
+          </script>
         <?php endif; ?>
 
         <form method="post" id="invoiceForm" autocomplete="off">
