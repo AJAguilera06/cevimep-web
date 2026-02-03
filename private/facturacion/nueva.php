@@ -294,48 +294,53 @@ $today = date("Y-m-d");
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Nueva factura - CEVIMEP</title>
-  <link rel="stylesheet" href="/assets/css/styles.css?v=50">
-  <link rel="stylesheet" href="/assets/css/facturacion.css?v=50">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=<?php echo time(); ?>">
+  <link rel="stylesheet" href="/assets/css/facturacion.css?v=<?php echo time(); ?>">
+  <style>
+    .page-wrap{max-width:1100px;margin:0 auto;padding:18px}
+    .card{background:#fff;border-radius:18px;box-shadow:0 10px 25px rgba(0,0,0,.08);padding:18px}
+    .title{font-size:34px;font-weight:900;text-align:center;margin:10px 0 8px}
+    .subtitle{font-size:14px;color:#334155;text-align:center;margin-bottom:10px;font-weight:600}
+    .alert{padding:10px 12px;border-radius:12px;margin:10px auto;max-width:900px}
+    .alert.err{background:#fee2e2;border:1px solid #fecaca;color:#991b1b}
+    .alert.ok{background:#dcfce7;border:1px solid #bbf7d0;color:#166534}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+    .grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
+    @media(max-width:900px){.grid,.grid3,.grid4{grid-template-columns:1fr}}
+    label{font-weight:800;font-size:12px;color:#0f172a;display:block;margin-bottom:6px}
+    input,select{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #e2e8f0;outline:none}
+    input:focus,select:focus{border-color:#2563eb;box-shadow:0 0 0 4px rgba(37,99,235,.12)}
+    .section{margin-top:14px}
+    .section h3{margin:0 0 10px;font-size:15px;font-weight:900;color:#0f172a}
+    .btnrow{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
+    .btn{height:40px;border-radius:12px;border:1px solid transparent;padding:0 14px;font-weight:900;cursor:pointer}
+    .btn.primary{background:#0b4d87;color:#fff}
+    .btn.light{background:#eef2ff;color:#1e3a8a;border-color:#dbeafe}
+    .lines{width:100%;border-collapse:separate;border-spacing:0;margin-top:10px}
+    .lines th,.lines td{padding:10px 10px;border-bottom:1px solid #eef2f6;font-size:13px}
+    .lines th{color:#0b4d87;text-align:left;font-weight:900;font-size:12px}
+    .lines tr:last-child td{border-bottom:none}
+    .money{white-space:nowrap;font-weight:900}
+    .totals{max-width:260px;margin-left:auto;background:#f8fafc;border:1px solid rgba(2,21,44,.08);border-radius:14px;padding:12px}
+    .totals .row{display:flex;justify-content:space-between;gap:10px;margin:6px 0;font-weight:900}
+    .mini{font-size:12px;opacity:.75;font-weight:700}
+
+    .content{
+      align-items:flex-start;
+      justify-content:center;
+      text-align:left;
+      overflow:auto;
+      padding:24px 0;
+    }
+    .page-wrap{max-width:1100px;margin:0 auto;padding:18px;width:100%;}
+    .card{border-radius:18px;}
+    input,select,textarea{font-family:inherit;}
+    .btn.primary{background:#0b4d87;}
+  </style>
 </head>
 <body>
 
-
-<!-- TOPBAR -->
-<header class="navbar">
-    <div class="inner">
-        <div class="brand">
-            <span class="dot"></span>
-            <span>CEVIMEP</span>
-        </div>
-
-        <div class="nav-right">
-            <a href="/logout.php" class="btn-pill">Salir</a>
-        </div>
-    </div>
-</header>
-
-<div class="layout">
-
-    <!-- SIDEBAR -->
-    <aside class="sidebar">
-        <div class="menu-title">Menú</div>
-
-        <nav class="menu">
-            <a href="/private/dashboard.php">🏠 Panel</a>
-            <a href="/private/patients/index.php">👤 Pacientes</a>
-            <a href="/private/citas/index.php">📅 Citas</a>
-            <a class="active" href="/private/facturacion/index.php">🧾 Facturación</a>
-            <a href="/private/caja/index.php">💳 Caja</a>
-            <a href="/private/inventario/index.php">📦 Inventario</a>
-            <a href="/private/estadistica/index.php">📊 Estadísticas</a>
-        </nav>
-    </aside>
-
-    <!-- CONTENIDO -->
-    <main class="content">
-
-<div class="fact-wrap">
-  <div class="fact-card">
 <?php if (file_exists(__DIR__ . "/../partials/_topbar.php")) include __DIR__ . "/../partials/_topbar.php"; ?>
 
 <div class="layout">
@@ -610,13 +615,6 @@ $today = date("Y-m-d");
   recalc();
 })();
 </script>
-  </div>
-</div>
 
-</main>
-</div>
-
-<footer class="footer">
-    © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
-</footer>
-
+</body>
+</html>
