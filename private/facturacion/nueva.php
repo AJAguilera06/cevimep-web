@@ -294,8 +294,8 @@ $today = date("Y-m-d");
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Nueva factura - CEVIMEP</title>
-  <link rel="stylesheet" href="/public/assets/css/styles.css?v=<?php echo time(); ?>">
-  <link rel="stylesheet" href="/public/assets/css/facturacion.css?v=<?php echo time(); ?>">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=50">
+  <link rel="stylesheet" href="/assets/css/facturacion.css?v=50">
   <style>
     .page-wrap{max-width:1100px;margin:0 auto;padding:18px}
     .card{background:#fff;border-radius:18px;box-shadow:0 10px 25px rgba(0,0,0,.08);padding:18px}
@@ -338,6 +338,18 @@ $today = date("Y-m-d");
     input,select,textarea{font-family:inherit;}
     .btn.primary{background:#0b4d87;}
   </style>
+
+  <style>
+    /* Ajustes para páginas con formularios largos dentro del layout */
+    .content.content-scroll{
+      align-items:flex-start;
+      justify-content:center;
+      overflow:auto;
+      padding: 18px 0;
+      text-align:left;
+    }
+  </style>
+
 </head>
 <body>
 
@@ -346,7 +358,7 @@ $today = date("Y-m-d");
 <div class="layout">
   <?php if (file_exists(__DIR__ . "/../partials/_sidebar.php")) include __DIR__ . "/../partials/_sidebar.php"; ?>
 
-  <main class="content">
+  <main class="content content-scroll">
     <div class="page-wrap">
       <div class="card">
         <div class="title">Nueva factura</div>
