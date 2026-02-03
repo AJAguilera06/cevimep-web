@@ -228,6 +228,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
 
     // Compat: invoices puede variar. Intentamos lo más estable.
     $invCols2 = tableColumns($conn, "invoices");
+    $branch_id = (int)($user["branch_id"] ?? 0);
+    $hasBranch = in_array("branch_id", $invCols2, true);
     $hasMotivo = in_array("motivo", $invCols2, true);
     $hasRep = in_array("representative", $invCols2, true);
     $hasCov = in_array("coverage_amount", $invCols2, true);
@@ -236,6 +238,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
 
     $fields = ["patient_id","invoice_date","payment_method","subtotal","total"];
     $vals   = [$patient_id,$invoice_date,$payment_method,$subtotal,$total];
+
+    // branch_id requerido en algunos esquemas (sin default).
+    if (isset($hasBranch) && $hasBranch) { $fields[]="branch_id"; $vals[]=$branch_id; }
 
     if ($hasCov)   { $fields[]="coverage_amount"; $vals[]=$coverage_amount; }
     if ($hasCash)  { $fields[]="cash_received"; $vals[]=$cash_received; }
@@ -337,6 +342,12 @@ $today = date("Y-m-d");
     .card{border-radius:18px;}
     input,select,textarea{font-family:inherit;}
     .btn.primary{background:#0b4d87;}
+  </style>
+  <style>
+    /* Ajuste solo para esta pantalla: más ancho para evitar scroll */
+    .page-wrap{max-width:1280px !important; width:100% !important;}
+    .card{width:100% !important;}
+    .content{overflow:auto;}
   </style>
 </head>
 <body>
