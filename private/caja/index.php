@@ -71,15 +71,56 @@ function getSession(PDO $pdo, int $branchId, int $cajaNum, string $date, string 
   }
 }
 
-function getTotals(PDO $pdo, int $sessionId){
+function cashMovementsCols(PDO $pdo): array {
+  static $cached = null;
+  if (is_array($cached)) return $cached;
+
   try {
-    $st = $pdo->prepare("SELECT
-        COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='efectivo' THEN amount END),0) AS efectivo,
-        COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='tarjeta' THEN amount END),0) AS tarjeta,
-        COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='transferencia' THEN amount END),0) AS transferencia,
-        COALESCE(SUM(CASE WHEN type='desembolso' THEN amount END),0) AS desembolso
+    $st = $pdo->query("SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'cash_movements'");
+    $cols = $st->fetchAll(PDO::FETCH_COLUMN) ?: [];
+  } catch (Throwable $e) {
+    $cols = [];
+  }
+
+  $has = fn(string $c) => in_array($c, $cols, true);
+  $pick = function(array $cands) use ($has){
+    foreach ($cands as $c) if ($has($c)) return $c;
+    return null;
+  };
+
+  $cached = [
+    "session" => $pick(["session_id","cash_session_id","caja_session_id"]),
+    "type"    => $pick(["type","tipo","movement_type"]),
+    "method"  => $pick(["metodo_pago","payment_method","method","forma_pago"]),
+    "amount"  => $pick(["amount","monto","total","importe","valor"]),
+  ];
+  return $cached;
+}
+
+function getTotals(PDO $pdo, int $sessionId){
+  $cols = cashMovementsCols($pdo);
+
+  // Si la tabla/columnas no coinciden, no romper UI
+  if (!$cols["session"] || !$cols["type"] || !$cols["method"] || !$cols["amount"]) {
+    $r = ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0];
+    $ing = 0.0; $net = 0.0;
+    return [$r,$ing,$net];
+  }
+
+  $cSession = $cols["session"];
+  $cType    = $cols["type"];
+  $cMethod  = $cols["method"];
+  $cAmount  = $cols["amount"];
+
+  try {
+    $sql = "SELECT
+        COALESCE(SUM(CASE WHEN `$cType`='ingreso' AND `$cMethod`='efectivo' THEN `$cAmount` END),0) AS efectivo,
+        COALESCE(SUM(CASE WHEN `$cType`='ingreso' AND `$cMethod`='tarjeta' THEN `$cAmount` END),0) AS tarjeta,
+        COALESCE(SUM(CASE WHEN `$cType`='ingreso' AND `$cMethod`='transferencia' THEN `$cAmount` END),0) AS transferencia,
+        COALESCE(SUM(CASE WHEN `$cType`='desembolso' THEN `$cAmount` END),0) AS desembolso
       FROM cash_movements
-      WHERE session_id=?");
+      WHERE `$cSession`=?";
+    $st = $pdo->prepare($sql);
     $st->execute([$sessionId]);
     $r = $st->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0];
   } catch (Throwable $e) {
@@ -91,8 +132,9 @@ function getTotals(PDO $pdo, int $sessionId){
   return [$r,$ing,$net];
 }
 
-[$s1Start,$s1End] = ["08:00:00","13:00:00"];
-[$s2Start,$s2End] = ["13:00:00","18:00:00"];
+
+[$s1Start,$s1End] = caja_shift_times(1);
+[$s2Start,$s2End] = caja_shift_times(2);
 
 $caja1 = getSession($pdo, $branchId, 1, $today, $s1Start, $s1End);
 $caja2 = getSession($pdo, $branchId, 2, $today, $s2Start, $s2End);
