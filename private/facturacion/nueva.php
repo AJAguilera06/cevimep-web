@@ -326,12 +326,32 @@ $colItem = in_array("item_id", $lineCols, true) ? "item_id" : (in_array("invento
       $stLine->execute($args);
     }
 
-    // ===== CAJA: registrar ingreso si aplica (si tu caja_lib lo maneja) =====
-    if (function_exists("caja_registrar_ingreso_factura")) {
-      @caja_registrar_ingreso_factura($conn, $invoice_id);
-    }
+    // ===== CAJA: registrar ingreso si aplica =====
+if (function_exists('caja_registrar_ingreso_factura')) {
+  try {
+    $rf = new ReflectionFunction('caja_registrar_ingreso_factura');
+    $args = [];
+    foreach ($rf->getParameters() as $p) {
+      $n = strtolower($p->getName());
+      if (in_array($n, ['conn','pdo','db','cn','conexion'])) { $args[] = $conn; continue; }
+      if (str_contains($n, 'invoice') || $n === 'invoice_id' || $n === 'factura_id') { $args[] = $invoice_id; continue; }
+      if (str_contains($n, 'branch') || str_contains($n, 'sucursal')) { $args[] = $branch_id ?? null; continue; }
+      if (str_contains($n, 'user') || str_contains($n, 'created')) { $args[] = $created_by ?? null; continue; }
+      if (str_contains($n, 'total') || str_contains($n, 'amount') || str_contains($n, 'monto')) { $args[] = $total ?? 0; continue; }
+      if (str_contains($n, 'payment') || str_contains($n, 'metodo') || str_contains($n, 'method')) { $args[] = $payment_method ?? null; continue; }
+      if (str_contains($n, 'note') || str_contains($n, 'concept') || str_contains($n, 'concepto')) { $args[] = 'Factura #' . $invoice_id; continue; }
 
-    $conn->commit();
+      // fallback
+      $args[] = $p->isDefaultValueAvailable() ? $p->getDefaultValue() : null;
+    }
+    $rf->invokeArgs($args);
+  } catch (Throwable $e) {
+    // No detenemos la facturación si falla caja
+    // $errCaja = $e->getMessage();
+  }
+}
+
+$conn->commit();
 
     $ok = "Factura creada (#{$invoice_id}).";
   } catch (Throwable $e) {
