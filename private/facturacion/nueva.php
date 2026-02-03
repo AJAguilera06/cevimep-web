@@ -341,6 +341,39 @@ $today = date("Y-m-d");
 </head>
 <body>
 
+<!-- TOPBAR -->
+<header class="navbar">
+  <div class="inner">
+    <div class="brand">
+      <span class="dot"></span>
+      <span>CEVIMEP</span>
+    </div>
+
+    <div class="nav-right">
+      <a href="/logout.php" class="btn-pill">Salir</a>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="menu-title">Menú</div>
+
+    <nav class="menu">
+      <a href="/private/dashboard.php">🏠 Panel</a>
+      <a href="/private/patients/index.php">👤 Pacientes</a>
+      <a href="/private/citas/index.php">📅 Citas</a>
+      <a class="active" href="/private/facturacion/index.php">🧾 Facturación</a>
+      <a href="/private/caja/index.php">💳 Caja</a>
+      <a href="/private/inventario/index.php">📦 Inventario</a>
+      <a href="/private/estadistica/index.php">📊 Estadísticas</a>
+    </nav>
+  </aside>
+
+  <!-- CONTENIDO -->
+  <main class="content">
+
 <?php if (file_exists(__DIR__ . "/../partials/_topbar.php")) include __DIR__ . "/../partials/_topbar.php"; ?>
 
 <div class="layout">
@@ -615,6 +648,13 @@ $today = date("Y-m-d");
   recalc();
 })();
 </script>
+
+  </main>
+</div>
+
+<footer class="footer">
+  © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
+</footer>
 
 </body>
 </html>
