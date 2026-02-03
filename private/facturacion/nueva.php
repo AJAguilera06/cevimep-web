@@ -479,7 +479,7 @@ $today = date("Y-m-d");
         <?php if ($ok && !empty($last_invoice_id)): ?>
           <script>
           (function(){
-            var url = "/private/facturacion/imprimir.php?id=<?php echo (int)$last_invoice_id; ?>";
+            var url = "print.php?id=<?php echo (int)$last_invoice_id; ?>";
             window.open(url, "_blank");
           })();
           </script>
