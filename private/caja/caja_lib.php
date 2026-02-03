@@ -93,6 +93,13 @@ if (!function_exists("caja_get_or_open_current_session")) {
 if (!function_exists('caja_registrar_ingreso_factura')) {
   function caja_registrar_ingreso_factura(PDO $conn, int $branch_id, int $user_id, int $invoice_id, float $amount, string $method): bool
   {
+    $method = strtolower(trim($method));
+    // Normalizar métodos permitidos
+    if ($method === 'efectivo' || $method === 'cash') $method = 'efectivo';
+    if ($method === 'tarjeta' || $method === 'card') $method = 'tarjeta';
+    if ($method === 'transferencia' || $method === 'transfer') $method = 'transferencia';
+    if ($method === 'cobertura' || $method === 'seguro' || $method === 'insurance') $method = 'cobertura';
+
     $amount = round((float)$amount, 2);
     if ($amount <= 0) return true;
 
@@ -130,14 +137,9 @@ if (!function_exists('caja_registrar_ingreso_factura')) {
     $has = fn(string $c) => in_array($c, $cols, true);
 
     $now = date('Y-m-d H:i:s');
-    $desc = "INGRESO POR FACTURA #{$invoice_id}";
-    // Normalizar para que coincida con los reportes de caja (index.php)
+    $desc = "Factura #{$invoice_id}";
+    $motivo = $desc;
     $tipo = 'ingreso';
-    $method = strtolower(trim($method));
-    // aliases comunes
-    if (in_array($method, ['tc','card','tarjeta_debito','tarjeta_credito'], true)) $method = 'tarjeta';
-    if (in_array($method, ['transf','transfer'], true)) $method = 'transferencia';
-    if (in_array($method, ['cash'], true)) $method = 'efectivo';
 
     $data = [];
 
@@ -177,7 +179,7 @@ if (!function_exists('caja_registrar_ingreso_factura')) {
     }
 
     // description
-    foreach (['motivo','description','descripcion','note','nota','detalle','concepto','reason'] as $c) {
+    foreach (['motivo','description','descripcion','note','nota','detalle','concepto'] as $c) {
       if ($has($c)) { $data[$c] = $desc; break; }
     }
 

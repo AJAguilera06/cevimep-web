@@ -339,30 +339,28 @@ $colItem = in_array("item_id", $lineCols, true) ? "item_id" : (in_array("invento
       $stLine->execute($args);
     }
 
-    // ===== CAJA: registrar ingreso si aplica =====
-if (function_exists('caja_registrar_ingreso_factura')) {
-  try {
-    $rf = new ReflectionFunction('caja_registrar_ingreso_factura');
-    $args = [];
-    foreach ($rf->getParameters() as $p) {
-      $n = strtolower($p->getName());
-      if (in_array($n, ['conn','pdo','db','cn','conexion'])) { $args[] = $conn; continue; }
-      if (str_contains($n, 'invoice') || $n === 'invoice_id' || $n === 'factura_id') { $args[] = $invoice_id; continue; }
-      if (str_contains($n, 'branch') || str_contains($n, 'sucursal')) { $args[] = $branch_id ?? null; continue; }
-      if (str_contains($n, 'user') || str_contains($n, 'created')) { $args[] = $created_by ?? null; continue; }
-      if (str_contains($n, 'total') || str_contains($n, 'amount') || str_contains($n, 'monto')) { $args[] = $total ?? 0; continue; }
-      if (str_contains($n, 'payment') || str_contains($n, 'metodo') || str_contains($n, 'method')) { $args[] = $payment_method ?? null; continue; }
-      if (str_contains($n, 'note') || str_contains($n, 'concept') || str_contains($n, 'concepto')) { $args[] = 'Factura #' . $invoice_id; continue; }
+        // ===== CAJA: registrar ingresos de la factura =====
+    // Registra el pago (efectivo/tarjeta/transferencia) y, si aplica, la cobertura como ingreso separado.
+    if (function_exists('caja_registrar_ingreso_factura')) {
+      try {
+        $uid = (int)($user['id'] ?? 0);
+        $pm  = strtolower(trim((string)$payment_method));
+        // normalizar método
+        if ($pm === 'efectivo' || $pm === 'cash') $pm = 'efectivo';
+        if ($pm === 'tarjeta'  || $pm === 'card') $pm = 'tarjeta';
+        if ($pm === 'transferencia' || $pm === 'transfer') $pm = 'transferencia';
 
-      // fallback
-      $args[] = $p->isDefaultValueAvailable() ? $p->getDefaultValue() : null;
+        // Pago principal (total neto de cobertura)
+        caja_registrar_ingreso_factura($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$total, (string)$pm);
+
+        // Cobertura (si existe)
+        if ((float)$coverage_amount > 0) {
+          caja_registrar_ingreso_factura($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$coverage_amount, 'cobertura');
+        }
+      } catch (Throwable $e) {
+        // No detenemos la facturación si falla caja
+      }
     }
-    $rf->invokeArgs($args);
-  } catch (Throwable $e) {
-    // No detenemos la facturación si falla caja
-    // $errCaja = $e->getMessage();
-  }
-}
 
 $conn->commit();
 
