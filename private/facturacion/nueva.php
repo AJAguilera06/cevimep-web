@@ -29,6 +29,17 @@ function tableColumns(PDO $pdo, string $table): array {
   }
 }
 
+function tableExists(PDO $pdo, string $table): bool {
+  try {
+    $st = $pdo->prepare("SHOW TABLES LIKE ?");
+    $st->execute([$table]);
+    return (bool)$st->fetchColumn();
+  } catch (Throwable $e) {
+    return false;
+  }
+}
+
+
 function number0($v): float {
   if ($v === null) return 0.0;
   if (is_string($v)) $v = str_replace([",", " "], ["", ""], $v);
@@ -226,21 +237,49 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
     $motivo = "";
     if (isset($_POST["motivo"])) $motivo = trim((string)$_POST["motivo"]);
 
+    // Notas (opcional)
+    $notes = null;
+    if (isset($_POST["notes"])) {
+      $tmpNotes = trim((string)$_POST["notes"]);
+      $notes = ($tmpNotes === "") ? null : $tmpNotes;
+    }
+
     // Compat: invoices puede variar. Intentamos lo más estable.
     $invCols2 = tableColumns($conn, "invoices");
+    $hasBranch  = in_array("branch_id", $invCols2, true);
+    $hasMotivo  = in_array("motivo", $invCols2, true);
+    $hasRep     = in_array("representative", $invCols2, true);
+    $hasCov     = in_array("coverage_amount", $invCols2, true);
+    $hasCash    = in_array("cash_received", $invCols2, true);
+    $hasChange  = in_array("change_due", $invCols2, true);
+    $hasNotes   = in_array("notes", $invCols2, true);
+    $hasCreated = in_array("created_by", $invCols2, true);
+
+    // branch_id: debe venir de la sesión (no del formulario)
     $branch_id = (int)($user["branch_id"] ?? 0);
-    $hasBranch = in_array("branch_id", $invCols2, true);
-    $hasMotivo = in_array("motivo", $invCols2, true);
-    $hasRep = in_array("representative", $invCols2, true);
-    $hasCov = in_array("coverage_amount", $invCols2, true);
-    $hasCash = in_array("cash_received", $invCols2, true);
-    $hasChange = in_array("change_due", $invCols2, true);
+
+    // Fallback: si por alguna razón no viene en sesión, lo buscamos en users.
+    if ($branch_id <= 0 && isset($user["id"])) {
+      try {
+        $stB = $conn->prepare("SELECT branch_id FROM users WHERE id = ? LIMIT 1");
+        $stB->execute([(int)$user["id"]]);
+        $branch_id = (int)($stB->fetchColumn() ?: 0);
+      } catch (Throwable $e) { /* noop */ }
+    }
+
+    if ($hasBranch && $branch_id <= 0) {
+      throw new RuntimeException("No se pudo determinar la sucursal (branch_id) del usuario. Vuelve a iniciar sesión o verifica el usuario.");
+    }
 
     $fields = ["patient_id","invoice_date","payment_method","subtotal","total"];
     $vals   = [$patient_id,$invoice_date,$payment_method,$subtotal,$total];
 
-    // branch_id requerido en algunos esquemas (sin default).
-    if (isset($hasBranch) && $hasBranch) { $fields[]="branch_id"; $vals[]=$branch_id; }
+    // branch_id requerido (NOT NULL sin default en producción)
+    if ($hasBranch) { $fields[] = "branch_id"; $vals[] = $branch_id; }
+
+    // Auditoría / notas
+    if ($hasNotes)   { $fields[] = "notes"; $vals[] = ($notes ?? null); }
+    if ($hasCreated) { $fields[] = "created_by"; $vals[] = (int)($user["id"] ?? 0); }
 
     if ($hasCov)   { $fields[]="coverage_amount"; $vals[]=$coverage_amount; }
     if ($hasCash)  { $fields[]="cash_received"; $vals[]=$cash_received; }
@@ -255,15 +294,27 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["
     $invoice_id = (int)$conn->lastInsertId();
 
     // ===== INSERT LÍNEAS =====
-    // Compat: invoice_lines puede variar
-    $lineCols = tableColumns($conn, "invoice_lines");
-    $hasUnit = in_array("unit_price", $lineCols, true);
-    $hasLineTotal = in_array("line_total", $lineCols, true);
+    // Compat: puede llamarse invoice_items o invoice_lines (según el esquema)
+    $linesTable = tableExists($conn, "invoice_items") ? "invoice_items" : (tableExists($conn, "invoice_lines") ? "invoice_lines" : "");
+    if ($linesTable === "") throw new RuntimeException("No existe la tabla de detalle de factura (invoice_items/invoice_lines).");
 
-    $stLine = $conn->prepare("
-      INSERT INTO invoice_lines (invoice_id, item_id, qty" . ($hasUnit ? ", unit_price" : "") . ($hasLineTotal ? ", line_total" : "") . ")
-      VALUES (?" . ", ?" . ", ?" . ($hasUnit ? ", ?" : "") . ($hasLineTotal ? ", ?" : "") . ")
-    ");
+    $lineCols = tableColumns($conn, $linesTable);
+
+    $colItem = in_array("item_id", $lineCols, true) ? "item_id" : (in_array("inventory_item_id", $lineCols, true) ? "inventory_item_id" : "item_id");
+    $colQty  = in_array("qty", $lineCols, true) ? "qty" : (in_array("quantity", $lineCols, true) ? "quantity" : "qty");
+
+    $hasUnit = in_array("unit_price", $lineCols, true) || in_array("price", $lineCols, true);
+    $colUnit = in_array("unit_price", $lineCols, true) ? "unit_price" : (in_array("price", $lineCols, true) ? "price" : "unit_price");
+
+    $hasLineTotal = in_array("line_total", $lineCols, true) || in_array("total", $lineCols, true);
+    $colLineTotal = in_array("line_total", $lineCols, true) ? "line_total" : (in_array("total", $lineCols, true) ? "total" : "line_total");
+
+    $sqlLine = "INSERT INTO {$linesTable} (invoice_id, {$colItem}, {$colQty}"
+      . ($hasUnit ? ", {$colUnit}" : "")
+      . ($hasLineTotal ? ", {$colLineTotal}" : "")
+      . ") VALUES (?" . ", ?" . ", ?" . ($hasUnit ? ", ?" : "") . ($hasLineTotal ? ", ?" : "") . ")";
+
+    $stLine = $conn->prepare($sqlLine);
 
     foreach ($cleanLines as $iid => $q) {
       if (!isset($map[(int)$iid])) continue;
@@ -345,7 +396,8 @@ $today = date("Y-m-d");
   </style>
   <style>
     /* Ajuste solo para esta pantalla: más ancho para evitar scroll */
-    .page-wrap{max-width:1280px !important; width:100% !important;}
+    .page-wrap{max-width:1400px !important; width:100% !important;}
+    .fact-card{width:100% !important;}
     .card{width:100% !important;}
     .content{overflow:auto;}
   </style>
