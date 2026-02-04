@@ -1,13 +1,12 @@
 <?php
 declare(strict_types=1);
-session_start();
-
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 if (empty($_SESSION["user"])) {
-  header("Location: /login.php");
+  header("Location: ../../public/login.php");
   exit;
 }
 
-require_once __DIR__ . "/../../config/db.php";
+require_once __DIR__ . "/../config/db.php";
 
 date_default_timezone_set("America/Santo_Domingo");
 
@@ -18,7 +17,7 @@ $isAdmin  = (($user["role"] ?? "") === "admin");
 $branchId = (int)($user["branch_id"] ?? 0);
 
 if (!$isAdmin && $branchId <= 0) {
-  header("Location: /logout.php");
+  header("Location: ../../public/logout.php");
   exit;
 }
 
