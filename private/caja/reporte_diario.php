@@ -2,7 +2,7 @@
 declare(strict_types=1);
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 if (empty($_SESSION["user"])) {
-  header("Location: ../../public/login.php");
+  header("Location: /login.php");
   exit;
 }
 
@@ -17,7 +17,7 @@ $isAdmin  = (($user["role"] ?? "") === "admin");
 $branchId = (int)($user["branch_id"] ?? 0);
 
 if (!$isAdmin && $branchId <= 0) {
-  header("Location: ../../public/logout.php");
+  header("Location: /logout.php");
   exit;
 }
 
@@ -114,7 +114,7 @@ try {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CEVIMEP | Reporte Diario Caja</title>
-  <link rel="stylesheet" href="/public/assets/css/styles.css?v=11">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=50">
 
 
 
@@ -124,7 +124,6 @@ try {
   <style>
     .actions{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
     .
-/assets/css/styles.css
 
 
 Local{
@@ -134,7 +133,6 @@ Local{
       font-weight:900;text-decoration:none;cursor:pointer;
     }
     .
-/assets/css/styles.css
 
 
 Local:hover{box-shadow:0 10px 25px rgba(2,6,23,.10);}
@@ -162,7 +160,6 @@ Local:hover{box-shadow:0 10px 25px rgba(2,6,23,.10);}
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
       <a class="
-/assets/css/styles.css
 
 
 -pill" href="/logout.php">Salir</a>
@@ -200,7 +197,6 @@ Local:hover{box-shadow:0 10px 25px rgba(2,6,23,.10);}
             <input type="date" name="date" value="<?= h($date) ?>" style="border:0;outline:none;font-weight:800;">
           </div>
           <button class="
-/assets/css/styles.css
 
 
 Local" type="submit">Ver</button>
@@ -208,12 +204,10 @@ Local" type="submit">Ver</button>
 
         <div class="right actions">
           <a class="
-/assets/css/styles.css
 
 
 Local" href="/private/caja/index.php">Volver a Caja</a>
           <a class="
-/assets/css/styles.css
 
 
 Local" href="javascript:void(0)" onclick="window.print()">Imprimir</a>
