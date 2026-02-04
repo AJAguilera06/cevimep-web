@@ -263,35 +263,94 @@ endif;
 
   <link rel="stylesheet" href="/assets/css/styles.css?v=50">
 
-
-
-
-
-
   <style>
+    /* Ajustes solo para esta pantalla (respeta styles.css) */
     .cardBox{
-      background:#fff;border:1px solid #e6eef7;border-radius:22px;padding:18px;
+      background:#fff;
+      border:1px solid #e6eef7;
+      border-radius:22px;
+      padding:18px;
       box-shadow:0 10px 30px rgba(2,6,23,.08);
     }
     .muted{color:#6b7280;font-weight:700;}
     label{display:block;font-weight:900;margin-top:12px;color:#0b3b9a;}
-    input[type="text"]{width:100%;padding:10px 12px;border:1px solid #e6eef7;border-radius:14px;outline:none;}
-    .
+    input[type="text"]{
+      width:100%;
+      padding:10px 12px;
+      border:1px solid #e6eef7;
+      border-radius:14px;
+      outline:none;
+      background:#fff;
+    }
 
-
-Local{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:14px;border:1px solid #dbeafe;background:#fff;color:#052a7a;font-weight:900;text-decoration:none;cursor:pointer;}
-    .
-
-
-Local.primary{background:#e0f2fe;}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
-    .alert-ok{margin-top:10px;padding:10px 12px;border-radius:14px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;font-weight:900;}
-    .alert-err{margin-top:10px;padding:10px 12px;border-radius:14px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239;font-weight:900;}
-    .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;background:#f3f7ff;border:1px solid #dbeafe;color:#052a7a;font-weight:900;font-size:12px;}
-    table{width:100%;border-collapse:collapse;margin-top:12px;border:1px solid #e6eef7;border-radius:16px;overflow:hidden;}
+    .alert-ok{
+      margin-top:10px;padding:10px 12px;border-radius:14px;
+      background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;font-weight:900;
+    }
+    .alert-err{
+      margin-top:10px;padding:10px 12px;border-radius:14px;
+      background:#fff1f2;border:1px solid #fecdd3;color:#9f1239;font-weight:900;
+    }
+    .pill{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:6px 10px;border-radius:999px;
+      background:#f3f7ff;border:1px solid #dbeafe;
+      color:#052a7a;font-weight:900;font-size:12px;
+      white-space:nowrap;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      margin-top:12px;
+      border:1px solid #e6eef7;
+      border-radius:16px;
+      overflow:hidden;
+      background:#fff;
+    }
     th,td{padding:10px;border-bottom:1px solid #eef2f7;font-size:13px;text-align:left;}
     thead th{background:#f7fbff;color:#0b3b9a;font-weight:900;}
     .right{text-align:right;}
+
+    /* Layout más organizado: formulario + historial en 2 columnas */
+    .two-col{
+      display:grid;
+      grid-template-columns: 1.2fr .9fr;
+      gap:16px;
+      align-items:start;
+    }
+    @media (max-width: 980px){
+      .two-col{grid-template-columns: 1fr;}
+    }
+
+    /* Botones (sin romper el estilo global) */
+    .btnLocal{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      padding:10px 14px;
+      border-radius:14px;
+      border:1px solid #dbeafe;
+      background:#fff;
+      color:#052a7a;
+      font-weight:900;
+      text-decoration:none;
+      cursor:pointer;
+      transition: transform .05s ease, box-shadow .12s ease, background .12s ease, border-color .12s ease;
+      user-select:none;
+    }
+    .btnLocal:hover{box-shadow:0 10px 20px rgba(2,6,23,.08); transform: translateY(-1px);}
+    .btnLocal:active{transform: translateY(0); box-shadow:none;}
+    .btnLocal.primary{background:#e0f2fe;}
+    .btnLocal.print{
+      background: linear-gradient(180deg, #2563eb, #0b3b9a);
+      border-color: rgba(255,255,255,.18);
+      color:#fff;
+    }
+    .btnLocal.print:hover{box-shadow:0 14px 26px rgba(37,99,235,.25);}
+    button.btnLocal{appearance:none;}
   </style>
 </head>
 <body>
@@ -300,10 +359,7 @@ Local.primary{background:#e0f2fe;}
   <div class="inner">
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
-    <div class="nav-right"><a class="
-
-
--pill" href="/logout.php">Salir</a></div>
+    <div class="nav-right"><a class="pill" href="/logout.php">Salir</a></div>
   </div>
 </header>
 
@@ -327,90 +383,79 @@ Local.primary{background:#e0f2fe;}
       <p>Registra salida de dinero y revisa el historial del día.</p>
     </section>
 
-    <section class="card">
-      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
-        <div>
-          <h2 style="margin:0; color:var(--primary-2);">Registrar desembolso</h2>
-          <div class="muted" style="margin-top:6px;">Motivo y monto (RD$).</div>
-          <div style="margin-top:10px;">
-            <span class="pill">Caja actual: <?php echo (int)$currentCajaNum; ?></span>
-            <span class="pill">Sesión actual: <?php echo (int)$sessionId; ?></span>
-            <span class="pill">Fecha: <?php echo h($today); ?></span>
+    <div class="two-col">
+
+      <section class="card">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
+          <div>
+            <h2 style="margin:0; color:var(--primary-2);">Registrar desembolso</h2>
+            <div class="muted" style="margin-top:6px;">Motivo y monto (RD$).</div>
+            <div style="margin-top:10px;">
+              <span class="pill">Caja actual: <?php echo (int)$currentCajaNum; ?></span>
+              <span class="pill">Sesión actual: <?php echo (int)$sessionId; ?></span>
+              <span class="pill">Fecha: <?php echo h($today); ?></span>
+            </div>
+          </div>
+          <div class="row">
+            <a class="btnLocal print" href="desembolso.php?print=1" target="_blank">🖨️ Imprimir historial (día)</a>
           </div>
         </div>
-        <div class="row">
-          <a class="
 
+        <?php if ($success): ?><div class="alert-ok"><?php echo h($success); ?></div><?php endif; ?>
+        <?php if ($error): ?><div class="alert-err"><?php echo h($error); ?></div><?php endif; ?>
 
-Local" href="index.php">Volver</a>
-          <a class="
+        <form method="post" style="margin-top:12px;">
+          <label>Motivo</label>
+          <input type="text" name="motivo" value="<?php echo h($motivo); ?>" placeholder="Ej: Compra de agua, transporte, etc." required>
 
+          <label>Monto (RD$)</label>
+          <input type="text" name="monto" value="<?php echo h($monto); ?>" placeholder="Ej: 500" required>
 
-Local primary" href="desembolso.php?print=1" target="_blank">Imprimir historial (día)</a>
+          <div class="row" style="margin-top:14px;">
+            <button class="btnLocal primary" type="submit">Guardar</button>
+            <a class="btnLocal" href="index.php">Cancelar</a>
+          </div>
+        </form>
+      </section>
+
+      <section class="cardBox">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+          <div>
+            <h3 style="margin:0; color:#052a7a;">Historial del día</h3>
+            <div class="muted" style="margin-top:6px;">Últimos 500 desembolsos del día en esta sucursal.</div>
+          </div>
+          <div class="pill">TOTAL DÍA: RD$ <?php echo fmtMoney($totalDia); ?></div>
         </div>
-      </div>
 
-      <?php if ($success): ?><div class="alert-ok"><?php echo h($success); ?></div><?php endif; ?>
-      <?php if ($error): ?><div class="alert-err"><?php echo h($error); ?></div><?php endif; ?>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:70px;">ID</th>
+              <?php if ($createdCol): ?><th style="width:170px;">Fecha/Hora</th><?php endif; ?>
+              <th>Motivo</th>
+              <th style="width:120px;" class="right">Monto</th>
+              <th style="width:110px;">Usuario</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php if (empty($history)): ?>
+              <tr><td colspan="<?php echo $createdCol ? 5 : 4; ?>" class="muted">No hay desembolsos registrados hoy.</td></tr>
+            <?php else: ?>
+              <?php foreach ($history as $r): ?>
+                <tr>
+                  <td>#<?php echo (int)$r["id"]; ?></td>
+                  <?php if ($createdCol): ?><td><?php echo h($r["created_time"] ?? ""); ?></td><?php endif; ?>
+                  <td><?php echo h($r["motivo"] ?? ""); ?></td>
+                  <td class="right">RD$ <?php echo fmtMoney($r["amount"] ?? 0); ?></td>
+                  <td><?php echo (int)($r["created_by"] ?? 0); ?></td>
+                </tr>
+              <?php endforeach; ?>
+            <?php endif; ?>
+          </tbody>
+        </table>
+      </section>
 
-      <form method="post" style="margin-top:12px;">
-        <label>Motivo</label>
-        <input type="text" name="motivo" value="<?php echo h($motivo); ?>" placeholder="Ej: Compra de agua, transporte, etc." required>
-
-        <label>Monto (RD$)</label>
-        <input type="text" name="monto" value="<?php echo h($monto); ?>" placeholder="Ej: 500" required>
-
-        <div class="row" style="margin-top:14px;">
-          <button class="
-
-
-Local primary" type="submit">Guardar</button>
-          <a class="
-
-
-Local" href="index.php">Cancelar</a>
-        </div>
-      </form>
-    </section>
-
-    <div style="height:14px;"></div>
-
-    <section class="cardBox">
-      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-end;">
-        <div>
-          <h3 style="margin:0; color:#052a7a;">Historial del día</h3>
-          <div class="muted" style="margin-top:6px;">Últimos 500 desembolsos del día en esta sucursal.</div>
-        </div>
-        <div class="pill">TOTAL DÍA: RD$ <?php echo fmtMoney($totalDia); ?></div>
-      </div>
-
-      <table>
-        <thead>
-          <tr>
-            <th style="width:70px;">ID</th>
-            <?php if ($createdCol): ?><th style="width:170px;">Fecha/Hora</th><?php endif; ?>
-            <th>Motivo</th>
-            <th style="width:120px;" class="right">Monto</th>
-            <th style="width:110px;">Usuario</th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php if (empty($history)): ?>
-            <tr><td colspan="<?php echo $createdCol ? 5 : 4; ?>" class="muted">No hay desembolsos registrados hoy.</td></tr>
-          <?php else: ?>
-            <?php foreach ($history as $r): ?>
-              <tr>
-                <td>#<?php echo (int)$r["id"]; ?></td>
-                <?php if ($createdCol): ?><td><?php echo h($r["created_time"] ?? ""); ?></td><?php endif; ?>
-                <td><?php echo h($r["motivo"] ?? ""); ?></td>
-                <td class="right">RD$ <?php echo fmtMoney($r["amount"] ?? 0); ?></td>
-                <td><?php echo (int)($r["created_by"] ?? 0); ?></td>
-              </tr>
-            <?php endforeach; ?>
-          <?php endif; ?>
-        </tbody>
-      </table>
-    </section>
+    </div>
 
   </main>
 </div>
