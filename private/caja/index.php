@@ -71,78 +71,35 @@ function getSession(PDO $pdo, int $branchId, int $cajaNum, string $date, string 
   }
 }
 
-function cashMovementsCols(PDO $pdo): array {
-  static $cached = null;
-  if (is_array($cached)) return $cached;
-
-  try {
-    $st = $pdo->query("SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'cash_movements'");
-    $cols = $st->fetchAll(PDO::FETCH_COLUMN) ?: [];
-  } catch (Throwable $e) {
-    $cols = [];
-  }
-
-  $has = fn(string $c) => in_array($c, $cols, true);
-  $pick = function(array $cands) use ($has){
-    foreach ($cands as $c) if ($has($c)) return $c;
-    return null;
-  };
-
-  $cached = [
-    "session" => $pick(["session_id","cash_session_id","caja_session_id"]),
-    "type"    => $pick(["type","tipo","movement_type"]),
-    "method"  => $pick(["metodo_pago","payment_method","method","forma_pago"]),
-    "amount"  => $pick(["amount","monto","total","importe","valor"]),
-  ];
-  return $cached;
-}
-
 function getTotals(PDO $pdo, int $sessionId){
-  $cols = cashMovementsCols($pdo);
-
-  // Si la tabla/columnas no coinciden, no romper UI
-  if (!$cols["session"] || !$cols["type"] || !$cols["method"] || !$cols["amount"]) {
-    $r = ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0];
-    $ing = 0.0; $net = 0.0;
-    return [$r,$ing,$net];
-  }
-
-  $cSession = $cols["session"];
-  $cType    = $cols["type"];
-  $cMethod  = $cols["method"];
-  $cAmount  = $cols["amount"];
-
   try {
-    $sql = "SELECT
-        COALESCE(SUM(CASE WHEN `$cType`='ingreso' AND `$cMethod`='efectivo' THEN `$cAmount` END),0) AS efectivo,
-        COALESCE(SUM(CASE WHEN `$cType`='ingreso' AND `$cMethod`='tarjeta' THEN `$cAmount` END),0) AS tarjeta,
-        COALESCE(SUM(CASE WHEN `$cType`='ingreso' AND `$cMethod`='transferencia' THEN `$cAmount` END),0) AS transferencia,
-        COALESCE(SUM(CASE WHEN `$cType`='ingreso' AND `$cMethod`='cobertura' THEN `$cAmount` END),0) AS cobertura,
-        COALESCE(SUM(CASE WHEN `$cType`='desembolso' THEN `$cAmount` END),0) AS desembolso
+    $st = $pdo->prepare("SELECT
+        COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='efectivo' THEN amount END),0) AS efectivo,
+        COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='tarjeta' THEN amount END),0) AS tarjeta,
+        COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='transferencia' THEN amount END),0) AS transferencia,
+        COALESCE(SUM(CASE WHEN type='desembolso' THEN amount END),0) AS desembolso
       FROM cash_movements
-      WHERE `$cSession`=?";
-    $st = $pdo->prepare($sql);
+      WHERE session_id=?");
     $st->execute([$sessionId]);
-    $r = $st->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0];
+    $r = $st->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0];
   } catch (Throwable $e) {
-    $r = ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0];
+    $r = ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0];
   }
 
-  $ing = (float)$r["efectivo"]+(float)$r["tarjeta"]+(float)$r["transferencia"]+(float)$r["cobertura"];
+  $ing = (float)$r["efectivo"]+(float)$r["tarjeta"]+(float)$r["transferencia"];
   $net = $ing-(float)$r["desembolso"];
   return [$r,$ing,$net];
 }
 
-
-[$s1Start,$s1End] = caja_shift_times(1);
-[$s2Start,$s2End] = caja_shift_times(2);
+[$s1Start,$s1End] = ["08:00:00","13:00:00"];
+[$s2Start,$s2End] = ["13:00:00","18:00:00"];
 
 $caja1 = getSession($pdo, $branchId, 1, $today, $s1Start, $s1End);
 $caja2 = getSession($pdo, $branchId, 2, $today, $s2Start, $s2End);
 
 $sum = [
-  1 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
-  2 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
+  1 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
+  2 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
 ];
 
 if ($caja1) { [$r,$ing,$net] = getTotals($pdo, (int)$caja1["id"]); $sum[1]=["r"=>$r,"ing"=>$ing,"net"=>$net]; }
@@ -193,7 +150,18 @@ try {
     thead th{font-weight:800;}
     tbody tr:last-child td{border-bottom:none;}
     .t-strong{font-weight:900;}
-  </style>
+  
+
+/* ACTION BUTTONS OVERRIDE (visible on white cards) */
+.actions{justify-content:flex-end; margin-top:12px;}
+.actions .btn-pill{
+  background: var(--blue);
+  border-color: var(--blue);
+  color:#fff;
+}
+.actions .btn-pill:hover{filter:brightness(0.95);}
+
+</style>
 </head>
 
 <body>
@@ -254,7 +222,7 @@ try {
 
           <div class="actions">
             <!-- ✅ Mantengo tus links tal cual -->
-            <a class="btn-pill" href="/private/caja/desembolso.php">Desembolsos</a>
+            <a class="btn-pill" href="/private/caja/desembolso.php">Desembolso</a>
             <a class="btn-pill" href="/private/caja/reporte_diario.php">Reporte diario</a>
             <a class="btn-pill" href="/private/caja/reporte_mensual.php">Reporte mensual</a>
           </div>
@@ -282,7 +250,6 @@ try {
               <tr><td>Efectivo</td><td>RD$ <?= fmtMoney($sum[1]["r"]["efectivo"]) ?></td></tr>
               <tr><td>Tarjeta</td><td>RD$ <?= fmtMoney($sum[1]["r"]["tarjeta"]) ?></td></tr>
               <tr><td>Transferencia</td><td>RD$ <?= fmtMoney($sum[1]["r"]["transferencia"]) ?></td></tr>
-              <tr><td>Cobertura</td><td>RD$ <?= fmtMoney($sum[1]["r"]["cobertura"]) ?></td></tr>
               <tr><td>Desembolsos</td><td>- RD$ <?= fmtMoney($sum[1]["r"]["desembolso"]) ?></td></tr>
               <tr><td class="t-strong">Total ingresos</td><td class="t-strong">RD$ <?= fmtMoney($sum[1]["ing"]) ?></td></tr>
               <tr><td class="t-strong">Neto</td><td class="t-strong">RD$ <?= fmtMoney($sum[1]["net"]) ?></td></tr>
@@ -308,7 +275,6 @@ try {
               <tr><td>Efectivo</td><td>RD$ <?= fmtMoney($sum[2]["r"]["efectivo"]) ?></td></tr>
               <tr><td>Tarjeta</td><td>RD$ <?= fmtMoney($sum[2]["r"]["tarjeta"]) ?></td></tr>
               <tr><td>Transferencia</td><td>RD$ <?= fmtMoney($sum[2]["r"]["transferencia"]) ?></td></tr>
-              <tr><td>Cobertura</td><td>RD$ <?= fmtMoney($sum[2]["r"]["cobertura"]) ?></td></tr>
               <tr><td>Desembolsos</td><td>- RD$ <?= fmtMoney($sum[2]["r"]["desembolso"]) ?></td></tr>
               <tr><td class="t-strong">Total ingresos</td><td class="t-strong">RD$ <?= fmtMoney($sum[2]["ing"]) ?></td></tr>
               <tr><td class="t-strong">Neto</td><td class="t-strong">RD$ <?= fmtMoney($sum[2]["net"]) ?></td></tr>
