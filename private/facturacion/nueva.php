@@ -82,6 +82,18 @@ function patientExprs(PDO $pdo): array {
 $user = $_SESSION["user"] ?? [];
 $patient_id = (int)($_GET["patient_id"] ?? 0);
 
+// ✅ branch_id del usuario (para filtrar productos por sede)
+$branch_id = (int)($user["branch_id"] ?? 0);
+
+// Fallback por si no viene en sesión
+if ($branch_id <= 0 && isset($user["id"])) {
+  try {
+    $stB = $conn->prepare("SELECT branch_id FROM users WHERE id=? LIMIT 1");
+    $stB->execute([(int)$user["id"]]);
+    $branch_id = (int)($stB->fetchColumn() ?: 0);
+  } catch (Throwable $e) { /* noop */ }
+}
+
 $err = "";
 $ok  = "";
 
@@ -170,15 +182,47 @@ if (in_array("active", $invCols, true)) {
   $colActive = "status";
 }
 
+// ✅ detectar columna sucursal en inventory_items (si existe)
+$colBranchItems = null;
+if (in_array("branch_id", $invCols, true)) {
+  $colBranchItems = "branch_id";
+} elseif (in_array("sucursal_id", $invCols, true)) {
+  $colBranchItems = "sucursal_id";
+} elseif (in_array("branch", $invCols, true)) {
+  $colBranchItems = "branch";
+}
+
 $items_all = [];
 try {
-  $sql = "SELECT $colItemId AS id, $colCat AS category_id, $colName AS name, $colPrice AS sale_price FROM inventory_items";
+  $sql = "SELECT $colItemId AS id, $colCat AS category_id, $colName AS name, $colPrice AS sale_price
+          FROM inventory_items";
+
+  $where = [];
+  $params = [];
+
   if ($colActive !== null) {
     // status/active típico: 1 = activo
-    $sql .= " WHERE $colActive=1";
+    $where[] = "$colActive=1";
   }
+
+  // ✅ Filtrar por sede si la tabla tiene branch_id/sucursal_id
+  if ($colBranchItems !== null) {
+    if ($branch_id <= 0) {
+      throw new RuntimeException("No se pudo determinar la sucursal del usuario para filtrar productos. Cierra sesión y vuelve a entrar.");
+    }
+    $where[] = "$colBranchItems = ?";
+    $params[] = $branch_id;
+  }
+
+  if (!empty($where)) {
+    $sql .= " WHERE " . implode(" AND ", $where);
+  }
+
   $sql .= " ORDER BY $colName ASC";
-  $items_all = $conn->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+  $st = $conn->prepare($sql);
+  $st->execute($params);
+  $items_all = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Throwable $e) {}
 
 /* ===== POST: guardar ===== */
@@ -210,9 +254,21 @@ $lines = $_POST["lines"] ?? [];
 
     $ids = array_keys($cleanLines);
     $in = implode(",", array_fill(0, count($ids), "?"));
-    $stMap = $conn->prepare("SELECT $colItemId AS id, $colCat AS category_id, $colName AS name, $colPrice AS sale_price FROM inventory_items WHERE $colItemId IN ($in)");
-    $stMap->execute($ids);
-    $mapRows = $stMap->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $sqlMap = "SELECT $colItemId AS id, $colCat AS category_id, $colName AS name, $colPrice AS sale_price
+               FROM inventory_items
+               WHERE $colItemId IN ($in)";
+
+    $paramsMap = $ids;
+
+    // ✅ Si existe columna sucursal, forzamos a la misma sede (evita trucos por POST)
+    if (isset($colBranchItems) && $colBranchItems !== null) {
+      $sqlMap .= " AND $colBranchItems = ?";
+      $paramsMap[] = $branch_id;
+    }
+
+    $stMap = $conn->prepare($sqlMap);
+    $stMap->execute($paramsMap);
+$mapRows = $stMap->fetchAll(PDO::FETCH_ASSOC) ?: [];
     $map = [];
     foreach ($mapRows as $r) $map[(int)$r["id"]] = $r;
 
