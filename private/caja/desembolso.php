@@ -32,6 +32,9 @@ $dayEnd   = $today . " 23:59:59";
 $sessionId = caja_get_or_open_current_session($pdo, $branchId, $userId);
 $currentCajaNum = caja_get_current_caja_num();
 
+// ✅ Representante (solo visual, no afecta la lógica)
+$rep = $user["name"] ?? $user["full_name"] ?? $user["username"] ?? ("Usuario #" . $userId);
+
 // Helper columnas
 function colExists(PDO $pdo, string $table, string $col): bool {
   try {
@@ -129,7 +132,6 @@ if ($createdCol) {
     $totalDia = (float)$stT->fetchColumn();
 
   } else {
-    // sesiones del día para esa sucursal
     $stS = $pdo->prepare("SELECT id FROM cash_sessions WHERE branch_id=? AND date_open=?");
     $stS->execute([$branchId, $today]);
     $sessIds = $stS->fetchAll(PDO::FETCH_COLUMN) ?: [];
@@ -163,12 +165,13 @@ if ($createdCol) {
     }
   }
 } else {
-  // Si no hay created_at/created_on, igual mostramos por sesiones del día (menos exacto en tiempo, pero siempre)
   $stS = $pdo->prepare("SELECT id FROM cash_sessions WHERE branch_id=? AND date_open=?");
   $stS->execute([$branchId, $today]);
   $sessIds = $stS->fetchAll(PDO::FETCH_COLUMN) ?: [];
+
   if (!empty($sessIds)) {
     $ph = implode(",", array_fill(0, count($sessIds), "?"));
+
     $stH = $pdo->prepare("
       SELECT id, motivo, amount, created_by
       FROM cash_movements
@@ -264,7 +267,7 @@ endif;
   <link rel="stylesheet" href="/assets/css/styles.css?v=50">
 
   <style>
-    /* Ajustes solo para esta pantalla (respeta styles.css) */
+    /* Panel derecho */
     .cardBox{
       background:#fff;
       border:1px solid #e6eef7;
@@ -272,18 +275,10 @@ endif;
       padding:18px;
       box-shadow:0 10px 30px rgba(2,6,23,.08);
     }
-    .muted{color:#6b7280;font-weight:700;}
-    label{display:block;font-weight:900;margin-top:12px;color:#0b3b9a;}
-    input[type="text"]{
-      width:100%;
-      padding:10px 12px;
-      border:1px solid #e6eef7;
-      border-radius:14px;
-      outline:none;
-      background:#fff;
-    }
 
+    .muted{color:#6b7280;font-weight:700;}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+
     .alert-ok{
       margin-top:10px;padding:10px 12px;border-radius:14px;
       background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;font-weight:900;
@@ -292,12 +287,12 @@ endif;
       margin-top:10px;padding:10px 12px;border-radius:14px;
       background:#fff1f2;border:1px solid #fecdd3;color:#9f1239;font-weight:900;
     }
+
     .pill{
       display:inline-flex;align-items:center;gap:8px;
       padding:6px 10px;border-radius:999px;
       background:#f3f7ff;border:1px solid #dbeafe;
-      color:#052a7a;font-weight:900;font-size:12px;
-      white-space:nowrap;
+      color:#052a7a;font-weight:900;font-size:12px;white-space:nowrap;
     }
 
     table{
@@ -313,10 +308,30 @@ endif;
     thead th{background:#f7fbff;color:#0b3b9a;font-weight:900;}
     .right{text-align:right;}
 
-    /* Layout más organizado: formulario + historial en 2 columnas */
+    /* ✅ Título centrado arriba */
+    .hero.centered{
+      text-align:center;
+      padding: 18px 0 8px;
+    }
+    .hero.centered h1{
+      margin:0;
+      font-size:34px;
+      font-weight:900;
+      letter-spacing:.2px;
+    }
+    .hero.centered p{
+      margin:8px 0 0;
+      max-width:720px;
+      margin-left:auto;
+      margin-right:auto;
+      font-weight:700;
+      color:#475569;
+    }
+
+    /* ✅ Layout organizado */
     .two-col{
       display:grid;
-      grid-template-columns: 1.2fr .9fr;
+      grid-template-columns: 1.15fr .85fr;
       gap:16px;
       align-items:start;
     }
@@ -324,7 +339,7 @@ endif;
       .two-col{grid-template-columns: 1fr;}
     }
 
-    /* Botones (sin romper el estilo global) */
+    /* ✅ Botones locales (sin romper tu styles.css) */
     .btnLocal{
       display:inline-flex;
       align-items:center;
@@ -351,8 +366,38 @@ endif;
     }
     .btnLocal.print:hover{box-shadow:0 14px 26px rgba(37,99,235,.25);}
     button.btnLocal{appearance:none;}
+
+    /* ✅ Form estético */
+    .formGrid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:12px;
+      margin-top:14px;
+    }
+    .field label{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      font-weight:900;
+      color:#0b3b9a;
+      margin-bottom:6px;
+    }
+    .field small{color:#64748b;font-weight:800;}
+    .field input{
+      width:100%;
+      padding:12px 14px;
+      border:1px solid #e6eef7;
+      border-radius:14px;
+      outline:none;
+      background:#fff;
+    }
+    .field input[readonly]{
+      background:#f8fafc;
+      color:#0f172a;
+    }
   </style>
 </head>
+
 <body>
 
 <header class="navbar">
@@ -378,24 +423,28 @@ endif;
   </aside>
 
   <main class="content">
-    <section class="hero">
+
+    <section class="hero centered">
       <h1>Desembolso</h1>
       <p>Registra salida de dinero y revisa el historial del día.</p>
     </section>
 
     <div class="two-col">
 
+      <!-- FORM -->
       <section class="card">
         <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
           <div>
             <h2 style="margin:0; color:var(--primary-2);">Registrar desembolso</h2>
-            <div class="muted" style="margin-top:6px;">Motivo y monto (RD$).</div>
+            <div class="muted" style="margin-top:6px;">Motivo, monto y representante.</div>
+
             <div style="margin-top:10px;">
               <span class="pill">Caja actual: <?php echo (int)$currentCajaNum; ?></span>
               <span class="pill">Sesión actual: <?php echo (int)$sessionId; ?></span>
               <span class="pill">Fecha: <?php echo h($today); ?></span>
             </div>
           </div>
+
           <div class="row">
             <a class="btnLocal print" href="desembolso.php?print=1" target="_blank">🖨️ Imprimir historial (día)</a>
           </div>
@@ -405,19 +454,41 @@ endif;
         <?php if ($error): ?><div class="alert-err"><?php echo h($error); ?></div><?php endif; ?>
 
         <form method="post" style="margin-top:12px;">
-          <label>Motivo</label>
-          <input type="text" name="motivo" value="<?php echo h($motivo); ?>" placeholder="Ej: Compra de agua, transporte, etc." required>
 
-          <label>Monto (RD$)</label>
-          <input type="text" name="monto" value="<?php echo h($monto); ?>" placeholder="Ej: 500" required>
+          <div class="formGrid">
+
+            <div class="field">
+              <label>Motivo <small>¿Por qué sale el dinero?</small></label>
+              <input type="text" name="motivo"
+                value="<?php echo h($motivo); ?>"
+                placeholder="Ej: Compra de agua, transporte, etc."
+                required>
+            </div>
+
+            <div class="field">
+              <label>Monto (RD$) <small>Solo números</small></label>
+              <input type="text" name="monto"
+                value="<?php echo h($monto); ?>"
+                placeholder="Ej: 500"
+                required>
+            </div>
+
+            <div class="field">
+              <label>Representante <small>Usuario actual</small></label>
+              <input type="text" value="<?php echo h($rep); ?>" readonly>
+            </div>
+
+          </div>
 
           <div class="row" style="margin-top:14px;">
             <button class="btnLocal primary" type="submit">Guardar</button>
             <a class="btnLocal" href="index.php">Cancelar</a>
           </div>
+
         </form>
       </section>
 
+      <!-- HISTORIAL -->
       <section class="cardBox">
         <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-end;">
           <div>
