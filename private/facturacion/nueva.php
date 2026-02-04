@@ -182,7 +182,67 @@ if (in_array("active", $invCols, true)) {
   $colActive = "status";
 }
 
-// ✅ detectar columna sucursal en inventory_items (si existe)
+// ✅ Preferir filtrar por STOCK de la sede (si existe tabla de stock).
+// Esto evita que aparezcan productos de otras sedes aunque existan en el catálogo global.
+$stockTable = null;
+$stockCols  = [];
+$stockCandidates = [
+  "inventory_stock",
+  "inventory_branch_stock",
+  "inventario_stock",
+  "inventory_sucursal_stock",
+  "stock"
+];
+
+foreach ($stockCandidates as $t) {
+  if (tableExists($conn, $t)) { $stockTable = $t; break; }
+}
+
+$stockItemCol = null;
+$stockBranchCol = null;
+$stockQtyCol = null;
+
+if ($stockTable !== null) {
+  $stockCols = tableColumns($conn, $stockTable);
+
+  // item_id/product_id
+  if (in_array("item_id", $stockCols, true)) {
+    $stockItemCol = "item_id";
+  } elseif (in_array("product_id", $stockCols, true)) {
+    $stockItemCol = "product_id";
+  } elseif (in_array("inventory_item_id", $stockCols, true)) {
+    $stockItemCol = "inventory_item_id";
+  }
+
+  // branch_id/sucursal_id
+  if (in_array("branch_id", $stockCols, true)) {
+    $stockBranchCol = "branch_id";
+  } elseif (in_array("sucursal_id", $stockCols, true)) {
+    $stockBranchCol = "sucursal_id";
+  } elseif (in_array("branch", $stockCols, true)) {
+    $stockBranchCol = "branch";
+  }
+
+  // quantity/qty/existencia/stock
+  if (in_array("quantity", $stockCols, true)) {
+    $stockQtyCol = "quantity";
+  } elseif (in_array("qty", $stockCols, true)) {
+    $stockQtyCol = "qty";
+  } elseif (in_array("existencia", $stockCols, true)) {
+    $stockQtyCol = "existencia";
+  } elseif (in_array("stock", $stockCols, true)) {
+    $stockQtyCol = "stock";
+  } elseif (in_array("balance", $stockCols, true)) {
+    $stockQtyCol = "balance";
+  }
+
+  // si falta algo clave, no usamos stock-table
+  if ($stockItemCol === null || $stockBranchCol === null) {
+    $stockTable = null;
+  }
+}
+
+// ✅ Fallback: filtrar por columna sucursal en inventory_items (si existe)
 $colBranchItems = null;
 if (in_array("branch_id", $invCols, true)) {
   $colBranchItems = "branch_id";
@@ -194,35 +254,57 @@ if (in_array("branch_id", $invCols, true)) {
 
 $items_all = [];
 try {
-  $sql = "SELECT $colItemId AS id, $colCat AS category_id, $colName AS name, $colPrice AS sale_price
-          FROM inventory_items";
-
   $where = [];
   $params = [];
 
-  if ($colActive !== null) {
-    // status/active típico: 1 = activo
-    $where[] = "$colActive=1";
+  if ($branch_id <= 0) {
+    throw new RuntimeException("No se pudo determinar la sucursal del usuario para filtrar productos. Cierra sesión y vuelve a entrar.");
   }
 
-  // ✅ Filtrar por sede si la tabla tiene branch_id/sucursal_id
-  if ($colBranchItems !== null) {
-    if ($branch_id <= 0) {
-      throw new RuntimeException("No se pudo determinar la sucursal del usuario para filtrar productos. Cierra sesión y vuelve a entrar.");
-    }
-    $where[] = "$colBranchItems = ?";
+  // ===== 1) Si hay tabla de stock: solo items que tengan stock en esta sede
+  if ($stockTable !== null) {
+    $sql = "SELECT i.$colItemId AS id, i.$colCat AS category_id, i.$colName AS name, i.$colPrice AS sale_price
+            FROM inventory_items i
+            INNER JOIN $stockTable s ON s.$stockItemCol = i.$colItemId
+            WHERE s.$stockBranchCol = ?";
+
     $params[] = $branch_id;
+
+    // si existe cantidad, opcionalmente exigir >0 para que solo se puedan facturar disponibles
+    if ($stockQtyCol !== null) {
+      $sql .= " AND COALESCE(s.$stockQtyCol,0) > 0";
+    }
+
+    if ($colActive !== null) {
+      $sql .= " AND i.$colActive=1";
+    }
+
+    $sql .= " ORDER BY i.$colName ASC";
+
+    $st = $conn->prepare($sql);
+    $st->execute($params);
+    $items_all = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+  // ===== 2) Si NO hay tabla de stock: usar branch_id en inventory_items si existe
+  } else {
+    $sql = "SELECT $colItemId AS id, $colCat AS category_id, $colName AS name, $colPrice AS sale_price
+            FROM inventory_items";
+
+    if ($colActive !== null) $where[] = "$colActive=1";
+    if ($colBranchItems !== null) {
+      $where[] = "$colBranchItems = ?";
+      $params[] = $branch_id;
+    }
+
+    if (!empty($where)) $sql .= " WHERE " . implode(" AND ", $where);
+
+    $sql .= " ORDER BY $colName ASC";
+
+    $st = $conn->prepare($sql);
+    $st->execute($params);
+    $items_all = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
   }
 
-  if (!empty($where)) {
-    $sql .= " WHERE " . implode(" AND ", $where);
-  }
-
-  $sql .= " ORDER BY $colName ASC";
-
-  $st = $conn->prepare($sql);
-  $st->execute($params);
-  $items_all = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Throwable $e) {}
 
 /* ===== POST: guardar ===== */
@@ -254,20 +336,46 @@ $lines = $_POST["lines"] ?? [];
 
     $ids = array_keys($cleanLines);
     $in = implode(",", array_fill(0, count($ids), "?"));
-        $sqlMap = "SELECT $colItemId AS id, $colCat AS category_id, $colName AS name, $colPrice AS sale_price
-               FROM inventory_items
-               WHERE $colItemId IN ($in)";
+            // ✅ Mapa de items (según sede) para precios/validación
+    if ($branch_id <= 0) throw new Exception("Sucursal inválida.");
 
-    $paramsMap = $ids;
+    // 1) Si hay stock-table, limitar por stock de la sede
+    if (isset($stockTable) && $stockTable !== null && isset($stockItemCol) && isset($stockBranchCol)) {
+      $sqlMap = "SELECT i.$colItemId AS id, i.$colCat AS category_id, i.$colName AS name, i.$colPrice AS sale_price
+                 FROM inventory_items i
+                 INNER JOIN $stockTable s ON s.$stockItemCol = i.$colItemId
+                 WHERE i.$colItemId IN ($in)
+                   AND s.$stockBranchCol = ?";
 
-    // ✅ Si existe columna sucursal, forzamos a la misma sede (evita trucos por POST)
-    if (isset($colBranchItems) && $colBranchItems !== null) {
-      $sqlMap .= " AND $colBranchItems = ?";
-      $paramsMap[] = $branch_id;
+      $paramsMap = array_merge($ids, [$branch_id]);
+
+      // exigir stock > 0 si hay columna de cantidad
+      if (isset($stockQtyCol) && $stockQtyCol !== null) {
+        $sqlMap .= " AND COALESCE(s.$stockQtyCol,0) > 0";
+      }
+
+      if ($colActive !== null) $sqlMap .= " AND i.$colActive=1";
+
+      $stMap = $conn->prepare($sqlMap);
+      $stMap->execute($paramsMap);
+
+    // 2) Fallback: limitar por branch_id en inventory_items si existe
+    } else {
+      $sqlMap = "SELECT $colItemId AS id, $colCat AS category_id, $colName AS name, $colPrice AS sale_price
+                 FROM inventory_items
+                 WHERE $colItemId IN ($in)";
+
+      $paramsMap = $ids;
+
+      if (isset($colBranchItems) && $colBranchItems !== null) {
+        $sqlMap .= " AND $colBranchItems = ?";
+        $paramsMap[] = $branch_id;
+      }
+
+      $stMap = $conn->prepare($sqlMap);
+      $stMap->execute($paramsMap);
     }
 
-    $stMap = $conn->prepare($sqlMap);
-    $stMap->execute($paramsMap);
 $mapRows = $stMap->fetchAll(PDO::FETCH_ASSOC) ?: [];
     $map = [];
     foreach ($mapRows as $r) $map[(int)$r["id"]] = $r;
