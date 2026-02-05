@@ -67,13 +67,27 @@ $dayEnd   = $today . " 23:59:59";
 $sessionId = caja_get_or_open_current_session($pdo, $branchId, $userId);
 $currentCajaNum = caja_get_current_caja_num();
 
-// Nombre de la sucursal iniciada (fallback a ID)
-$branchName = "Sucursal #" . $branchId;
+// Nombre de la sucursal iniciada
+// 1) Intentar leer desde tablas (branches/sucursales/sedes) si existen
+// 2) Fallback: mapa fijo por ID (para que siempre muestre "CEVIMEP Moca", etc.)
+$branchMap = [
+  1 => "CEVIMEP Moca",
+  2 => "CEVIMEP La Vega",
+  3 => "CEVIMEP Salcedo",
+  4 => "CEVIMEP Santiago",
+  5 => "CEVIMEP Mao Valverde",
+  6 => "CEVIMEP Puerto Plata",
+];
+
+$branchName = $branchMap[$branchId] ?? ("Sucursal #" . $branchId);
+
 try {
   $candidates = [
-    ["branches",    ["name","branch_name","nombre","descripcion"]],
-    ["sucursales",  ["nombre","name","descripcion"]],
-    ["sedes",       ["nombre","name","descripcion"]],
+    ["branches",   ["name","branch_name","nombre","nombre_sucursal","sucursal","descripcion","title"]],
+    ["sucursales", ["nombre","name","nombre_sucursal","descripcion","title"]],
+    ["sedes",      ["nombre","name","nombre_sede","descripcion","title"]],
+    ["sede",       ["nombre","name","descripcion","title"]],
+    ["branch",     ["name","branch_name","nombre","descripcion","title"]],
   ];
 
   foreach ($candidates as $cand) {
@@ -83,7 +97,7 @@ try {
     foreach ($cand[1] as $col) {
       if (!colExists($pdo, $t, $col)) continue;
 
-      $idCol = colExists($pdo, $t, "id") ? "id" : (colExists($pdo, $t, "branch_id") ? "branch_id" : null);
+      $idCol = colExists($pdo, $t, "id") ? "id" : (colExists($pdo, $t, "branch_id") ? "branch_id" : (colExists($pdo, $t, "sucursal_id") ? "sucursal_id" : null));
       if (!$idCol) continue;
 
       $st = $pdo->prepare("SELECT $col FROM $t WHERE $idCol=? LIMIT 1");
@@ -93,6 +107,7 @@ try {
     }
   }
 } catch (Throwable $e) { /* mantener fallback */ }
+
 
 // Sesiones del día (para histórico y detalle cuando no hay branch_id en movimientos)
 $sessIdsDay = [];
@@ -124,6 +139,7 @@ $createdCol = colExists($pdo, "cash_movements", "created_at") ? "created_at"
 
 // POST: registrar desembolso
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
+  $nowStr = date("Y-m-d H:i:s");
   try {
     $motivo = trim($_POST["motivo"] ?? "");
     $monto  = trim($_POST["monto"] ?? "");
@@ -145,32 +161,40 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $sql = "INSERT INTO cash_movements
                   (session_id, branch_id, type, motivo, representante, metodo_pago, amount, created_by" . ($createdCol ? ", $createdCol" : "") . ")
                 VALUES
-                  (?, ?, 'desembolso', ?, ?, 'efectivo', ?, ?" . ($createdCol ? ", NOW()" : "") . ")";
+                  (?, ?, 'desembolso', ?, ?, 'efectivo', ?, ?" . ($createdCol ? ", ?" : "") . ")";
         $st = $pdo->prepare($sql);
-        $st->execute([$sessionId, $branchId, $motivo, $representante, round($amount,2), $userId]);
+        $params = [$sessionId, $branchId, $motivo, $representante, round($amount,2), $userId];
+        if ($createdCol) { $params[] = $nowStr; }
+        $st->execute($params);
       } else {
         $sql = "INSERT INTO cash_movements
                   (session_id, branch_id, type, motivo, metodo_pago, amount, created_by" . ($createdCol ? ", $createdCol" : "") . ")
                 VALUES
-                  (?, ?, 'desembolso', ?, 'efectivo', ?, ?" . ($createdCol ? ", NOW()" : "") . ")";
+                  (?, ?, 'desembolso', ?, 'efectivo', ?, ?" . ($createdCol ? ", ?" : "") . ")";
         $st = $pdo->prepare($sql);
-        $st->execute([$sessionId, $branchId, $motivo, round($amount,2), $userId]);
+        $params = [$sessionId, $branchId, $motivo, round($amount,2), $userId];
+        if ($createdCol) { $params[] = $nowStr; }
+        $st->execute($params);
       }
     } else {
       if ($hasRepInMov) {
         $sql = "INSERT INTO cash_movements
                   (session_id, type, motivo, representante, metodo_pago, amount, created_by" . ($createdCol ? ", $createdCol" : "") . ")
                 VALUES
-                  (?, 'desembolso', ?, ?, 'efectivo', ?, ?" . ($createdCol ? ", NOW()" : "") . ")";
+                  (?, 'desembolso', ?, ?, 'efectivo', ?, ?" . ($createdCol ? ", ?" : "") . ")";
         $st = $pdo->prepare($sql);
-        $st->execute([$sessionId, $motivo, $representante, round($amount,2), $userId]);
+        $params = [$sessionId, $motivo, $representante, round($amount,2), $userId];
+        if ($createdCol) { $params[] = $nowStr; }
+        $st->execute($params);
       } else {
         $sql = "INSERT INTO cash_movements
                   (session_id, type, motivo, metodo_pago, amount, created_by" . ($createdCol ? ", $createdCol" : "") . ")
                 VALUES
-                  (?, 'desembolso', ?, 'efectivo', ?, ?" . ($createdCol ? ", NOW()" : "") . ")";
+                  (?, 'desembolso', ?, 'efectivo', ?, ?" . ($createdCol ? ", ?" : "") . ")";
         $st = $pdo->prepare($sql);
-        $st->execute([$sessionId, $motivo, round($amount,2), $userId]);
+        $params = [$sessionId, $motivo, round($amount,2), $userId];
+        if ($createdCol) { $params[] = $nowStr; }
+        $st->execute($params);
       }
     }
 
