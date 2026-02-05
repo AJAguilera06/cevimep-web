@@ -308,36 +308,105 @@ endif;
     thead th{background:#f7fbff;color:#0b3b9a;font-weight:900;}
     .right{text-align:right;}
 
-    /* ✅ Título centrado arriba */
-    .hero.centered{
+    /* ✅ Layout como el ejemplo (centrado y compacto) */
+    .pageTitle{
       text-align:center;
-      padding: 18px 0 8px;
+      padding: 14px 0 10px;
     }
-    .hero.centered h1{
+    .pageTitle h1{
       margin:0;
       font-size:34px;
       font-weight:900;
-      letter-spacing:.2px;
-    }
-    .hero.centered p{
-      margin:8px 0 0;
-      max-width:720px;
-      margin-left:auto;
-      margin-right:auto;
-      font-weight:700;
-      color:#475569;
+      letter-spacing:.3px;
     }
 
-    /* ✅ Layout organizado */
-    .two-col{
+    .desembolsoWrap{
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 0 6px 18px;
+    }
+
+    .desembolsoCard{
+      background:#fff;
+      border:1px solid #e6eef7;
+      border-radius:22px;
+      padding:16px;
+      box-shadow:0 10px 30px rgba(2,6,23,.08);
+    }
+
+    .formRow{
       display:grid;
-      grid-template-columns: 1.15fr .85fr;
-      gap:16px;
-      align-items:start;
+      grid-template-columns: 1.25fr .55fr 1fr;
+      gap:10px;
+      margin-top:12px;
+    }
+    .formRow.two{
+      grid-template-columns: 1fr 1fr;
     }
     @media (max-width: 980px){
-      .two-col{grid-template-columns: 1fr;}
+      .formRow{grid-template-columns: 1fr;}
+      .formRow.two{grid-template-columns: 1fr;}
     }
+
+    .inLabel{
+      display:block;
+      font-size:12px;
+      font-weight:900;
+      color:#0b3b9a;
+      margin:0 0 6px;
+      letter-spacing:.3px;
+      text-transform:uppercase;
+    }
+    .inBox{
+      width:100%;
+      padding:12px 14px;
+      border:1px solid #e6eef7;
+      border-radius:12px;
+      outline:none;
+      background:#fff;
+    }
+    .inBox[readonly]{
+      background:#f8fafc;
+      color:#0f172a;
+    }
+
+    .actionsCenter{
+      display:flex;
+      justify-content:center;
+      gap:10px;
+      margin-top:14px;
+      flex-wrap:wrap;
+    }
+
+    .btnSave{
+      appearance:none;
+      border:0;
+      border-radius:999px;
+      padding:10px 22px;
+      font-weight:900;
+      cursor:pointer;
+      color:#fff;
+      background: linear-gradient(180deg, #2563eb, #0b3b9a);
+      box-shadow:0 14px 26px rgba(37,99,235,.25);
+      transition: transform .05s ease, box-shadow .12s ease;
+    }
+    .btnSave:hover{transform: translateY(-1px);}
+    .btnSave:active{transform: translateY(0); box-shadow:0 8px 18px rgba(37,99,235,.2);}
+
+    .btnGhost{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding:10px 14px;
+      border-radius:999px;
+      border:1px solid #dbeafe;
+      background:#fff;
+      color:#052a7a;
+      font-weight:900;
+      text-decoration:none;
+      transition: transform .05s ease, box-shadow .12s ease;
+    }
+    .btnGhost:hover{box-shadow:0 10px 20px rgba(2,6,23,.08); transform: translateY(-1px);}
 
     /* ✅ Botones locales (sin romper tu styles.css) */
     .btnLocal{
@@ -367,33 +436,14 @@ endif;
     .btnLocal.print:hover{box-shadow:0 14px 26px rgba(37,99,235,.25);}
     button.btnLocal{appearance:none;}
 
-    /* ✅ Form estético */
-    .formGrid{
-      display:grid;
-      grid-template-columns: 1fr;
-      gap:12px;
-      margin-top:14px;
-    }
-    .field label{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
+    /* ✅ Historial separado como el ejemplo */
+    .historyTitle{
+      text-align:center;
       font-weight:900;
+      margin:18px 0 10px;
+      letter-spacing:.3px;
       color:#0b3b9a;
-      margin-bottom:6px;
-    }
-    .field small{color:#64748b;font-weight:800;}
-    .field input{
-      width:100%;
-      padding:12px 14px;
-      border:1px solid #e6eef7;
-      border-radius:14px;
-      outline:none;
-      background:#fff;
-    }
-    .field input[readonly]{
-      background:#f8fafc;
-      color:#0f172a;
+      text-transform:uppercase;
     }
   </style>
 </head>
@@ -424,77 +474,76 @@ endif;
 
   <main class="content">
 
-    <section class="hero centered">
-      <h1>Desembolso</h1>
-      <p>Registra salida de dinero y revisa el historial del día.</p>
-    </section>
+    <div class="desembolsoWrap">
 
-    <div class="two-col">
+      <div class="pageTitle">
+        <h1>DESEMBOLSO</h1>
+      </div>
 
-      <!-- FORM -->
-      <section class="card">
-        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
-          <div>
-            <h2 style="margin:0; color:var(--primary-2);">Registrar desembolso</h2>
-            <div class="muted" style="margin-top:6px;">Motivo, monto y representante.</div>
-
-            <div style="margin-top:10px;">
-              <span class="pill">Caja actual: <?php echo (int)$currentCajaNum; ?></span>
-              <span class="pill">Sesión actual: <?php echo (int)$sessionId; ?></span>
-              <span class="pill">Fecha: <?php echo h($today); ?></span>
-            </div>
-          </div>
-
-          <div class="row">
-            <a class="btnLocal print" href="desembolso.php?print=1" target="_blank">🖨️ Imprimir historial (día)</a>
-          </div>
-        </div>
-
+      <section class="desembolsoCard">
         <?php if ($success): ?><div class="alert-ok"><?php echo h($success); ?></div><?php endif; ?>
         <?php if ($error): ?><div class="alert-err"><?php echo h($error); ?></div><?php endif; ?>
 
-        <form method="post" style="margin-top:12px;">
+        <form method="post" autocomplete="off">
 
-          <div class="formGrid">
-
-            <div class="field">
-              <label>Motivo <small>¿Por qué sale el dinero?</small></label>
-              <input type="text" name="motivo"
+          <div class="formRow">
+            <div>
+              <label class="inLabel" for="motivo">Motivo</label>
+              <input class="inBox" id="motivo" type="text" name="motivo"
                 value="<?php echo h($motivo); ?>"
                 placeholder="Ej: Compra de agua, transporte, etc."
                 required>
             </div>
 
-            <div class="field">
-              <label>Monto (RD$) <small>Solo números</small></label>
-              <input type="text" name="monto"
+            <div>
+              <label class="inLabel" for="monto">Monto</label>
+              <input class="inBox" id="monto" type="text" name="monto"
                 value="<?php echo h($monto); ?>"
                 placeholder="Ej: 500"
                 required>
             </div>
 
-            <div class="field">
-              <label>Representante <small>Usuario actual</small></label>
-              <input type="text" value="<?php echo h($rep); ?>" readonly>
+            <div>
+              <label class="inLabel">Representante</label>
+              <input class="inBox" type="text" value="<?php echo h($rep); ?>" readonly>
             </div>
-
           </div>
 
-          <div class="row" style="margin-top:14px;">
-            <button class="btnLocal primary" type="submit">Guardar</button>
-            <a class="btnLocal" href="index.php">Cancelar</a>
+          <div class="formRow two">
+            <div>
+              <label class="inLabel">Caja</label>
+              <input class="inBox" type="text" value="<?php echo (int)$currentCajaNum; ?>" readonly>
+            </div>
+            <div>
+              <label class="inLabel">Sesión</label>
+              <input class="inBox" type="text" value="<?php echo (int)$sessionId; ?>" readonly>
+            </div>
+          </div>
+
+          <div class="formRow two">
+            <div>
+              <label class="inLabel">Fecha</label>
+              <input class="inBox" type="text" value="<?php echo h($today); ?>" readonly>
+            </div>
+            <div>
+              <label class="inLabel">Sucursal</label>
+              <input class="inBox" type="text" value="<?php echo (int)$branchId; ?>" readonly>
+            </div>
+          </div>
+
+          <div class="actionsCenter">
+            <button class="btnSave" type="submit">GUARDAR</button>
+            <a class="btnGhost" href="desembolso.php?print=1" target="_blank">IMPRIMIR</a>
           </div>
 
         </form>
       </section>
 
-      <!-- HISTORIAL -->
+      <div class="historyTitle">HISTORIAL DE DESEMBOLSOS</div>
+
       <section class="cardBox">
-        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-end;">
-          <div>
-            <h3 style="margin:0; color:#052a7a;">Historial del día</h3>
-            <div class="muted" style="margin-top:6px;">Últimos 500 desembolsos del día en esta sucursal.</div>
-          </div>
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;">
+          <div class="muted">Últimos 500 desembolsos del día en esta sucursal.</div>
           <div class="pill">TOTAL DÍA: RD$ <?php echo fmtMoney($totalDia); ?></div>
         </div>
 
