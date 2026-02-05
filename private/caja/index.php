@@ -77,13 +77,14 @@ function getTotals(PDO $pdo, int $sessionId){
         COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='efectivo' THEN amount END),0) AS efectivo,
         COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='tarjeta' THEN amount END),0) AS tarjeta,
         COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='transferencia' THEN amount END),0) AS transferencia,
+        COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago IN ('cobertura','seguro','ars') THEN amount END),0) AS cobertura,
         COALESCE(SUM(CASE WHEN type='desembolso' THEN amount END),0) AS desembolso
       FROM cash_movements
       WHERE session_id=?");
     $st->execute([$sessionId]);
-    $r = $st->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0];
+    $r = $st->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0];
   } catch (Throwable $e) {
-    $r = ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0];
+    $r = ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0];
   }
 
   $ing = (float)$r["efectivo"]+(float)$r["tarjeta"]+(float)$r["transferencia"];
@@ -98,8 +99,8 @@ $caja1 = getSession($pdo, $branchId, 1, $today, $s1Start, $s1End);
 $caja2 = getSession($pdo, $branchId, 2, $today, $s2Start, $s2End);
 
 $sum = [
-  1 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
-  2 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
+  1 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
+  2 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
 ];
 
 if ($caja1) { [$r,$ing,$net] = getTotals($pdo, (int)$caja1["id"]); $sum[1]=["r"=>$r,"ing"=>$ing,"net"=>$net]; }
@@ -250,6 +251,7 @@ try {
               <tr><td>Efectivo</td><td>RD$ <?= fmtMoney($sum[1]["r"]["efectivo"]) ?></td></tr>
               <tr><td>Tarjeta</td><td>RD$ <?= fmtMoney($sum[1]["r"]["tarjeta"]) ?></td></tr>
               <tr><td>Transferencia</td><td>RD$ <?= fmtMoney($sum[1]["r"]["transferencia"]) ?></td></tr>
+              <tr><td>Cobertura</td><td>RD$ <?= fmtMoney($sum[1]["r"]["cobertura"] ?? 0) ?></td></tr>
               <tr><td>Desembolsos</td><td>- RD$ <?= fmtMoney($sum[1]["r"]["desembolso"]) ?></td></tr>
               <tr><td class="t-strong">Total ingresos</td><td class="t-strong">RD$ <?= fmtMoney($sum[1]["ing"]) ?></td></tr>
               <tr><td class="t-strong">Neto</td><td class="t-strong">RD$ <?= fmtMoney($sum[1]["net"]) ?></td></tr>
@@ -275,6 +277,7 @@ try {
               <tr><td>Efectivo</td><td>RD$ <?= fmtMoney($sum[2]["r"]["efectivo"]) ?></td></tr>
               <tr><td>Tarjeta</td><td>RD$ <?= fmtMoney($sum[2]["r"]["tarjeta"]) ?></td></tr>
               <tr><td>Transferencia</td><td>RD$ <?= fmtMoney($sum[2]["r"]["transferencia"]) ?></td></tr>
+              <tr><td>Cobertura</td><td>RD$ <?= fmtMoney($sum[2]["r"]["cobertura"] ?? 0) ?></td></tr>
               <tr><td>Desembolsos</td><td>- RD$ <?= fmtMoney($sum[2]["r"]["desembolso"]) ?></td></tr>
               <tr><td class="t-strong">Total ingresos</td><td class="t-strong">RD$ <?= fmtMoney($sum[2]["ing"]) ?></td></tr>
               <tr><td class="t-strong">Neto</td><td class="t-strong">RD$ <?= fmtMoney($sum[2]["net"]) ?></td></tr>
