@@ -122,34 +122,71 @@ try {
 
 
   <style>
-    .actions{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
-    .
-
-
-Local{
+    /* Ajuste visual para que coincida con el estilo del screenshot (Reporte Diario) */
+    .reportTop{
+      display:flex; align-items:flex-start; gap:14px; flex-wrap:wrap;
+      margin-top:8px;
+    }
+    .reportTopLeft{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+    .branchTag{font-weight:900; color:#0b3b9a;}
+    .reportTitle{
+      text-align:center; margin:0; font-size:34px; letter-spacing:.5px;
+    }
+    .btnLocal{
       display:inline-flex;align-items:center;justify-content:center;
-      padding:10px 14px;border-radius:14px;
+      padding:10px 16px;border-radius:999px;
       border:1px solid #dbeafe;background:#fff;color:#052a7a;
       font-weight:900;text-decoration:none;cursor:pointer;
+      transition:all .15s ease;
     }
-    .
-
-
-Local:hover{box-shadow:0 10px 25px rgba(2,6,23,.10);}
-    .gridBox{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px;}
-    @media(max-width:900px){ .gridBox{grid-template-columns:1fr;} }
-    .cardBox{
-      background:#fff;border:1px solid #e6eef7;border-radius:22px;padding:18px;
-      box-shadow:0 10px 30px rgba(2,6,23,.08);
+    .btnLocal:hover{box-shadow:0 10px 25px rgba(2,6,23,.10); transform:translateY(-1px);}
+    .btnPrimary{
+      border:none;
+      background:linear-gradient(180deg,#2f6dff,#0b3b9a);
+      color:#fff;
+      box-shadow:0 18px 40px rgba(11,59,154,.20);
     }
-    table{width:100%; border-collapse:collapse; margin-top:10px; border:1px solid #e6eef7; border-radius:16px; overflow:hidden;}
-    th,td{padding:10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px;}
-    thead th{background:#f7fbff; color:#0b3b9a; font-weight:900;}
-    .muted{color:#6b7280; font-weight:700;}
+    .btnPrimary:hover{filter:brightness(1.03);}
+
     .pill{padding:8px 12px;border-radius:14px;border:1px solid #e6eef7;background:#fff;}
+    .muted{color:#6b7280; font-weight:700;}
     .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
     .right{margin-left:auto;}
     .danger{background:#fff5f5;border:1px solid #fed7d7;color:#b91c1c;border-radius:14px;padding:10px 12px;font-weight:800;}
+
+    .reportFrame{
+      margin-top:14px;
+      background:#fff;
+      border:3px solid rgba(11,59,154,.55);
+      border-radius:24px;
+      padding:16px;
+      box-shadow:0 14px 40px rgba(2,6,23,.10);
+    }
+    .gridBox{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px;}
+    @media(max-width:900px){ .gridBox{grid-template-columns:1fr;} }
+    .cajaCard{
+      background:#fff;
+      border:1px solid #e6eef7;
+      border-radius:20px;
+      padding:14px;
+    }
+    .cajaHead{
+      text-align:center;
+      font-weight:900;
+      color:#0b3b9a;
+      margin:2px 0 6px;
+    }
+    .cajaSub{
+      text-align:center;
+      font-size:12px;
+      color:#6b7280;
+      font-weight:800;
+      margin-bottom:8px;
+    }
+    table{width:100%; border-collapse:collapse; margin-top:10px; border:1px solid #e6eef7; border-radius:16px; overflow:hidden;}
+    th,td{padding:9px 10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px;}
+    thead th{background:#f7fbff; color:#0b3b9a; font-weight:900;}
+    .sectionTitle{margin:10px 0 0; text-align:center; color:#0b3b9a; font-weight:900;}
   </style>
 </head>
 
@@ -159,10 +196,7 @@ Local:hover{box-shadow:0 10px 25px rgba(2,6,23,.10);}
     <div></div>
     <div class="brand"><span class="dot"></span> CEVIMEP</div>
     <div class="nav-right">
-      <a class="
-
-
--pill" href="/logout.php">Salir</a>
+      <a class="pill" href="/logout.php">Salir</a>
     </div>
   </div>
 </header>
@@ -184,47 +218,36 @@ Local:hover{box-shadow:0 10px 25px rgba(2,6,23,.10);}
   </aside>
 
   <main class="content">
-    <section class="hero">
-      <h1>Reporte Diario</h1>
-      <p><?= h($branchName) ?> · Fecha: <?= h($date) ?></p>
-    </section>
 
-    <section class="card">
-      <div class="row">
-        <form class="row" method="GET" action="/private/caja/reporte_diario.php">
-          <div class="pill">
-            <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Fecha</label>
-            <input type="date" name="date" value="<?= h($date) ?>" style="border:0;outline:none;font-weight:800;">
-          </div>
-          <button class="
+    <section class="card" style="padding:22px;">
+      <h1 class="reportTitle">Reporte Diario</h1>
 
+      <div class="reportTop">
+        <div class="reportTopLeft">
+          <div class="branchTag"><?= h($branchName) ?>:</div>
 
-Local" type="submit">Ver</button>
-        </form>
+          <form class="reportTopLeft" method="GET" action="/private/caja/reporte_diario.php">
+            <div class="pill">
+              <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Fecha</label>
+              <input type="date" name="date" value="<?= h($date) ?>" style="border:0;outline:none;font-weight:900;">
+            </div>
+            <button class="btnLocal" type="submit">Ver</button>
+          </form>
+        </div>
 
-        <div class="right actions">
-          <a class="
-
-
-Local" href="/private/caja/index.php">Volver a Caja</a>
-          <a class="
-
-
-Local" href="javascript:void(0)" onclick="window.print()">Imprimir</a>
+        <div class="right">
+          <a class="btnLocal btnPrimary" href="javascript:void(0)" onclick="window.print()">Imprimir</a>
         </div>
       </div>
 
       <?php if($error): ?>
         <div style="margin-top:12px;" class="danger"><?= h($error) ?></div>
       <?php endif; ?>
-    </section>
-
-    <div style="height:14px;"></div>
-
-    <div class="gridBox">
-      <section class="cardBox">
-        <h3 style="margin:0; color:#052a7a;">Caja 1 (08:00 AM - 01:00 PM)</h3>
-        <div class="muted" style="margin-top:6px;"><?= $caja1 ? "Sesión ID: ".(int)$caja1["id"] : "Sin sesión registrada" ?></div>
+      <div class="reportFrame">
+        <div class="gridBox">
+          <section class="cajaCard">
+            <div class="cajaHead">Caja 1 (08:00 AM - 01:00 PM)</div>
+            <div class="cajaSub"><?= $caja1 ? "Sesión #".(int)$caja1["id"] : "Sin sesión registrada" ?></div>
 
         <table>
           <thead><tr><th>Concepto</th><th>Monto</th></tr></thead>
@@ -239,8 +262,7 @@ Local" href="javascript:void(0)" onclick="window.print()">Imprimir</a>
           </tbody>
         </table>
 
-        <div style="height:10px;"></div>
-        <h4 style="margin:0;color:#052a7a;">Movimientos</h4>
+            <div class="sectionTitle">Movimientos</div>
 
         <table>
           <thead><tr><th>Hora</th><th>Tipo</th><th>Método</th><th>Concepto</th><th>Monto</th></tr></thead>
@@ -258,11 +280,11 @@ Local" href="javascript:void(0)" onclick="window.print()">Imprimir</a>
             <?php endforeach; endif; ?>
           </tbody>
         </table>
-      </section>
+          </section>
 
-      <section class="cardBox">
-        <h3 style="margin:0; color:#052a7a;">Caja 2 (01:00 PM - 06:00 PM)</h3>
-        <div class="muted" style="margin-top:6px;"><?= $caja2 ? "Sesión ID: ".(int)$caja2["id"] : "Sin sesión registrada" ?></div>
+          <section class="cajaCard">
+            <div class="cajaHead">Caja 2 (01:00 PM - 06:00 PM)</div>
+            <div class="cajaSub"><?= $caja2 ? "Sesión #".(int)$caja2["id"] : "Sin sesión registrada" ?></div>
 
         <table>
           <thead><tr><th>Concepto</th><th>Monto</th></tr></thead>
@@ -277,8 +299,7 @@ Local" href="javascript:void(0)" onclick="window.print()">Imprimir</a>
           </tbody>
         </table>
 
-        <div style="height:10px;"></div>
-        <h4 style="margin:0;color:#052a7a;">Movimientos</h4>
+            <div class="sectionTitle">Movimientos</div>
 
         <table>
           <thead><tr><th>Hora</th><th>Tipo</th><th>Método</th><th>Concepto</th><th>Monto</th></tr></thead>
@@ -296,8 +317,10 @@ Local" href="javascript:void(0)" onclick="window.print()">Imprimir</a>
             <?php endforeach; endif; ?>
           </tbody>
         </table>
-      </section>
-    </div>
+          </section>
+        </div>
+      </div>
+    </section>
   </main>
 </div>
 
