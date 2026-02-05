@@ -195,6 +195,31 @@ if ($createdCol) {
 // =============================
 // MODO IMPRESIÓN (DÍA COMPLETO)
 // =============================
+
+// =============================
+// DETALLE (opcional)
+// =============================
+$detailRow = null;
+$detailId = isset($_GET["detalle"]) ? (int)$_GET["detalle"] : 0;
+if ($detailId > 0) {
+  try {
+    $cols = "id, motivo, amount, created_by" . ($createdCol ? ", $createdCol AS created_time" : "");
+    if ($hasRepInMov) $cols .= ", representante";
+    if ($hasBranchInMov) {
+      $stD = $pdo->prepare("SELECT $cols FROM cash_movements WHERE id=? AND type='desembolso' AND branch_id=? LIMIT 1");
+      $stD->execute([$detailId, $branchId]);
+      $detailRow = $stD->fetch(PDO::FETCH_ASSOC) ?: null;
+    } else {
+      // Sin branch_id: permitimos ver el detalle solo si pertenece a la sesión actual
+      $stD = $pdo->prepare("SELECT $cols FROM cash_movements WHERE id=? AND type='desembolso' AND session_id=? LIMIT 1");
+      $stD->execute([$detailId, $sessionId]);
+      $detailRow = $stD->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+  } catch (Throwable $e) {
+    $detailRow = null;
+  }
+}
+
 $isPrint = (isset($_GET["print"]) && $_GET["print"] == "1");
 if ($isPrint):
 ?>
@@ -308,105 +333,36 @@ endif;
     thead th{background:#f7fbff;color:#0b3b9a;font-weight:900;}
     .right{text-align:right;}
 
-    /* ✅ Layout como el ejemplo (centrado y compacto) */
-    .pageTitle{
+    /* ✅ Título centrado arriba */
+    .hero.centered{
       text-align:center;
-      padding: 14px 0 10px;
+      padding: 18px 0 8px;
     }
-    .pageTitle h1{
+    .hero.centered h1{
       margin:0;
       font-size:34px;
       font-weight:900;
-      letter-spacing:.3px;
+      letter-spacing:.2px;
+    }
+    .hero.centered p{
+      margin:8px 0 0;
+      max-width:720px;
+      margin-left:auto;
+      margin-right:auto;
+      font-weight:700;
+      color:#475569;
     }
 
-    .desembolsoWrap{
-      max-width: 980px;
-      margin: 0 auto;
-      padding: 0 6px 18px;
-    }
-
-    .desembolsoCard{
-      background:#fff;
-      border:1px solid #e6eef7;
-      border-radius:22px;
-      padding:16px;
-      box-shadow:0 10px 30px rgba(2,6,23,.08);
-    }
-
-    .formRow{
+    /* ✅ Layout organizado */
+    .two-col{
       display:grid;
-      grid-template-columns: 1.25fr .55fr 1fr;
-      gap:10px;
-      margin-top:12px;
-    }
-    .formRow.two{
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1.15fr .85fr;
+      gap:16px;
+      align-items:start;
     }
     @media (max-width: 980px){
-      .formRow{grid-template-columns: 1fr;}
-      .formRow.two{grid-template-columns: 1fr;}
+      .two-col{grid-template-columns: 1fr;}
     }
-
-    .inLabel{
-      display:block;
-      font-size:12px;
-      font-weight:900;
-      color:#0b3b9a;
-      margin:0 0 6px;
-      letter-spacing:.3px;
-      text-transform:uppercase;
-    }
-    .inBox{
-      width:100%;
-      padding:12px 14px;
-      border:1px solid #e6eef7;
-      border-radius:12px;
-      outline:none;
-      background:#fff;
-    }
-    .inBox[readonly]{
-      background:#f8fafc;
-      color:#0f172a;
-    }
-
-    .actionsCenter{
-      display:flex;
-      justify-content:center;
-      gap:10px;
-      margin-top:14px;
-      flex-wrap:wrap;
-    }
-
-    .btnSave{
-      appearance:none;
-      border:0;
-      border-radius:999px;
-      padding:10px 22px;
-      font-weight:900;
-      cursor:pointer;
-      color:#fff;
-      background: linear-gradient(180deg, #2563eb, #0b3b9a);
-      box-shadow:0 14px 26px rgba(37,99,235,.25);
-      transition: transform .05s ease, box-shadow .12s ease;
-    }
-    .btnSave:hover{transform: translateY(-1px);}
-    .btnSave:active{transform: translateY(0); box-shadow:0 8px 18px rgba(37,99,235,.2);}
-
-    .btnGhost{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      padding:10px 14px;
-      border-radius:999px;
-      border:1px solid #dbeafe;
-      background:#fff;
-      color:#052a7a;
-      font-weight:900;
-      text-decoration:none;
-      transition: transform .05s ease, box-shadow .12s ease;
-    }
-    .btnGhost:hover{box-shadow:0 10px 20px rgba(2,6,23,.08); transform: translateY(-1px);}
 
     /* ✅ Botones locales (sin romper tu styles.css) */
     .btnLocal{
@@ -436,16 +392,193 @@ endif;
     .btnLocal.print:hover{box-shadow:0 14px 26px rgba(37,99,235,.25);}
     button.btnLocal{appearance:none;}
 
-    /* ✅ Historial separado como el ejemplo */
+    /* ✅ Form estético */
+    .formGrid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:12px;
+      margin-top:14px;
+    }
+    .field label{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      font-weight:900;
+      color:#0b3b9a;
+      margin-bottom:6px;
+    }
+    .field small{color:#64748b;font-weight:800;}
+    .field input{
+      width:100%;
+      padding:12px 14px;
+      border:1px solid #e6eef7;
+      border-radius:14px;
+      outline:none;
+      background:#fff;
+    }
+    .field input[readonly]{
+      background:#f8fafc;
+      color:#0f172a;
+    }
+  
+    /* UI tipo dashboard (como el ejemplo) */
+    .pageTitle{
+      text-align:center;
+      font-weight:900;
+      letter-spacing:.5px;
+      color:#0f172a;
+      font-size:42px;
+      margin:8px 0 18px;
+    }
+    .panel{
+      max-width:860px;
+      margin:0 auto;
+    }
+    .cardBox{
+      background:#fff;
+      border:1px solid #e6eef7;
+      border-radius:24px;
+      padding:22px 22px 18px;
+      box-shadow:0 18px 40px rgba(2,6,23,.10);
+    }
+    .formGrid{
+      display:grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap:16px;
+      margin-top:10px;
+    }
+    .formGrid.two{
+      grid-template-columns: 1fr 1fr;
+    }
+    .inLabel{
+      display:block;
+      text-align:center;
+      font-weight:900;
+      color:#0b3aa7;
+      margin-bottom:8px;
+      letter-spacing:.3px;
+      font-size:13px;
+      text-transform:uppercase;
+    }
+    .inBox{
+      width:100%;
+      border:1px solid #dbeafe;
+      border-radius:12px;
+      padding:12px 12px;
+      font-size:14px;
+      background:#f8fbff;
+      outline:none;
+    }
+    .inBox:focus{border-color:#93c5fd; box-shadow:0 0 0 3px rgba(59,130,246,.15);}
+    .actionsCenter{
+      display:flex;
+      justify-content:center;
+      gap:14px;
+      margin-top:18px;
+      flex-wrap:wrap;
+    }
+    .btnSave{
+      border:none;
+      padding:12px 26px;
+      border-radius:999px;
+      font-weight:900;
+      color:#fff;
+      cursor:pointer;
+      background:linear-gradient(180deg,#2563eb,#1e40af);
+      box-shadow:0 12px 24px rgba(37,99,235,.25);
+    }
+    .btnGhost{
+      padding:12px 22px;
+      border-radius:999px;
+      font-weight:900;
+      color:#1e40af;
+      border:1px solid #bfdbfe;
+      background:#fff;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+    }
     .historyTitle{
       text-align:center;
       font-weight:900;
-      margin:18px 0 10px;
+      color:#0b3aa7;
       letter-spacing:.3px;
-      color:#0b3b9a;
-      text-transform:uppercase;
+      margin:22px 0 12px;
     }
-  </style>
+    .historyCard{
+      max-width:860px;
+      margin:0 auto;
+      background:#fff;
+      border:1px solid #e6eef7;
+      border-radius:22px;
+      padding:16px;
+      box-shadow:0 18px 40px rgba(2,6,23,.08);
+    }
+    .historyHeader{
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap:wrap;
+      align-items:center;
+      margin-bottom:10px;
+    }
+    .pillSoft{
+      display:inline-flex;
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid #dbeafe;
+      background:#f8fbff;
+      font-weight:900;
+      color:#0f172a;
+      font-size:12px;
+    }
+    table.tbl{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      overflow:hidden;
+      border-radius:14px;
+      border:1px solid #e6eef7;
+      font-size:13px;
+    }
+    .tbl th{
+      text-align:left;
+      padding:10px 10px;
+      background:#f1f7ff;
+      color:#0b3aa7;
+      font-weight:900;
+      border-bottom:1px solid #e6eef7;
+    }
+    .tbl td{
+      padding:10px 10px;
+      border-bottom:1px solid #eef2f7;
+    }
+    .tbl tr:last-child td{border-bottom:none;}
+    .btnDetail{
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid #bfdbfe;
+      background:#fff;
+      color:#1e40af;
+      font-weight:900;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      font-size:12px;
+    }
+    .detailBox{
+      max-width:860px;
+      margin:0 auto 12px;
+      background:#fff;
+      border:1px solid #e6eef7;
+      border-radius:18px;
+      padding:14px 16px;
+      box-shadow:0 14px 30px rgba(2,6,23,.08);
+    }
+</style>
 </head>
 
 <body>
@@ -474,110 +607,122 @@ endif;
 
   <main class="content">
 
-    <div class="desembolsoWrap">
+  <div class="panel">
+    <div class="pageTitle">DESEMBOLSO</div>
 
-      <div class="pageTitle">
-        <h1>DESEMBOLSO</h1>
-      </div>
+    <section class="cardBox">
+      <?php if ($success): ?><div class="alert-ok"><?php echo h($success); ?></div><?php endif; ?>
+      <?php if ($error): ?><div class="alert-err"><?php echo h($error); ?></div><?php endif; ?>
 
-      <section class="desembolsoCard">
-        <?php if ($success): ?><div class="alert-ok"><?php echo h($success); ?></div><?php endif; ?>
-        <?php if ($error): ?><div class="alert-err"><?php echo h($error); ?></div><?php endif; ?>
-
-        <form method="post" autocomplete="off">
-
-          <div class="formRow">
-            <div>
-              <label class="inLabel" for="motivo">Motivo</label>
-              <input class="inBox" id="motivo" type="text" name="motivo"
-                value="<?php echo h($motivo); ?>"
-                placeholder="Ej: Compra de agua, transporte, etc."
-                required>
-            </div>
-
-            <div>
-              <label class="inLabel" for="monto">Monto</label>
-              <input class="inBox" id="monto" type="text" name="monto"
-                value="<?php echo h($monto); ?>"
-                placeholder="Ej: 500"
-                required>
-            </div>
-
-            <div>
-              <label class="inLabel">Representante</label>
-              <input class="inBox" type="text" value="<?php echo h($rep); ?>" readonly>
-            </div>
+      <form method="post" autocomplete="off">
+        <div class="formGrid">
+          <div>
+            <label class="inLabel" for="motivo">Motivo</label>
+            <input class="inBox" id="motivo" type="text" name="motivo"
+              value="<?php echo h($motivo); ?>"
+              placeholder="Ej: Compra de agua, transporte, etc."
+              required>
           </div>
 
-          <div class="formRow two">
-            <div>
-              <label class="inLabel">Caja</label>
-              <input class="inBox" type="text" value="<?php echo (int)$currentCajaNum; ?>" readonly>
-            </div>
-            <div>
-              <label class="inLabel">Sesión</label>
-              <input class="inBox" type="text" value="<?php echo (int)$sessionId; ?>" readonly>
-            </div>
+          <div>
+            <label class="inLabel" for="monto">Monto</label>
+            <input class="inBox" id="monto" type="text" name="monto"
+              value="<?php echo h($monto); ?>"
+              placeholder="Ej: 500"
+              required>
           </div>
 
-          <div class="formRow two">
-            <div>
-              <label class="inLabel">Fecha</label>
-              <input class="inBox" type="text" value="<?php echo h($today); ?>" readonly>
-            </div>
-            <div>
-              <label class="inLabel">Sucursal</label>
-              <input class="inBox" type="text" value="<?php echo (int)$branchId; ?>" readonly>
-            </div>
+          <div>
+            <label class="inLabel" for="representante">Representante</label>
+            <input class="inBox" id="representante" type="text" name="representante"
+              value="<?php echo h($representante); ?>"
+              placeholder="Ej: CEVIMEP Moca"
+              required>
           </div>
-
-          <div class="actionsCenter">
-            <button class="btnSave" type="submit">GUARDAR</button>
-            <a class="btnGhost" href="desembolso.php?print=1" target="_blank">IMPRIMIR</a>
-          </div>
-
-        </form>
-      </section>
-
-      <div class="historyTitle">HISTORIAL DE DESEMBOLSOS</div>
-
-      <section class="cardBox">
-        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;">
-          <div class="muted">Últimos 500 desembolsos del día en esta sucursal.</div>
-          <div class="pill">TOTAL DÍA: RD$ <?php echo fmtMoney($totalDia); ?></div>
         </div>
 
-        <table>
-          <thead>
-            <tr>
-              <th style="width:70px;">ID</th>
-              <?php if ($createdCol): ?><th style="width:170px;">Fecha/Hora</th><?php endif; ?>
-              <th>Motivo</th>
-              <th style="width:120px;" class="right">Monto</th>
-              <th style="width:110px;">Usuario</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php if (empty($history)): ?>
-              <tr><td colspan="<?php echo $createdCol ? 5 : 4; ?>" class="muted">No hay desembolsos registrados hoy.</td></tr>
-            <?php else: ?>
-              <?php foreach ($history as $r): ?>
-                <tr>
-                  <td>#<?php echo (int)$r["id"]; ?></td>
-                  <?php if ($createdCol): ?><td><?php echo h($r["created_time"] ?? ""); ?></td><?php endif; ?>
-                  <td><?php echo h($r["motivo"] ?? ""); ?></td>
-                  <td class="right">RD$ <?php echo fmtMoney($r["amount"] ?? 0); ?></td>
-                  <td><?php echo (int)($r["created_by"] ?? 0); ?></td>
-                </tr>
-              <?php endforeach; ?>
-            <?php endif; ?>
-          </tbody>
-        </table>
-      </section>
+        <div class="formGrid two" style="margin-top:16px;">
+          <div>
+            <label class="inLabel">Fecha</label>
+            <input class="inBox" type="text" value="<?php echo h($today); ?>" readonly>
+          </div>
+          <div>
+            <label class="inLabel">Sucursal</label>
+            <input class="inBox" type="text" value="<?php echo h($branchName); ?>" readonly>
+          </div>
+        </div>
 
-    </div>
+        <div class="actionsCenter">
+          <button class="btnSave" type="submit">GUARDAR</button>
+          <a class="btnGhost" href="desembolso.php?print=1" target="_blank">IMPRIMIR</a>
+        </div>
+      </form>
+    </section>
 
-  </main>
+    <div class="historyTitle" id="historial">HISTORIAL DE DESEMBOLSOS</div>
+
+    <?php if ($detailRow): ?>
+      <div class="detailBox">
+        <div class="historyHeader">
+          <div class="pillSoft">DETALLE #<?php echo (int)$detailRow["id"]; ?></div>
+          <?php if ($createdCol && !empty($detailRow["created_time"])): ?>
+            <div class="pillSoft"><?php echo h($detailRow["created_time"]); ?></div>
+          <?php endif; ?>
+          <a class="btnGhost" href="desembolso.php#historial">Cerrar</a>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div><strong>Motivo:</strong> <?php echo h($detailRow["motivo"] ?? ""); ?></div>
+          <div><strong>Monto:</strong> RD$ <?php echo fmtMoney($detailRow["amount"] ?? 0); ?></div>
+          <?php if ($hasRepInMov): ?>
+            <div><strong>Representante:</strong> <?php echo h($detailRow["representante"] ?? ""); ?></div>
+          <?php endif; ?>
+          <div><strong>Usuario:</strong> <?php echo (int)($detailRow["created_by"] ?? 0); ?></div>
+        </div>
+      </div>
+    <?php endif; ?>
+
+    <section class="historyCard">
+      <div class="historyHeader">
+        <div class="muted">Últimos 500 desembolsos del día en esta sucursal.</div>
+        <div class="pillSoft">TOTAL DÍA: RD$ <?php echo fmtMoney($totalDia); ?></div>
+      </div>
+
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th style="width:80px;">ID</th>
+            <?php if ($createdCol): ?><th style="width:190px;">Fecha/Hora</th><?php endif; ?>
+            <th>Motivo</th>
+            <th style="width:140px;">Monto</th>
+            <th style="width:90px;">Usuario</th>
+            <th style="width:120px;">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php if (empty($history)): ?>
+            <tr><td colspan="<?php echo $createdCol ? 6 : 5; ?>">No hay desembolsos en el día.</td></tr>
+          <?php else: ?>
+            <?php foreach ($history as $r): ?>
+              <tr>
+                <td>#<?php echo (int)$r["id"]; ?></td>
+                <?php if ($createdCol): ?><td><?php echo h($r["created_time"] ?? ""); ?></td><?php endif; ?>
+                <td><?php echo h($r["motivo"] ?? ""); ?></td>
+                <td>RD$ <?php echo fmtMoney($r["amount"] ?? 0); ?></td>
+                <td><?php echo (int)($r["created_by"] ?? 0); ?></td>
+                <td>
+                  <a class="btnDetail" href="desembolso.php?detalle=<?php echo (int)$r["id"]; ?>#historial">Detalle</a>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          <?php endif; ?>
+        </tbody>
+      </table>
+    </section>
+
+  </div>
+
+</main>
 </div>
 
 <footer class="footer">
