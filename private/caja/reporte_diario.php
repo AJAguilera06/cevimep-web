@@ -187,7 +187,38 @@ try {
     th,td{padding:9px 10px; border-bottom:1px solid #eef2f7; text-align:left; font-size:13px;}
     thead th{background:#f7fbff; color:#0b3b9a; font-weight:900;}
     .sectionTitle{margin:10px 0 0; text-align:center; color:#0b3b9a; font-weight:900;}
-  </style>
+  
+
+/* ===== PRINT: Solo imprimir la tarjeta del reporte ===== */
+@media print {
+  @page { margin: 10mm; }
+  body { background: #fff !important; }
+  /* ocultar todo */
+  body * { visibility: hidden !important; }
+  /* mostrar solo el area de impresion */
+  #printArea, #printArea * { visibility: visible !important; }
+
+  /* colocar arriba/izquierda */
+  #printArea {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+  }
+
+  /* quitar sombras/bordes innecesarios en impresion */
+  #printArea.card {
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* asegurar que no se imprima sidebar/top/footer aunque esten fuera */
+  .sidebar, .navbar, footer { display: none !important; }
+  .layout, .content { padding: 0 !important; margin: 0 !important; }
+  .btnLocal, .right, .pill { display: none !important; } /* oculta controles (ver/imprimir/fecha) */
+}
+</style>
 </head>
 
 <body>
@@ -219,7 +250,7 @@ try {
 
   <main class="content">
 
-    <section class="card" style="padding:22px;">
+    <section id="printArea" class="card" style="padding:22px;">
       <h1 class="reportTitle">Reporte Diario</h1>
 
       <div class="reportTop">
