@@ -335,10 +335,10 @@ try {
 
   // Insert item
   $st = $conn->prepare("
-    INSERT INTO inventory_items (category_id, name, sku, unit, purchase_price, sale_price, min_stock, is_active)
-    VALUES (?, ?, NULL, 'dosis', ?, ?, ?, 1)
+    INSERT INTO inventory_items (category_id, name, sku, unit, purchase_price, sale_price, min_stock, branch_id, is_active)
+    VALUES (?, ?, NULL, 'dosis', ?, ?, ?, ?, 1)
   ");
-  $st->execute([$category_id, $nombre, $precio_compra, $precio_venta, $min_stock]);
+  $st->execute([$category_id, $nombre, $precio_compra, $precio_venta, $min_stock, $userBranchId]);
 
   $newItemId = (int)$conn->lastInsertId();
 
