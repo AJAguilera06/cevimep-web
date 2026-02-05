@@ -1,5 +1,6 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
+
 require_once __DIR__ . "/../config/db.php";
 require_once __DIR__ . "/caja_lib.php";
 
@@ -15,28 +16,11 @@ $userId   = (int)($user["id"] ?? 0);
 if (!$isAdmin && $branchId <= 0) { header("Location: /logout.php"); exit; }
 
 date_default_timezone_set("America/Santo_Domingo");
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
+function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8"); }
 function fmtMoney($n){ return number_format((float)$n, 2, ".", ","); }
 
-$success = "";
-$error = "";
-
-$motivo = "";
-    $monto = "";
-    $representante = "";
-
-$today = date("Y-m-d");
-$dayStart = $today . " 00:00:00";
-$dayEnd   = $today . " 23:59:59";
-
-// ✅ Sesión automática del turno actual (para registrar el movimiento)
-$sessionId = caja_get_or_open_current_session($pdo, $branchId, $userId);
-$currentCajaNum = caja_get_current_caja_num();
-
-// ✅ Representante (escribible)
-$representante = "";
-
-// Helper columnas
+/** Column/table detection (evita errores si cambian nombres en Railway) */
 function colExists(PDO $pdo, string $table, string $col): bool {
   try {
     $db = $pdo->query("SELECT DATABASE()")->fetchColumn();
@@ -47,8 +31,7 @@ function colExists(PDO $pdo, string $table, string $col): bool {
   } catch (Throwable $e) {
     return false;
   }
-
-
+}
 function tableExists(PDO $pdo, string $table): bool {
   try {
     $st = $pdo->prepare("SHOW TABLES LIKE ?");
@@ -59,6 +42,30 @@ function tableExists(PDO $pdo, string $table): bool {
   }
 }
 
+$success = "";
+$error   = "";
+
+// Flash mensajes (post/redirect/get)
+if (!empty($_SESSION["flash_success"])) {
+  $success = (string)$_SESSION["flash_success"];
+  unset($_SESSION["flash_success"]);
+}
+if (!empty($_SESSION["flash_error"])) {
+  $error = (string)$_SESSION["flash_error"];
+  unset($_SESSION["flash_error"]);
+}
+
+$motivo = "";
+$monto  = "";
+$representante = ""; // ✅ siempre vacío para que el usuario escriba
+
+$today    = date("Y-m-d");
+$dayStart = $today . " 00:00:00";
+$dayEnd   = $today . " 23:59:59";
+
+// ✅ Sesión automática del turno actual (para registrar el movimiento)
+$sessionId = caja_get_or_open_current_session($pdo, $branchId, $userId);
+$currentCajaNum = caja_get_current_caja_num();
 
 // Nombre de la sucursal iniciada (fallback a ID)
 $branchName = "Sucursal #" . $branchId;
@@ -90,15 +97,26 @@ try {
 // Sesiones del día (para histórico y detalle cuando no hay branch_id en movimientos)
 $sessIdsDay = [];
 try {
-  if (tableExists($pdo, "cash_sessions") && colExists($pdo, "cash_sessions", "branch_id") && colExists($pdo, "cash_sessions", "date_open")) {
-    $stS = $pdo->prepare("SELECT id FROM cash_sessions WHERE branch_id=? AND date_open=?");
-    $stS->execute([$branchId, $today]);
-    $sessIdsDay = $stS->fetchAll(PDO::FETCH_COLUMN) ?: [];
+  if (tableExists($pdo, "cash_sessions") && colExists($pdo, "cash_sessions", "branch_id")) {
+    // en algunos sistemas el campo puede ser date_open o opened_at
+    if (colExists($pdo, "cash_sessions", "date_open")) {
+      $stS = $pdo->prepare("SELECT id FROM cash_sessions WHERE branch_id=? AND date_open=?");
+      $stS->execute([$branchId, $today]);
+      $sessIdsDay = $stS->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    } elseif (colExists($pdo, "cash_sessions", "opened_at")) {
+      $stS = $pdo->prepare("SELECT id FROM cash_sessions WHERE branch_id=? AND opened_at >= ? AND opened_at <= ?");
+      $stS->execute([$branchId, $dayStart, $dayEnd]);
+      $sessIdsDay = $stS->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    }
   }
 } catch (Throwable $e) { $sessIdsDay = []; }
 
-}
+// Detectar campos disponibles
+$hasBranchInMov = colExists($pdo, "cash_movements", "branch_id");
+$hasRepInMov    = colExists($pdo, "cash_movements", "representante");
 
+$createdCol = colExists($pdo, "cash_movements", "created_at") ? "created_at"
+            : (colExists($pdo, "cash_movements", "created_on") ? "created_on" : null);
 // Detectar campos disponibles
 $hasBranchInMov = colExists($pdo, "cash_movements", "branch_id");
 $createdCol = colExists($pdo, "cash_movements", "created_at") ? "created_at"
@@ -156,10 +174,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       }
     }
 
-    $success = "Desembolso registrado.";
-
-    $motivo = "";
-    $monto = "";
+    $_SESSION["flash_success"] = "Desembolso registrado.";
+    header("Location: " . $_SERVER["PHP_SELF"] . "?ok=1");
+    exit;
 
   } catch (Throwable $e) {
     $error = $e->getMessage();
