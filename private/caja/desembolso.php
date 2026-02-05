@@ -22,7 +22,8 @@ $success = "";
 $error = "";
 
 $motivo = "";
-$monto = "";
+    $monto = "";
+    $representante = "";
 
 $today = date("Y-m-d");
 $dayStart = $today . " 00:00:00";
@@ -32,8 +33,8 @@ $dayEnd   = $today . " 23:59:59";
 $sessionId = caja_get_or_open_current_session($pdo, $branchId, $userId);
 $currentCajaNum = caja_get_current_caja_num();
 
-// ✅ Representante (solo visual, no afecta la lógica)
-$rep = $user["name"] ?? $user["full_name"] ?? $user["username"] ?? ("Usuario #" . $userId);
+// ✅ Representante (escribible)
+$representante = "";
 
 // Helper columnas
 function colExists(PDO $pdo, string $table, string $col): bool {
@@ -46,6 +47,56 @@ function colExists(PDO $pdo, string $table, string $col): bool {
   } catch (Throwable $e) {
     return false;
   }
+
+
+function tableExists(PDO $pdo, string $table): bool {
+  try {
+    $st = $pdo->prepare("SHOW TABLES LIKE ?");
+    $st->execute([$table]);
+    return (bool)$st->fetchColumn();
+  } catch (Throwable $e) {
+    return false;
+  }
+}
+
+
+// Nombre de la sucursal iniciada (fallback a ID)
+$branchName = "Sucursal #" . $branchId;
+try {
+  $candidates = [
+    ["branches",    ["name","branch_name","nombre","descripcion"]],
+    ["sucursales",  ["nombre","name","descripcion"]],
+    ["sedes",       ["nombre","name","descripcion"]],
+  ];
+
+  foreach ($candidates as $cand) {
+    $t = $cand[0];
+    if (!tableExists($pdo, $t)) continue;
+
+    foreach ($cand[1] as $col) {
+      if (!colExists($pdo, $t, $col)) continue;
+
+      $idCol = colExists($pdo, $t, "id") ? "id" : (colExists($pdo, $t, "branch_id") ? "branch_id" : null);
+      if (!$idCol) continue;
+
+      $st = $pdo->prepare("SELECT $col FROM $t WHERE $idCol=? LIMIT 1");
+      $st->execute([$branchId]);
+      $nm = $st->fetchColumn();
+      if ($nm) { $branchName = (string)$nm; break 2; }
+    }
+  }
+} catch (Throwable $e) { /* mantener fallback */ }
+
+// Sesiones del día (para histórico y detalle cuando no hay branch_id en movimientos)
+$sessIdsDay = [];
+try {
+  if (tableExists($pdo, "cash_sessions") && colExists($pdo, "cash_sessions", "branch_id") && colExists($pdo, "cash_sessions", "date_open")) {
+    $stS = $pdo->prepare("SELECT id FROM cash_sessions WHERE branch_id=? AND date_open=?");
+    $stS->execute([$branchId, $today]);
+    $sessIdsDay = $stS->fetchAll(PDO::FETCH_COLUMN) ?: [];
+  }
+} catch (Throwable $e) { $sessIdsDay = []; }
+
 }
 
 // Detectar campos disponibles
@@ -58,36 +109,55 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   try {
     $motivo = trim($_POST["motivo"] ?? "");
     $monto  = trim($_POST["monto"] ?? "");
-
+    $representante = trim($_POST["representante"] ?? "");
     $amount = (float)str_replace([","," "], ["",""], $monto);
 
     if ($motivo === "") throw new Exception("Debes escribir el motivo.");
     if ($amount <= 0) throw new Exception("El monto debe ser mayor que 0.");
+    if ($representante === "") throw new Exception("Debes escribir el representante.");
 
     // Si por alguna razón no hay sesión (fuera de horario), intentar abrir
     if ($sessionId <= 0) {
       $sessionId = caja_get_or_open_current_session($pdo, $branchId, $userId);
       if ($sessionId <= 0) throw new Exception("No se pudo obtener una sesión de caja activa.");
     }
-
     // Insert flexible según columnas
     if ($hasBranchInMov) {
-      $sql = "INSERT INTO cash_movements
-                (session_id, branch_id, type, motivo, metodo_pago, amount, created_by" . ($createdCol ? ", $createdCol" : "") . ")
-              VALUES
-                (?, ?, 'desembolso', ?, 'efectivo', ?, ?" . ($createdCol ? ", NOW()" : "") . ")";
-      $st = $pdo->prepare($sql);
-      $st->execute([$sessionId, $branchId, $motivo, round($amount,2), $userId]);
+      if ($hasRepInMov) {
+        $sql = "INSERT INTO cash_movements
+                  (session_id, branch_id, type, motivo, representante, metodo_pago, amount, created_by" . ($createdCol ? ", $createdCol" : "") . ")
+                VALUES
+                  (?, ?, 'desembolso', ?, ?, 'efectivo', ?, ?" . ($createdCol ? ", NOW()" : "") . ")";
+        $st = $pdo->prepare($sql);
+        $st->execute([$sessionId, $branchId, $motivo, $representante, round($amount,2), $userId]);
+      } else {
+        $sql = "INSERT INTO cash_movements
+                  (session_id, branch_id, type, motivo, metodo_pago, amount, created_by" . ($createdCol ? ", $createdCol" : "") . ")
+                VALUES
+                  (?, ?, 'desembolso', ?, 'efectivo', ?, ?" . ($createdCol ? ", NOW()" : "") . ")";
+        $st = $pdo->prepare($sql);
+        $st->execute([$sessionId, $branchId, $motivo, round($amount,2), $userId]);
+      }
     } else {
-      $sql = "INSERT INTO cash_movements
-                (session_id, type, motivo, metodo_pago, amount, created_by" . ($createdCol ? ", $createdCol" : "") . ")
-              VALUES
-                (?, 'desembolso', ?, 'efectivo', ?, ?" . ($createdCol ? ", NOW()" : "") . ")";
-      $st = $pdo->prepare($sql);
-      $st->execute([$sessionId, $motivo, round($amount,2), $userId]);
+      if ($hasRepInMov) {
+        $sql = "INSERT INTO cash_movements
+                  (session_id, type, motivo, representante, metodo_pago, amount, created_by" . ($createdCol ? ", $createdCol" : "") . ")
+                VALUES
+                  (?, 'desembolso', ?, ?, 'efectivo', ?, ?" . ($createdCol ? ", NOW()" : "") . ")";
+        $st = $pdo->prepare($sql);
+        $st->execute([$sessionId, $motivo, $representante, round($amount,2), $userId]);
+      } else {
+        $sql = "INSERT INTO cash_movements
+                  (session_id, type, motivo, metodo_pago, amount, created_by" . ($createdCol ? ", $createdCol" : "") . ")
+                VALUES
+                  (?, 'desembolso', ?, 'efectivo', ?, ?" . ($createdCol ? ", NOW()" : "") . ")";
+        $st = $pdo->prepare($sql);
+        $st->execute([$sessionId, $motivo, round($amount,2), $userId]);
+      }
     }
 
     $success = "Desembolso registrado.";
+
     $motivo = "";
     $monto = "";
 
@@ -132,9 +202,7 @@ if ($createdCol) {
     $totalDia = (float)$stT->fetchColumn();
 
   } else {
-    $stS = $pdo->prepare("SELECT id FROM cash_sessions WHERE branch_id=? AND date_open=?");
-    $stS->execute([$branchId, $today]);
-    $sessIds = $stS->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    $sessIds = $sessIdsDay;
 
     if (!empty($sessIds)) {
       $ph = implode(",", array_fill(0, count($sessIds), "?"));
@@ -165,9 +233,7 @@ if ($createdCol) {
     }
   }
 } else {
-  $stS = $pdo->prepare("SELECT id FROM cash_sessions WHERE branch_id=? AND date_open=?");
-  $stS->execute([$branchId, $today]);
-  $sessIds = $stS->fetchAll(PDO::FETCH_COLUMN) ?: [];
+  $sessIds = $sessIdsDay;
 
   if (!empty($sessIds)) {
     $ph = implode(",", array_fill(0, count($sessIds), "?"));
@@ -210,10 +276,17 @@ if ($detailId > 0) {
       $stD->execute([$detailId, $branchId]);
       $detailRow = $stD->fetch(PDO::FETCH_ASSOC) ?: null;
     } else {
-      // Sin branch_id: permitimos ver el detalle solo si pertenece a la sesión actual
-      $stD = $pdo->prepare("SELECT $cols FROM cash_movements WHERE id=? AND type='desembolso' AND session_id=? LIMIT 1");
-      $stD->execute([$detailId, $sessionId]);
-      $detailRow = $stD->fetch(PDO::FETCH_ASSOC) ?: null;
+      // Sin branch_id: permitimos ver el detalle si pertenece a una sesión del día en esta sucursal
+      if (!empty($sessIdsDay)) {
+        $ph = implode(",", array_fill(0, count($sessIdsDay), "?"));
+        $stD = $pdo->prepare("SELECT $cols FROM cash_movements WHERE id=? AND type='desembolso' AND session_id IN ($ph) LIMIT 1");
+        $stD->execute(array_merge([$detailId], $sessIdsDay));
+        $detailRow = $stD->fetch(PDO::FETCH_ASSOC) ?: null;
+      } else {
+        $stD = $pdo->prepare("SELECT $cols FROM cash_movements WHERE id=? AND type='desembolso' AND session_id=? LIMIT 1");
+        $stD->execute([$detailId, $sessionId]);
+        $detailRow = $stD->fetch(PDO::FETCH_ASSOC) ?: null;
+      }
     }
   } catch (Throwable $e) {
     $detailRow = null;
@@ -636,7 +709,7 @@ endif;
             <label class="inLabel" for="representante">Representante</label>
             <input class="inBox" id="representante" type="text" name="representante"
               value="<?php echo h($representante); ?>"
-              placeholder="Ej: CEVIMEP Moca"
+              placeholder="Ej: Juan Pérez"
               required>
           </div>
         </div>
