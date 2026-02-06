@@ -51,7 +51,35 @@ if (isset($_GET['acuse'])) {
           @page { margin: 8mm; }
           body { padding: 0; }
         }
-      </style>
+      
+/* Historial con scroll */
+.historial-scroll{
+  max-height: 320px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-radius: 14px;
+}
+.historial-scroll table{
+  width: 100%;
+  border-collapse: separate;
+}
+.historial-scroll thead th{
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f3f7ff;
+}
+.historial-scroll::-webkit-scrollbar{ width: 10px; }
+.historial-scroll::-webkit-scrollbar-thumb{
+  background: rgba(0,0,0,.18);
+  border-radius: 10px;
+}
+.historial-scroll::-webkit-scrollbar-track{
+  background: rgba(0,0,0,.06);
+  border-radius: 10px;
+}
+
+</style>
     </head>
     <body onload="window.print()">
       <div class="ticket">
@@ -82,6 +110,7 @@ if (isset($_GET['acuse'])) {
     exit;
 }
 
+<?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 require_once __DIR__ . "/../config/db.php";
@@ -208,10 +237,6 @@ try {
     }
   }
 } catch (Throwable $e) { $sessIdsDay = []; }
-// ✅ Fallback: si no pudimos detectar sesiones del día, usar la sesión actual abierta
-if (empty($sessIdsDay) && !empty($sessionId)) {
-  $sessIdsDay = [(int)$sessionId];
-}
 
 // Detectar campos disponibles
 $hasBranchInMov = colExists($pdo, "cash_movements", "branch_id");
@@ -899,7 +924,8 @@ endif;
         <div class="pillSoft">TOTAL DÍA: RD$ <?php echo fmtMoney(abs($totalDia)); ?></div>
       </div>
 
-      <table class="tbl">
+      <div class="historial-scroll">
+<table class="tbl">
         <thead>
           <tr>
             <th style="width:80px;">ID</th>
@@ -929,6 +955,7 @@ endif;
           <?php endif; ?>
         </tbody>
       </table>
+</div>
     </section>
 
   </div>
