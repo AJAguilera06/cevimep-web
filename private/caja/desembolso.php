@@ -124,7 +124,10 @@ try {
     .pill{ display:inline-flex; align-items:center; justify-content:center; padding: 8px 14px; border-radius: 999px; background:#eef5ff; border:1px solid #cfe1ff; font-weight:900; color:#0b4d87; font-size: 12px; }
     .btn-save{ width: 320px; max-width: 100%; height: 46px; border:0; border-radius: 999px; background:#0b4d87; color:#fff; font-weight: 950; letter-spacing:.3px; box-shadow: 0 16px 30px rgba(11,77,135,.25); cursor:pointer; }
     .btn-save:hover{ filter: brightness(1.03); transform: translateY(-1px); }
-    .center{ display:flex; justify-content:center; align-items:center; }
+    .center{ display:flex; justify-content:center; align-items:center; gap:10px; flex-wrap:wrap; }
+    .hidden{ display:none !important; }
+    .btn-hist{ height: 38px; padding: 0 16px; border-radius: 999px; border:1px solid #bcd6ff; background:#fff; color:#0b4d87; font-weight:950; cursor:pointer; }
+    .btn-hist:hover{ background:#eef5ff; }
 
     /* HISTORIAL: card fija + scroll interno */
     .history-card{ background:#fff; border-radius: 22px; box-shadow: 0 18px 40px rgba(0,0,0,.10); padding: 14px; overflow:hidden; }
@@ -168,10 +171,6 @@ try {
       <a href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
       <a href="/private/estadisticas/index.php"><span class="ico">📊</span> Estadísticas</a>
     </nav>
-    <div class="branch-card">
-      <div class="branch-label">Sucursal</div>
-      <div class="branch-name"><?= h($branchName) ?></div>
-    </div>
   </aside>
 
   <main class="content">
@@ -214,12 +213,14 @@ try {
 
             <div class="span3 center" style="padding-top:6px;">
               <button class="btn-save" type="submit">GUARDAR E IMPRIMIR</button>
+          <button class="btn-hist" type="button" id="btnHistorial">HISTORIAL</button>
             </div>
           </div>
           <div style="margin-top:10px;color:#667;font-weight:700;">El acuse se abrirá en otra pestaña al guardar.</div>
         </form>
       </div>
 
+      <div id="historialWrap" class="hidden">
       <h2 id="historial" style="text-align:center;margin:20px 0 10px;font-weight:950;color:#0b4d87;">HISTORIAL DE DESEMBOLSOS</h2>
 
       <div class="history-card">
@@ -262,6 +263,8 @@ try {
         </div>
       </div>
 
+      </div>
+
       <div style="height:22px;"></div>
 
     </div>
@@ -270,6 +273,28 @@ try {
 </div>
 
 <footer class="footer">© <?= h($year) ?> CEVIMEP. Todos los derechos reservados.</footer>
+
+
+<script>
+(function(){
+  const wrap = document.getElementById('historialWrap');
+  const btn = document.getElementById('btnHistorial');
+  function showHist(){
+    if(!wrap) return;
+    wrap.classList.remove('hidden');
+    // scroll suave al historial
+    const anchor = document.getElementById('historial');
+    if(anchor) anchor.scrollIntoView({behavior:'smooth', block:'start'});
+  }
+  if(btn){ btn.addEventListener('click', showHist); }
+
+  // Si vienes con #historial o ?ok=1, mostrar automáticamente
+  const params = new URLSearchParams(window.location.search);
+  if(window.location.hash === '#historial' || params.has('ok')){
+    if(wrap) wrap.classList.remove('hidden');
+  }
+})();
+</script>
 
 </body>
 </html>
