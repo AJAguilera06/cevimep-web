@@ -105,14 +105,15 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Inventario</title>
 
-  <!-- MISMO CSS/ESTRUCTURA QUE dashboard.php -->
   <link rel="stylesheet" href="/assets/css/styles.css?v=90">
 
   <style>
+    /* ✅ FIX: quitar el max-width centrado que te crea el hueco */
     .page-wrap{
-      max-width: 1280px;
-      margin: 0 auto;
-      padding: 22px 18px 12px;
+      width: 100%;
+      max-width: none;   /* antes: 1280px */
+      margin: 0;         /* antes: 0 auto */
+      padding: 22px 22px 12px;
     }
 
     .page-header{
@@ -290,13 +291,13 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
     @media (max-width: 980px){
       .page-title h1{ font-size: 28px; }
       table{ min-width: 860px; }
+      .page-wrap{ padding: 18px 14px 10px; }
     }
   </style>
 </head>
 
 <body>
 
-<!-- NAVBAR -->
 <div class="navbar">
   <div class="inner">
     <div class="brand">
@@ -311,7 +312,6 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
 
 <div class="layout">
 
-  <!-- SIDEBAR -->
   <aside class="sidebar">
     <h3 class="menu-title">Menú</h3>
     <nav class="menu">
