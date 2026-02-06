@@ -2,12 +2,12 @@
 declare(strict_types=1);
 
 require_once __DIR__ . "/../_guard.php";
-$conn = $pdo;
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
   session_start();
 }
 
+$conn = $pdo;
 $user = $_SESSION["user"] ?? [];
 $year = date("Y");
 $branch_id = (int)($user["branch_id"] ?? 0);
@@ -31,7 +31,7 @@ try {
 $filter_category_id = isset($_GET["category_id"]) ? (int)$_GET["category_id"] : 0;
 
 /* Flash */
-$flash_ok = $_SESSION["flash_success"] ?? "";
+$flash_ok  = $_SESSION["flash_success"] ?? "";
 $flash_err = $_SESSION["flash_error"] ?? "";
 unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
 
@@ -54,7 +54,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "delet
   }
 }
 
-/* ===== LISTADO POR SUCURSAL (inventory_stock.quantity) ===== */
+/* ===== LISTADO POR SUCURSAL ===== */
 $items = [];
 try {
   $sql = "
@@ -101,15 +101,15 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Inventario</title>
 
-  <link rel="stylesheet" href="/assets/css/styles.css?v=100">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=120">
 
   <style>
-    /* ===== EXACTO COMO TU IMAGEN ===== */
+    /* ✅ Clave para que se vea EXACTO como tu captura: contenido centrado */
     .page-wrap{
       width: 100%;
-      max-width: none;
-      margin: 0;
-      padding: 22px 22px 16px;
+      max-width: 1120px;      /* ancho similar al de tu screenshot */
+      margin: 0 auto;         /* centra */
+      padding: 24px 18px 18px;
     }
 
     .inv-title{
@@ -117,7 +117,7 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       font-weight: 950;
       font-size: 44px;
       letter-spacing: -0.8px;
-      margin: 12px 0 14px;
+      margin: 10px 0 12px;
     }
 
     /* fila: botón centrado + filtro a la derecha */
@@ -126,10 +126,17 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       grid-template-columns: 1fr auto 1fr;
       align-items:center;
       gap: 12px;
-      margin-bottom: 18px;
+      margin: 4px 0 16px;
     }
     .inv-controls__center{ grid-column: 2; justify-self:center; }
-    .inv-controls__right{ grid-column: 3; justify-self:end; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .inv-controls__right{
+      grid-column: 3;
+      justify-self:end;
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
 
     .btn-main{
       height:44px;
@@ -176,6 +183,9 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
     }
     .btn-filter:hover{ filter: brightness(.98); transform: translateY(-1px); }
 
+    .flash-ok{background:#e9fff1;border:1px solid #a7f0bf;color:#0a7a33;border-radius:12px;padding:10px 12px;font-size:13px;margin:0 0 12px;font-weight:850;}
+    .flash-err{background:#ffecec;border:1px solid #ffb6b6;color:#a40000;border-radius:12px;padding:10px 12px;font-size:13px;margin:0 0 12px;font-weight:850;}
+
     /* card + tabla */
     .card{
       background:#fff;
@@ -186,7 +196,7 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
     .table-wrap{
       width:100%;
       overflow:auto;
-      max-height: 560px;
+      max-height: 520px;   /* como tu captura */
       border-radius:14px;
       border:1px solid rgba(2,21,44,.06);
       -webkit-overflow-scrolling: touch;
@@ -250,16 +260,13 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       color:#a40000;
     }
 
-    .flash-ok{background:#e9fff1;border:1px solid #a7f0bf;color:#0a7a33;border-radius:12px;padding:10px 12px;font-size:13px;margin:0 0 12px;font-weight:850;}
-    .flash-err{background:#ffecec;border:1px solid #ffb6b6;color:#a40000;border-radius:12px;padding:10px 12px;font-size:13px;margin:0 0 12px;font-weight:850;}
-
     @media (max-width: 980px){
+      .page-wrap{ max-width: 100%; padding: 18px 14px 14px; }
       .inv-title{ font-size: 34px; }
       .inv-controls{ grid-template-columns: 1fr; }
       .inv-controls__center{ grid-column:auto; justify-self:center; }
       .inv-controls__right{ grid-column:auto; justify-self:center; }
       table{ min-width: 860px; }
-      .page-wrap{ padding: 18px 14px 14px; }
     }
   </style>
 </head>
@@ -342,7 +349,6 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
                 <?php foreach ($items as $it): ?>
                   <?php
                     $stock = (int)($it["stock"] ?? 0);
-
                     if ($stock <= 0) { $pillClass = "pill-out"; $pillText = "0 · Agotado"; }
                     elseif ($stock <= 1) { $pillClass = "pill-low"; $pillText = $stock . " · Bajo"; }
                     else { $pillClass = "pill-ok"; $pillText = $stock . " · OK"; }
