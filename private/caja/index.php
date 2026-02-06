@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 require_once __DIR__ . "/../_guard.php";
 
-// ✅ Sesión (por si _guard no la inicia en algún entorno)
 if (session_status() !== PHP_SESSION_ACTIVE) {
   session_start();
 }
@@ -26,38 +25,15 @@ function fmtMoney($n){ return number_format((float)$n, 2, ".", ","); }
 
 $today = date("Y-m-d");
 
-/**
- * ✅ CONEXIÓN REAL
- * Tu conexión está en: private/config/db.php
- * Desde private/caja/index.php => ../config/db.php
- */
 if (!isset($pdo) || !($pdo instanceof PDO)) {
   require_once __DIR__ . "/../config/db.php";
 }
 
-/**
- * ✅ Librería de caja (funciones de turno/sesión)
- */
 require_once __DIR__ . "/caja_lib.php";
 
-// ✅ Auto cerrar vencidas y abrir sesión actual (sin botones)
-$activeSessionId = 0;
-try {
-  $activeSessionId = caja_get_or_open_current_session($pdo, $branchId, $userId);
-} catch (Throwable $e) {
-  $activeSessionId = 0; // no romper la página
-}
+// Auto cerrar vencidas y abrir sesión actual (sin botones)
+try { caja_get_or_open_current_session($pdo, $branchId, $userId); } catch (Throwable $e) {}
 
-// Nombre sucursal (si existe branches)
-$branchName = "Sucursal #".$branchId;
-try {
-  $stB = $pdo->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
-  $stB->execute([$branchId]);
-  $bn = $stB->fetchColumn();
-  if ($bn) $branchName = (string)$bn;
-} catch (Throwable $e) {}
-
-// ✅ Mantengo TUS funciones, pero seguras (try/catch) para que nunca rompan Railway
 function getSession(PDO $pdo, int $branchId, int $cajaNum, string $date, string $shiftStart, string $shiftEnd){
   try {
     $st = $pdo->prepare("SELECT * FROM cash_sessions
@@ -86,8 +62,8 @@ function getTotals(PDO $pdo, int $sessionId){
     $r = ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0];
   }
 
-  $ing = (float)$r["efectivo"]+(float)$r["tarjeta"]+(float)$r["transferencia"];
-  $net = $ing-(float)$r["desembolso"];
+  $ing = (float)$r["efectivo"] + (float)$r["tarjeta"] + (float)$r["transferencia"];
+  $net = $ing - (float)$r["desembolso"];
   return [$r,$ing,$net];
 }
 
@@ -104,13 +80,6 @@ $sum = [
 
 if ($caja1) { [$r,$ing,$net] = getTotals($pdo, (int)$caja1["id"]); $sum[1]=["r"=>$r,"ing"=>$ing,"net"=>$net]; }
 if ($caja2) { [$r,$ing,$net] = getTotals($pdo, (int)$caja2["id"]); $sum[2]=["r"=>$r,"ing"=>$ing,"net"=>$net]; }
-
-$currentCajaNum = 0;
-try {
-  $currentCajaNum = caja_get_current_caja_num();
-} catch (Throwable $e) {
-  $currentCajaNum = 0;
-}
 ?>
 <!doctype html>
 <html lang="es">
@@ -119,105 +88,118 @@ try {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CEVIMEP | Caja</title>
 
-  <!-- ✅ MISMO CSS DEL DASHBOARD -->
   <link rel="stylesheet" href="/assets/css/styles.css?v=50">
 
-  <!-- ✅ Solo estilos mínimos para tablas/cards sin romper el look -->
   <style>
+    /* ✅ Contenedor centrado (esto es CLAVE para que se vea como tu 2da imagen) */
+    .caja-container{
+      max-width: 1080px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 12px 10px 6px;
+    }
 
-    .page-wrap{display:flex; flex-direction:column; gap:14px;}
-
-    /* Card */
+    /* Card general */
     .card-soft{
       background: rgba(255,255,255,.92);
       border: 1px solid rgba(255,255,255,.35);
       border-radius: 16px;
-      padding: 14px 16px;
+      padding: 16px 18px;
       box-shadow: 0 10px 24px rgba(0,0,0,.07);
     }
 
-    /* Titles */
-    .card-soft h1{margin:0; font-size:34px; line-height:1.1; letter-spacing:.2px;}
-    .card-soft h2{margin:0; font-size:20px; line-height:1.2; letter-spacing:.2px;}
-
-    .muted{opacity:.85; font-size:14px;}
-
-    /* Header (como tu screenshot): título centrado + botones centrados debajo */
-    .header-card{padding:18px 16px;}
-    .header-center{display:flex; flex-direction:column; align-items:center; text-align:center; gap:10px;}
-    .actions{display:flex; gap:10px; flex-wrap:wrap; justify-content:center;}
-
-    .btn-pill{
-      display:inline-flex; align-items:center; justify-content:center;
-      padding:10px 14px; border-radius:999px;
-      border:1px solid rgba(255,255,255,.55);
-      background: rgba(0,0,0,.08);
-      color:#fff; text-decoration:none;
-      font-weight:800; font-size:14px;
-      transition:.15s ease;
-      box-shadow: 0 10px 18px rgba(0,0,0,.10);
+    /* Header (igual a tu imagen: título + botones centrados) */
+    .header-card{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      text-align:center;
+      gap: 12px;
+      padding: 18px 18px;
     }
-    .btn-pill:hover{transform:translateY(-1px); filter:brightness(.98);}
-
-    /* Two cards layout */
-    .grid-2{
-      display:grid;
-      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
-      gap:14px;
+    .header-card h1{
+      margin:0;
+      font-size: 34px;
+      line-height: 1.1;
+      font-weight: 900;
     }
-    @media(max-width: 980px){ .grid-2{grid-template-columns:1fr;} }
-
-    /* Table */
-    table{
-      width:100%;
-      border-collapse:collapse;
-      margin-top:10px;
-      overflow:hidden;
-      border-radius:14px;
-      background: rgba(255,255,255,.55);
-      border: 1px solid rgba(0,0,0,.06);
+    .actions{
+      display:flex;
+      gap: 12px;
+      flex-wrap:wrap;
+      justify-content:center;
     }
-    th,td{
-      padding:9px 10px;
-      border-bottom:1px solid rgba(0,0,0,.06);
-      font-size:14px;
-    }
-    thead th{font-weight:900;}
-    tbody tr:last-child td{border-bottom:none;}
-    .t-strong{font-weight:900;}
-
-    /* Make header card less tall on short screens (1600x900 laptops) */
-    @media (max-height: 900px){
-      .card-soft{padding:12px 14px;}
-      .card-soft h1{font-size:28px;}
-      .card-soft h2{font-size:19px;}
-      .btn-pill{padding:9px 12px; font-size:13.5px;}
-      th,td{padding:8px 9px;}
-    }
-
-    /* ACTION BUTTONS (píldoras azul oscuro, centradas) */
     .actions .btn-pill{
       background: var(--blue);
       border-color: var(--blue);
       color:#fff;
-      padding:10px 16px;
-      font-weight:900;
+      padding: 10px 16px;
+      border-radius: 999px;
+      font-weight: 900;
+      text-decoration:none;
+      box-shadow: 0 10px 18px rgba(0,0,0,.10);
+      transition: .15s ease;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      font-size:14px;
     }
-    .actions .btn-pill:hover{filter:brightness(0.95);}
+    .actions .btn-pill:hover{ transform: translateY(-1px); filter: brightness(.96); }
 
+    /* Grid 2 cards */
+    .grid-2{
+      margin-top: 14px;
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 980px){
+      .grid-2{ grid-template-columns: 1fr; }
+    }
+
+    /* Títulos dentro de cards centrados como tu imagen */
+    .box-title{
+      margin: 0;
+      text-align:center;
+      font-size: 18px;
+      font-weight: 900;
+    }
+
+    /* Tabla */
+    table{
+      width:100%;
+      border-collapse:collapse;
+      margin-top: 12px;
+      border-radius:14px;
+      overflow:hidden;
+      background: rgba(255,255,255,.55);
+      border: 1px solid rgba(0,0,0,.06);
+    }
+    th,td{
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(0,0,0,.06);
+      font-size: 14px;
+    }
+    thead th{ font-weight: 900; }
+    tbody tr:last-child td{ border-bottom:none; }
+    .t-strong{ font-weight: 900; }
+
+    /* Ajuste leve para pantallas bajitas (sin deformar) */
+    @media (max-height: 900px){
+      .header-card h1{ font-size: 30px; }
+      .actions .btn-pill{ padding: 9px 14px; }
+    }
   </style>
 </head>
 
 <body>
 
-<!-- TOPBAR (igual dashboard) -->
 <header class="navbar">
   <div class="inner">
     <div class="brand">
       <span class="dot"></span>
       <span>CEVIMEP</span>
     </div>
-
     <div class="nav-right">
       <a href="/logout.php" class="btn-pill">Salir</a>
     </div>
@@ -225,11 +207,8 @@ try {
 </header>
 
 <div class="layout">
-
-  <!-- SIDEBAR (igual dashboard / mismo orden) -->
   <aside class="sidebar">
     <div class="menu-title">Menú</div>
-
     <nav class="menu">
       <a href="/private/dashboard.php">🏠 Panel</a>
       <a href="/private/patients/index.php">👤 Pacientes</a>
@@ -241,33 +220,24 @@ try {
     </nav>
   </aside>
 
-  <!-- CONTENIDO -->
   <main class="content">
-    <div class="page-wrap">
+    <div class="caja-container">
 
-      <!-- HEADER (como el screenshot) -->
+      <!-- ✅ Header EXACTO como tu 2da imagen -->
       <div class="card-soft header-card">
-        <div class="header-center">
-          <h1>Caja</h1>
-
-          <div class="actions">
-            <a class="btn-pill" href="/private/caja/desembolso.php">Desembolso</a>
-            <a class="btn-pill" href="/private/caja/reporte_diario.php">Reporte diario</a>
-            <a class="btn-pill" href="/private/caja/reporte_mensual.php">Reporte mensual</a>
-          </div>
-
-          <div class="muted">
-            <?= h($branchName) ?> · Hoy: <?= h($today) ?>
-          </div>
+        <h1>Caja</h1>
+        <div class="actions">
+          <a class="btn-pill" href="/private/caja/desembolso.php">Desembolso</a>
+          <a class="btn-pill" href="/private/caja/reporte_diario.php">Reporte diario</a>
+          <a class="btn-pill" href="/private/caja/reporte_mensual.php">Reporte mensual</a>
         </div>
       </div>
 
-      <!-- CAJA 1 / CAJA 2 -->
+      <!-- ✅ Dos cards exactamente como tu 2da imagen -->
       <div class="grid-2">
 
         <div class="card-soft">
-          <h2 style="margin:0;">Caja 1 (08:00 AM - 01:00 PM)</h2>
-
+          <h2 class="box-title">Caja 1 (08:00 AM - 01:00 PM)</h2>
           <table>
             <thead>
               <tr><th>Concepto</th><th>Monto</th></tr>
@@ -285,8 +255,7 @@ try {
         </div>
 
         <div class="card-soft">
-          <h2 style="margin:0;">Caja 2 (01:00 PM - 06:00 PM)</h2>
-
+          <h2 class="box-title">Caja 2 (01:00 PM - 06:00 PM)</h2>
           <table>
             <thead>
               <tr><th>Concepto</th><th>Monto</th></tr>
@@ -310,7 +279,7 @@ try {
 </div>
 
 <footer class="footer">
-  © <?= (int)$year ?> CEVIMEP — Todos los derechos reservados.
+  © <?= (int)$year ?> CEVIMEP. Todos los derechos reservados.
 </footer>
 
 </body>
