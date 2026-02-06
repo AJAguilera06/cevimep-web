@@ -170,12 +170,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
       padding:26px 26px 22px;
     }
 
+    .content{
+      padding-top:28px;
+      padding-bottom:120px; /* evita que el footer tape los botones */
+    }
+
     .patients-top{
       display:flex;
-      align-items:flex-end;
-      justify-content:space-between;
-      gap:18px;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
       margin:6px 0 18px;
+      text-align:center;
     }
 
     .patients-top h1{
@@ -185,10 +192,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
       letter-spacing:-.5px;
       line-height:1.05;
     }
-    .patients-top p{
-      margin:8px 0 0;
-      opacity:.78;
-      font-size:15px;
+
+    @media (max-width: 1100px){
+      .patients-top h1{font-size:36px;}
+    }
+    @media (max-width: 700px){
+      .patients-wrap{padding:18px 14px 16px;}
+      .patients-top h1{font-size:30px;}
     }
 
     .btn-ghost{
@@ -336,12 +346,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     <div class="patients-wrap">
 
       <div class="patients-top">
-        <div>
-          <h1>Registrar nuevo paciente</h1>
-          <p>Completa los datos y guarda.</p>
-        </div>
-
-        <a class="btn btn-ghost" href="/private/patients/index.php">← Volver</a>
+        <h1>Registrar nuevo paciente</h1>
       </div>
 
       <?php if ($error): ?>
