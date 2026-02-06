@@ -333,10 +333,8 @@ if ($detailId > 0) {
     $detailRow = null;
   }
 }
-
-$isPrint = (isset($_GET["print"]) && $_GET["print"] == "1");
-if ($isPrint):
 ?>
+
 <!doctype html>
 <html lang="es">
 <head>
