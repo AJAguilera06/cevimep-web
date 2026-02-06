@@ -105,14 +105,22 @@ if (isset($_GET['acuse'])) {
         .btns{display:none;}
         .card{box-shadow:none;border-radius:0;}
       }
-    /* Scroll interno para historial */
+    
+/* ✅ Historial: evita que crezca fuera de pantalla */
+.historyCard{
+  overflow: hidden;               /* recorta el contenido interno */
+}
+
 .historial-scroll{
-  max-height: 320px;
+  /* alto dinámico según la pantalla (no se sale) */
+  max-height: clamp(180px, calc(100vh - 620px), 320px);
   overflow-y: auto;
   overflow-x: hidden;
   margin-top: 10px;
   border-radius: 14px;
 }
+
+.historial-scroll table{ width:100%; }
 .historial-scroll thead th{
   position: sticky;
   top: 0;
