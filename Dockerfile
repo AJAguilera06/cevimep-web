@@ -74,56 +74,99 @@ FROM php:8.2-fpm
 # PHP extensions
 RUN docker-php-ext-install mysqli pdo pdo_mysql
 
-# NGINX + envsubst (gettext-base)
-RUN apt-get update && apt-get install -y nginx gettext-base \
- && rm -rf /var/lib/apt/lists/*
+# ===============================
+# Base
+# ===============================
+FROM php:8.2-fpm
 
-# App
-COPY . /var/www/html/
+# ===============================
+# Instalar dependencias del sistema
+# ===============================
+RUN apt-get update && apt-get install -y \
+    nginx \
+    gettext-base \
+    git \
+    unzip \
+    libzip-dev \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    zip \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && docker-php-ext-install mysqli pdo pdo_mysql zip
+
+# ===============================
+# Configurar PHP
+# ===============================
+RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
+
+# ===============================
+# (Opcional) Si en algún entorno aparece apache, evitamos conflicto (seguro)
+# ===============================
+RUN rm -f /etc/apache2/mods-enabled/mpm_* || true
+
+# ===============================
+# Directorio de trabajo + app
+# ===============================
 WORKDIR /var/www/html
+COPY . /var/www/html
 
-# NGINX template
-RUN printf '%s\n' \
-'server {' \
-'  listen $PORT;' \
-'  server_name _;' \
-'' \
-'  root /var/www/html/public;' \
-'  index index.php index.html;' \
-'' \
-'  # Servir /assets desde /var/www/html/assets (fuera de /public)' \
-'  location ^~ /assets/ {' \
-'    alias /var/www/html/assets/;' \
-'    try_files $uri =404;' \
-'    access_log off;' \
-'    expires 7d;' \
-'  }' \
-'' \
-'  # Servir /private desde /var/www/html/private (fuera de /public)' \
-'  location ^~ /private/ {' \
-'    alias /var/www/html/private/;' \
-'    try_files $uri =404;' \
-'' \
-'    location ~ \.php$ {' \
-'      include fastcgi_params;' \
-'      fastcgi_pass 127.0.0.1:9000;' \
-'      fastcgi_index index.php;' \
-'      fastcgi_param SCRIPT_FILENAME $request_filename;' \
-'    }' \
-'  }' \
-'' \
-'  location / {' \
-'    try_files $uri $uri/ /index.php?$query_string;' \
-'  }' \
-'' \
-'  location ~ \.php$ {' \
-'    include fastcgi_params;' \
-'    fastcgi_pass 127.0.0.1:9000;' \
-'    fastcgi_index index.php;' \
-'    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' \
-'  }' \
-'}' \
-> /etc/nginx/conf.d/default.conf.template
+# ===============================
+# Permisos
+# ===============================
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html
 
+# ===============================
+# NGINX config (template) - usando heredoc para evitar errores de comillas/escapes
+# ===============================
+RUN rm -f /etc/nginx/sites-enabled/default || true && \
+cat > /etc/nginx/conf.d/default.conf.template <<'NGINXCONF'
+server {
+  listen ${PORT};
+  server_name _;
+
+  root /var/www/html/public;
+  index index.php index.html;
+
+  # Servir /assets desde /var/www/html/assets (fuera de /public)
+  location ^~ /assets/ {
+    alias /var/www/html/assets/;
+    try_files $uri =404;
+    access_log off;
+    expires 7d;
+  }
+
+  # Servir /private desde /var/www/html/private (fuera de /public)
+  location ^~ /private/ {
+    alias /var/www/html/private/;
+    try_files $uri =404;
+
+    # PHP dentro de /private con alias -> usar $request_filename
+    location ~ \.php$ {
+      include fastcgi_params;
+      fastcgi_pass 127.0.0.1:9000;
+      fastcgi_index index.php;
+      fastcgi_param SCRIPT_FILENAME $request_filename;
+    }
+  }
+
+  location / {
+    try_files $uri $uri/ /index.php?$query_string;
+  }
+
+  location ~ \.php$ {
+    include fastcgi_params;
+    fastcgi_pass 127.0.0.1:9000;
+    fastcgi_index index.php;
+    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+  }
+}
+NGINXCONF
+
+# ===============================
 # Start
+# ===============================
 CMD ["sh", "-c", "echo \"PORT=$PORT\" && envsubst '$PORT' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf && php-fpm -D && nginx -g 'daemon off;'"]
+
