@@ -40,7 +40,6 @@ if (!isset($pdo) || !($pdo instanceof PDO)) {
  */
 require_once __DIR__ . "/caja_lib.php";
 
-
 // ✅ Auto cerrar vencidas y abrir sesión actual (sin botones)
 $activeSessionId = 0;
 try {
@@ -58,7 +57,7 @@ try {
   if ($bn) $branchName = (string)$bn;
 } catch (Throwable $e) {}
 
-// ✅ Mantengo TUS funciones, pero las hago seguras (try/catch) para que nunca rompan Railway
+// ✅ Mantengo TUS funciones, pero seguras (try/catch) para que nunca rompan Railway
 function getSession(PDO $pdo, int $branchId, int $cajaNum, string $date, string $shiftStart, string $shiftEnd){
   try {
     $st = $pdo->prepare("SELECT * FROM cash_sessions
@@ -138,21 +137,15 @@ try {
     }
 
     /* Titles */
-    .card-soft h1{margin:0; font-size:32px; line-height:1.1; letter-spacing:.2px;}
+    .card-soft h1{margin:0; font-size:34px; line-height:1.1; letter-spacing:.2px;}
     .card-soft h2{margin:0; font-size:20px; line-height:1.2; letter-spacing:.2px;}
 
-    .row-head{display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center;}
     .muted{opacity:.85; font-size:14px;}
 
-    .pill{
-      display:inline-flex; align-items:center; gap:8px;
-      padding:5px 10px; border:1px solid rgba(0,0,0,.08);
-      border-radius:999px; font-size:13px; font-weight:700;
-      background:rgba(255,255,255,.75);
-      box-shadow: 0 6px 14px rgba(0,0,0,.05);
-    }
-
-    .actions{display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;}
+    /* Header (como tu screenshot): título centrado + botones centrados debajo */
+    .header-card{padding:18px 16px;}
+    .header-center{display:flex; flex-direction:column; align-items:center; text-align:center; gap:10px;}
+    .actions{display:flex; gap:10px; flex-wrap:wrap; justify-content:center;}
 
     .btn-pill{
       display:inline-flex; align-items:center; justify-content:center;
@@ -202,15 +195,17 @@ try {
       th,td{padding:8px 9px;}
     }
 
-    /* ACTION BUTTONS OVERRIDE (visible on white cards) */
+    /* ACTION BUTTONS (píldoras azul oscuro, centradas) */
     .actions .btn-pill{
       background: var(--blue);
       border-color: var(--blue);
       color:#fff;
+      padding:10px 16px;
+      font-weight:900;
     }
     .actions .btn-pill:hover{filter:brightness(0.95);}
 
-</style>
+  </style>
 </head>
 
 <body>
@@ -250,30 +245,19 @@ try {
   <main class="content">
     <div class="page-wrap">
 
-      <!-- HEADER / ACCIONES (tus botones) -->
-      <div class="card-soft">
-        <div class="row-head">
-          <div>
-            <h1 style="margin:0;">Caja</h1>
-            <div class="muted" style="margin-top:6px;">
-              <?= h($branchName) ?> · Hoy: <?= h($today) ?>
-            </div>
-
-            <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
-              <span class="pill">Caja activa ahora: <?= (int)$currentCajaNum ?></span>
-              <span class="pill">Sesión activa ID: <?= (int)$activeSessionId ?></span>
-            </div>
-
-            <div class="muted" style="margin-top:10px;">
-              * Las cajas se abren y cierran automáticamente por horario (sin botones).
-            </div>
-          </div>
+      <!-- HEADER (como el screenshot) -->
+      <div class="card-soft header-card">
+        <div class="header-center">
+          <h1>Caja</h1>
 
           <div class="actions">
-            <!-- ✅ Mantengo tus links tal cual -->
             <a class="btn-pill" href="/private/caja/desembolso.php">Desembolso</a>
             <a class="btn-pill" href="/private/caja/reporte_diario.php">Reporte diario</a>
             <a class="btn-pill" href="/private/caja/reporte_mensual.php">Reporte mensual</a>
+          </div>
+
+          <div class="muted">
+            <?= h($branchName) ?> · Hoy: <?= h($today) ?>
           </div>
         </div>
       </div>
@@ -283,13 +267,6 @@ try {
 
         <div class="card-soft">
           <h2 style="margin:0;">Caja 1 (08:00 AM - 01:00 PM)</h2>
-          <div class="muted" style="margin-top:6px;">
-            <?php if(!$caja1): ?>
-              Sin sesión registrada hoy.
-            <?php else: ?>
-              Abierta: <?= h($caja1["opened_at"] ?? "—") ?> · Cerrada: <?= h($caja1["closed_at"] ?? "—") ?>
-            <?php endif; ?>
-          </div>
 
           <table>
             <thead>
@@ -309,13 +286,6 @@ try {
 
         <div class="card-soft">
           <h2 style="margin:0;">Caja 2 (01:00 PM - 06:00 PM)</h2>
-          <div class="muted" style="margin-top:6px;">
-            <?php if(!$caja2): ?>
-              Sin sesión registrada hoy.
-            <?php else: ?>
-              Abierta: <?= h($caja2["opened_at"] ?? "—") ?> · Cerrada: <?= h($caja2["closed_at"] ?? "—") ?>
-            <?php endif; ?>
-          </div>
 
           <table>
             <thead>
