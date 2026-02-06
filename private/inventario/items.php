@@ -107,7 +107,7 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
     /* ✅ Clave para que se vea EXACTO como tu captura: contenido centrado */
     .page-wrap{
       width: 100%;
-      max-width: 1120px;      /* ancho similar al de tu screenshot */
+      max-width: 1040px;      /* ancho similar al de tu screenshot */
       margin: 0 auto;         /* centra */
       padding: 24px 18px 18px;
     }
@@ -115,9 +115,9 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
     .inv-title{
       text-align:center;
       font-weight: 950;
-      font-size: 44px;
+      font-size: 36px;
       letter-spacing: -0.8px;
-      margin: 10px 0 12px;
+      margin: 6px 0 10px;
     }
 
     /* fila: botón centrado + filtro a la derecha */
@@ -139,8 +139,8 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
     }
 
     .btn-main{
-      height:44px;
-      padding:0 18px;
+      height:40px;
+      padding:0 16px;
       border-radius: 14px;
       border: 0;
       background: #0b4d87;
@@ -160,7 +160,7 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
     .btn-main:active{ transform: translateY(0); box-shadow:none; }
 
     .select-ui{
-      height:44px;
+      height:40px;
       border:1px solid rgba(2,21,44,.14);
       border-radius:12px;
       padding:0 12px;
@@ -170,7 +170,7 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       font-weight:850;
     }
     .btn-filter{
-      height:44px;
+      height:40px;
       padding:0 16px;
       border-radius:12px;
       border:0;
@@ -189,14 +189,14 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
     /* card + tabla */
     .card{
       background:#fff;
-      border-radius:18px;
+      border-radius:16px;
       box-shadow:0 12px 30px rgba(0,0,0,.08);
-      padding:14px;
+      padding:12px;
     }
     .table-wrap{
       width:100%;
       overflow:auto;
-      max-height: 520px;   /* como tu captura */
+      max-height: 460px;   /* como tu captura */
       border-radius:14px;
       border:1px solid rgba(2,21,44,.06);
       -webkit-overflow-scrolling: touch;
