@@ -4,7 +4,11 @@ declare(strict_types=1);
 require_once __DIR__ . "/../_guard.php";
 $conn = $pdo;
 
-$user = $_SESSION["user"];
+if (session_status() !== PHP_SESSION_ACTIVE) {
+  session_start();
+}
+
+$user = $_SESSION["user"] ?? [];
 $year = date("Y");
 $branch_id = (int)($user["branch_id"] ?? 0);
 
@@ -15,30 +19,21 @@ if ($branch_id <= 0) {
   die("Sucursal inválida (branch_id).");
 }
 
-/* Nombre sucursal */
-$branch_name = "";
-try {
-  $stB = $conn->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
-  $stB->execute([$branch_id]);
-  $branch_name = (string)($stB->fetchColumn() ?: "");
-} catch (Exception $e) {}
-if ($branch_name === "") $branch_name = "Sede #".$branch_id;
-
-/* Flash */
-$flash_ok = $_SESSION["flash_success"] ?? "";
-$flash_err = $_SESSION["flash_error"] ?? "";
-unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
-
 /* Categorías */
 $categories = [];
 try {
   $qc = $conn->query("SELECT id, name FROM inventory_categories ORDER BY name ASC");
   $categories = $qc ? $qc->fetchAll(PDO::FETCH_ASSOC) : [];
-} catch (Exception $e) {
+} catch (Throwable $e) {
   $categories = [];
 }
 
 $filter_category_id = isset($_GET["category_id"]) ? (int)$_GET["category_id"] : 0;
+
+/* Flash */
+$flash_ok = $_SESSION["flash_success"] ?? "";
+$flash_err = $_SESSION["flash_error"] ?? "";
+unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
 
 /* ===== ELIMINAR (solo de ESTA sucursal) ===== */
 if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "delete_from_branch") {
@@ -49,7 +44,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "delet
       $stD = $conn->prepare("DELETE FROM inventory_stock WHERE branch_id=? AND item_id=?");
       $stD->execute([$branch_id, $item_id]);
       $_SESSION["flash_success"] = "Producto removido de esta sucursal.";
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
       $_SESSION["flash_error"] = "No se pudo eliminar el producto de la sucursal.";
     }
 
@@ -90,13 +85,14 @@ try {
   $st = $conn->prepare($sql);
   $st->execute($params);
   $items = $st->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {
+} catch (Throwable $e) {
   $items = [];
 }
 
 /* Links */
 $new_product_url = "/private/inventario/guardar_producto.php";
 $edit_url_base   = "/private/inventario/edit_item.php?id=";
+
 ?>
 <!doctype html>
 <html lang="es">
@@ -105,103 +101,60 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Inventario</title>
 
-  <link rel="stylesheet" href="/assets/css/styles.css?v=90">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=100">
 
   <style>
-    /* ✅ FIX: quitar el max-width centrado que te crea el hueco */
+    /* ===== EXACTO COMO TU IMAGEN ===== */
     .page-wrap{
       width: 100%;
-      max-width: none;   /* antes: 1280px */
-      margin: 0;         /* antes: 0 auto */
-      padding: 22px 22px 12px;
+      max-width: none;
+      margin: 0;
+      padding: 22px 22px 16px;
     }
 
-    .page-header{
-      display:flex;
-      align-items:flex-start;
-      justify-content:space-between;
-      gap:14px;
-      flex-wrap:wrap;
-      margin-bottom: 12px;
-    }
-    .page-title h1{
-      margin:0;
-      font-size: 34px;
+    .inv-title{
+      text-align:center;
       font-weight: 950;
-      letter-spacing: -.3px;
-    }
-    .page-title p{
-      margin:6px 0 0;
-      opacity:.78;
-      font-weight: 800;
-    }
-    .page-actions{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      align-items:center;
+      font-size: 44px;
+      letter-spacing: -0.8px;
+      margin: 12px 0 14px;
     }
 
-    .btn-ui{
-      height:38px;
-      border:none;
-      border-radius:12px;
-      padding:0 14px;
-      font-weight:900;
-      cursor:pointer;
-      text-decoration:none;
+    /* fila: botón centrado + filtro a la derecha */
+    .inv-controls{
+      display:grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items:center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .inv-controls__center{ grid-column: 2; justify-self:center; }
+    .inv-controls__right{ grid-column: 3; justify-self:end; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+
+    .btn-main{
+      height:44px;
+      padding:0 18px;
+      border-radius: 14px;
+      border: 0;
+      background: #0b4d87;
+      color:#fff;
+      font-weight: 950;
       display:inline-flex;
       align-items:center;
       justify-content:center;
-      gap:8px;
-      transition: transform .12s ease, filter .15s ease, box-shadow .18s ease;
-      white-space: nowrap;
-    }
-    .btn-ui:hover{ filter: brightness(.98); transform: translateY(-1px); box-shadow: 0 10px 22px rgba(0,0,0,.08); }
-    .btn-ui:active{ transform: translateY(0); box-shadow:none; }
-
-    .btn-primary-ui{ background:#0b4d87; color:#fff; }
-    .btn-secondary-ui{ background:#eef2f6; color:#2b3b4a; }
-
-    .flash-ok{background:#e9fff1;border:1px solid #a7f0bf;color:#0a7a33;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:12px;font-weight:850;}
-    .flash-err{background:#ffecec;border:1px solid #ffb6b6;color:#a40000;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:12px;font-weight:850;}
-
-    .top-row{
-      display:flex;
-      justify-content:space-between;
-      align-items:flex-end;
-      gap:12px;
-      flex-wrap:wrap;
-      margin-top: 14px;
-      margin-bottom: 12px;
-    }
-
-    .chips{
-      display:flex;
       gap:10px;
-      flex-wrap:wrap;
-      align-items:center;
-    }
-    .chip{
-      background:#f3f6fb;
-      border:1px solid rgba(2,21,44,.10);
-      padding: 8px 10px;
-      border-radius:999px;
-      font-weight:900;
-      font-size:12px;
+      text-decoration:none;
+      cursor:pointer;
+      box-shadow: 0 12px 26px rgba(0,0,0,.12);
+      transition: transform .12s ease, filter .15s ease, box-shadow .18s ease;
       white-space:nowrap;
     }
+    .btn-main:hover{ filter: brightness(.98); transform: translateY(-1px); }
+    .btn-main:active{ transform: translateY(0); box-shadow:none; }
 
-    .filter-form{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      align-items:center;
-      justify-content:flex-end;
-    }
     .select-ui{
-      height:38px;
-      border:1px solid rgba(2,21,44,.12);
+      height:44px;
+      border:1px solid rgba(2,21,44,.14);
       border-radius:12px;
       padding:0 12px;
       background:#fff;
@@ -209,23 +162,34 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       min-width:260px;
       font-weight:850;
     }
+    .btn-filter{
+      height:44px;
+      padding:0 16px;
+      border-radius:12px;
+      border:0;
+      background:#eef2f6;
+      color:#2b3b4a;
+      font-weight:950;
+      cursor:pointer;
+      transition:.15s ease;
+      white-space:nowrap;
+    }
+    .btn-filter:hover{ filter: brightness(.98); transform: translateY(-1px); }
 
+    /* card + tabla */
     .card{
       background:#fff;
       border-radius:18px;
       box-shadow:0 12px 30px rgba(0,0,0,.08);
       padding:14px;
     }
-
     .table-wrap{
       width:100%;
-      overflow-x:auto;
-      overflow-y:auto;
-      max-height: 540px;
+      overflow:auto;
+      max-height: 560px;
       border-radius:14px;
       border:1px solid rgba(2,21,44,.06);
       -webkit-overflow-scrolling: touch;
-      margin-top: 10px;
     }
     table{ width:100%; border-collapse:separate; border-spacing:0; min-width: 980px; }
     th, td{ padding:12px 10px; border-bottom:1px solid #eef2f6; font-size:13px; }
@@ -241,7 +205,6 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       white-space: nowrap;
     }
     tr:last-child td{ border-bottom:none; }
-
     .money{ font-weight:950; white-space:nowrap; }
     .right{ text-align:right; }
 
@@ -254,7 +217,6 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       font-weight:900;
       font-size:12px;
       border:1px solid rgba(2,21,44,.12);
-      text-decoration:none;
       white-space:nowrap;
     }
     .pill-ok{ background:#eafff1; color:#0a7a33; border-color:#b6f0c9; }
@@ -288,10 +250,16 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       color:#a40000;
     }
 
+    .flash-ok{background:#e9fff1;border:1px solid #a7f0bf;color:#0a7a33;border-radius:12px;padding:10px 12px;font-size:13px;margin:0 0 12px;font-weight:850;}
+    .flash-err{background:#ffecec;border:1px solid #ffb6b6;color:#a40000;border-radius:12px;padding:10px 12px;font-size:13px;margin:0 0 12px;font-weight:850;}
+
     @media (max-width: 980px){
-      .page-title h1{ font-size: 28px; }
+      .inv-title{ font-size: 34px; }
+      .inv-controls{ grid-template-columns: 1fr; }
+      .inv-controls__center{ grid-column:auto; justify-self:center; }
+      .inv-controls__right{ grid-column:auto; justify-self:center; }
       table{ min-width: 860px; }
-      .page-wrap{ padding: 18px 14px 10px; }
+      .page-wrap{ padding: 18px 14px 14px; }
     }
   </style>
 </head>
@@ -328,37 +296,26 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
   <main class="content">
     <div class="page-wrap">
 
-      <div class="page-header">
-        <div class="page-title">
-          <h1>Inventario</h1>
-          <p>Productos por sucursal (automático). Sucursal: <strong><?= h($branch_name) ?></strong></p>
-        </div>
-
-        <div class="page-actions">
-          <a class="btn-ui btn-primary-ui" href="<?= h($new_product_url) ?>">➕ Registrar nuevo producto</a>
-          <a class="btn-ui btn-secondary-ui" href="/private/inventario/index.php">← Volver</a>
-        </div>
-      </div>
+      <h1 class="inv-title">Inventario</h1>
 
       <?php if ($flash_ok): ?><div class="flash-ok"><?= h($flash_ok) ?></div><?php endif; ?>
       <?php if ($flash_err): ?><div class="flash-err"><?= h($flash_err) ?></div><?php endif; ?>
 
-      <div class="top-row">
-        <div class="chips">
-          <div class="chip">Mostrando: <strong><?= (int)count($items) ?></strong> producto(s)</div>
-          <div class="chip">Sucursal ID: <strong><?= (int)$branch_id ?></strong></div>
+      <div class="inv-controls">
+        <div class="inv-controls__center">
+          <a class="btn-main" href="<?= h($new_product_url) ?>">➕ Registrar nuevo producto</a>
         </div>
 
-        <form class="filter-form" method="get" action="/private/inventario/items.php">
+        <form class="inv-controls__right" method="get" action="/private/inventario/items.php">
           <select class="select-ui" name="category_id">
-            <option value="0">Todas las categorías</option>
+            <option value="0">Producto</option>
             <?php foreach ($categories as $c): ?>
               <option value="<?= (int)$c["id"] ?>" <?= ((int)$c["id"] === $filter_category_id) ? "selected" : "" ?>>
                 <?= h($c["name"]) ?>
               </option>
             <?php endforeach; ?>
           </select>
-          <button class="btn-ui btn-secondary-ui" type="submit">Filtrar</button>
+          <button class="btn-filter" type="submit">Filtrar</button>
         </form>
       </div>
 
