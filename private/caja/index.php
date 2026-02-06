@@ -125,79 +125,6 @@ try {
 
   <!-- ✅ Solo estilos mínimos para tablas/cards sin romper el look -->
   <style>
-    :root{
-      --blue:#0b3d77;
-      --blue2:#0a2f5d;
-      --bg1:#e8f2f5;
-      --text:#0b1b2b;
-    }
-    *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-      color:var(--text);
-      background: radial-gradient(circle at 30% 20%, #dff4f7 0, #f6fbff 45%, #ffffff 100%);
-      padding-top:66px; /* evita superposición con topbar fija */
-    }
-
-    /* TOPBAR */
-    .navbar{
-      height:66px;
-      background: linear-gradient(180deg,var(--blue) 0%, var(--blue2) 100%);
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      position:fixed;
-      top:0; left:0; right:0;
-      z-index:999;
-      box-shadow:0 10px 24px rgba(0,0,0,.18);
-    }
-    .navbar .inner{
-      width: min(1200px, calc(100% - 40px));
-      display:flex; align-items:center; justify-content:space-between;
-    }
-    .brand{display:flex; align-items:center; gap:10px; color:#fff; font-weight:800;}
-    .brand .dot{width:8px;height:8px;border-radius:99px;background:#25d366; display:inline-block}
-    .btn-pill{
-      display:inline-flex; align-items:center; justify-content:center;
-      padding:10px 14px; border-radius:999px;
-      border:1px solid rgba(255,255,255,.55);
-      background: rgba(0,0,0,.08);
-      color:#fff; text-decoration:none;
-      font-weight:700;
-      transition:.15s;
-      box-shadow:0 6px 16px rgba(0,0,0,.18);
-      white-space:nowrap;
-    }
-    .btn-pill:hover{filter:brightness(1.05); transform:translateY(-1px)}
-
-    /* LAYOUT */
-    .layout{display:flex; min-height: calc(100vh - 66px);}
-    .sidebar{
-      width:260px;
-      background: linear-gradient(180deg,#0b3d77 0%, #0a2f5d 100%);
-      color:#fff;
-      padding:18px 12px;
-    }
-    .sidebar h3{margin:8px 0 12px; text-align:center}
-    .sidebar nav{display:flex; flex-direction:column; gap:8px;}
-    .sidebar a{
-      color:#fff; text-decoration:none; font-weight:700;
-      padding:12px 12px; border-radius:12px;
-      display:flex; gap:10px; align-items:center;
-      background: rgba(255,255,255,.06);
-      transition:.15s;
-    }
-    .sidebar a:hover{background: rgba(255,255,255,.12)}
-    .sidebar a.active{background: rgba(46, 204, 113, .18); border:1px solid rgba(255,255,255,.12);}
-
-    .content{flex:1; padding:22px 24px 36px;}
-    @media (max-width: 980px){
-      .sidebar{display:none}
-      .content{padding:16px}
-    }
-
-
 
     .page-wrap{display:flex; flex-direction:column; gap:14px;}
 
@@ -283,14 +210,6 @@ try {
     }
     .actions .btn-pill:hover{filter:brightness(0.95);}
 
-
-    .caja-header-center{text-align:center}
-    .caja-title{margin:0;font-size:28px}
-    .caja-subtitle{margin-top:6px}
-    .caja-actions{display:flex;justify-content:center;gap:10px;margin:12px 0;flex-wrap:wrap}
-    .caja-meta{display:flex;justify-content:center;gap:14px;margin-top:6px;flex-wrap:wrap}
-    .caja-note{margin-top:6px}
-
 </style>
 </head>
 
@@ -331,26 +250,31 @@ try {
   <main class="content">
     <div class="page-wrap">
 
-      <!-- HEADER / ACCIONES -->
-      <div class="card-soft caja-header-center">
-        <h1 class="caja-title">Caja</h1>
-        <div class="muted caja-subtitle">
-          <?= h($branchName) ?> · Hoy: <?= h($today) ?>
-        </div>
+      <!-- HEADER / ACCIONES (tus botones) -->
+      <div class="card-soft">
+        <div class="row-head">
+          <div>
+            <h1 style="margin:0;">Caja</h1>
+            <div class="muted" style="margin-top:6px;">
+              <?= h($branchName) ?> · Hoy: <?= h($today) ?>
+            </div>
 
-        <div class="caja-actions">
-          <a class="btn-pill" href="/private/caja/desembolso.php">Desembolso</a>
-          <a class="btn-pill" href="/private/caja/reporte_diario.php">Reporte diario</a>
-          <a class="btn-pill" href="/private/caja/reporte_mensual.php">Reporte mensual</a>
-        </div>
+            <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+              <span class="pill">Caja activa ahora: <?= (int)$currentCajaNum ?></span>
+              <span class="pill">Sesión activa ID: <?= (int)$activeSessionId ?></span>
+            </div>
 
-        <div class="caja-meta">
-          <span class="pill">Caja activa ahora: <?= (int)$currentCajaNum ?></span>
-          <span class="pill">Sesión activa ID: <?= (int)$activeSessionId ?></span>
-        </div>
+            <div class="muted" style="margin-top:10px;">
+              * Las cajas se abren y cierran automáticamente por horario (sin botones).
+            </div>
+          </div>
 
-        <div class="muted caja-note">
-          * Las cajas se abren y cierran automáticamente por horario (sin botones).
+          <div class="actions">
+            <!-- ✅ Mantengo tus links tal cual -->
+            <a class="btn-pill" href="/private/caja/desembolso.php">Desembolso</a>
+            <a class="btn-pill" href="/private/caja/reporte_diario.php">Reporte diario</a>
+            <a class="btn-pill" href="/private/caja/reporte_mensual.php">Reporte mensual</a>
+          </div>
         </div>
       </div>
 
