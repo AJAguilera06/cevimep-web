@@ -135,8 +135,31 @@ if (isset($_GET['acuse'])) {
 .historial-scroll::-webkit-scrollbar{ width: 10px; }
 .historial-scroll::-webkit-scrollbar-thumb{ background: rgba(0,0,0,.18); border-radius: 10px; }
 .historial-scroll::-webkit-scrollbar-track{ background: rgba(0,0,0,.06); border-radius: 10px; }
-</style>
-  </head>
+
+    /* ✅ Historial con scroll dentro de la card (no se sale de la pantalla) */
+    .historyCard{overflow:hidden;}
+    .historial-scroll{
+      max-height: 260px;           /* visible ~3-4 filas + header */
+      overflow-y: auto;
+      overflow-x: hidden;
+      border-radius: 16px;
+      border: 1px solid #e6eef7;
+      background: #fff;
+      margin-top: 12px;
+    }
+    .historial-scroll .tbl{margin-top:0; border:none; border-radius:0; }
+    .historial-scroll thead th{
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f7fbff;
+    }
+    .historial-scroll::-webkit-scrollbar{ width: 10px; }
+    .historial-scroll::-webkit-scrollbar-thumb{ background: rgba(2,6,23,.18); border-radius: 10px; }
+    .historial-scroll::-webkit-scrollbar-track{ background: rgba(2,6,23,.06); border-radius: 10px; }
+
+  </style>
+</head>
   <body>
     <div class="card">
       <div class="top">
@@ -929,6 +952,7 @@ endif;
         <div class="pillSoft">TOTAL DÍA: RD$ <?php echo fmtMoney($totalDia); ?></div>
       </div>
 
+      <div class="historial-scroll">
       <div class="historial-scroll">
       <table class="tbl">
         <thead>
