@@ -45,10 +45,28 @@ if (colExists($conn, "patients", "full_name")) {
 /* =========================
    CABECERA FACTURA (invoices)
 ========================= */
+$selectExtra = [];
+
+// Campos opcionales en invoices
+if (colExists($conn, 'invoices', 'ars')) $selectExtra[] = "i.ars";
+if (colExists($conn, 'invoices', 'no_libro')) $selectExtra[] = "i.no_libro";
+if (colExists($conn, 'invoices', 'numero_afiliado')) $selectExtra[] = "i.numero_afiliado";
+if (colExists($conn, 'invoices', 'clinica_referencia')) $selectExtra[] = "i.clinica_referencia";
+if (colExists($conn, 'invoices', 'medico_refiere')) $selectExtra[] = "i.medico_refiere";
+if (colExists($conn, 'invoices', 'representante')) $selectExtra[] = "i.representante";
+if (colExists($conn, 'invoices', 'telefono')) $selectExtra[] = "i.telefono";
+if (colExists($conn, 'invoices', 'hora')) $selectExtra[] = "i.hora";
+if (colExists($conn, 'invoices', 'invoice_time')) $selectExtra[] = "i.invoice_time";
+if (colExists($conn, 'invoices', 'created_at')) $selectExtra[] = "i.created_at";
+
+$extraSql = $selectExtra ? (", " . implode(", ", $selectExtra)) : "";
+
 $sql = "
 SELECT i.id, i.invoice_date, i.payment_method, i.subtotal, i.total,
+       i.patient_id,
        {$patientNameExpr} AS patient_name,
        b.name AS branch_name
+       {$extraSql}
 FROM invoices i
 LEFT JOIN patients p ON p.id = i.patient_id
 LEFT JOIN branches b ON b.id = i.branch_id
@@ -95,6 +113,72 @@ $sucursal = (string)($inv["branch_name"] ?? "");
 $pago     = strtoupper((string)($inv["payment_method"] ?? "EFECTIVO"));
 $total    = (float)($inv["total"] ?? 0);
 $year     = date("Y");
+
+/* =========================
+   CAMPOS EXTRA (ticket)
+   - Se intenta tomar primero de invoices, y si no existe/está vacío, de patients.
+========================= */
+$patientId = (int)($inv['patient_id'] ?? 0);
+$pat = [];
+if ($patientId > 0) {
+  $patientCols = [];
+  foreach (['ars','no_libro','numero_afiliado','clinica_referencia','medico_refiere','representante','telefono','no_telefono','phone','tel'] as $c) {
+    if (colExists($conn, 'patients', $c)) $patientCols[] = $c;
+  }
+  if ($patientCols) {
+    $stP = $conn->prepare("SELECT " . implode(',', array_map(fn($c)=>"`{$c}`", $patientCols)) . " FROM patients WHERE id=? LIMIT 1");
+    $stP->execute([$patientId]);
+    $pat = $stP->fetch(PDO::FETCH_ASSOC) ?: [];
+  }
+}
+
+function firstNonEmpty(...$vals): string {
+  foreach ($vals as $v) {
+    $s = trim((string)$v);
+    if ($s !== '') return $s;
+  }
+  return '';
+}
+
+$ars               = firstNonEmpty($inv['ars'] ?? '', $pat['ars'] ?? '');
+$noLibro           = firstNonEmpty($inv['no_libro'] ?? '', $pat['no_libro'] ?? '');
+$clinicaReferencia = firstNonEmpty($inv['clinica_referencia'] ?? '', $pat['clinica_referencia'] ?? '');
+$medicoRefiere     = firstNonEmpty($inv['medico_refiere'] ?? '', $pat['medico_refiere'] ?? '');
+$numeroAfiliado    = firstNonEmpty($inv['numero_afiliado'] ?? '', $pat['numero_afiliado'] ?? '');
+
+// Representante: prioridad a querystring (por compatibilidad con tu flujo actual)
+$representante = firstNonEmpty($rep, $inv['representante'] ?? '', $pat['representante'] ?? '');
+
+// Teléfono: soporta distintos nombres comunes en patients
+$telefono = firstNonEmpty(
+  $inv['telefono'] ?? '',
+  $pat['telefono'] ?? '',
+  $pat['no_telefono'] ?? '',
+  $pat['phone'] ?? '',
+  $pat['tel'] ?? ''
+);
+
+// Hora (formato 12h RD)
+$horaRaw = firstNonEmpty(
+  $inv['hora'] ?? '',
+  $inv['invoice_time'] ?? '',
+  $inv['created_at'] ?? ''
+);
+
+if ($horaRaw === '') {
+  // si invoice_date trae hora (datetime), úsala
+  $horaRaw = (string)($inv['invoice_date'] ?? '');
+}
+
+$hora = '';
+try {
+  if ($horaRaw !== '') {
+    $dt = new DateTime($horaRaw);
+    $hora = $dt->format('h:i A');
+  }
+} catch (Throwable $e) {
+  $hora = '';
+}
 
 /* =========================
    LOGO (FIX DEFINITIVO)
@@ -161,7 +245,7 @@ foreach ($logoCandidates as $path) {
     <img src="<?= h($logoSrc) ?>" class="logo" alt="CEVIMEP">
   <?php endif; ?>
 
-  <div class="center title">CEVIMEP</div>
+  <!-- Quitado texto "CEVIMEP" debajo del logo (estaba duplicado) -->
   <div class="center subtitle">CENTRO DE VACUNACIÓN INTEGRAL</div>
   <div class="center subtitle">Y MEDICINA PREVENTIVA</div>
   <div class="center branch"><?= h($sucursal) ?></div>
@@ -170,11 +254,16 @@ foreach ($logoCandidates as $path) {
 
   <div><span class="bold">Factura:</span> #<?= (int)$id ?></div>
   <div><span class="bold">Fecha:</span> <?= h($fecha) ?></div>
+  <div><span class="bold">Hora:</span> <?= h($hora !== '' ? $hora : '—') ?></div>
   <div><span class="bold">Paciente:</span> <?= h($paciente) ?></div>
 
-  <?php if ($rep !== ""): ?>
-    <div><span class="bold">Representante:</span> <?= h($rep) ?></div>
-  <?php endif; ?>
+  <div><span class="bold">ARS:</span> <?= h($ars !== '' ? $ars : '—') ?></div>
+  <div><span class="bold">No. Libro:</span> <?= h($noLibro !== '' ? $noLibro : '—') ?></div>
+  <div><span class="bold">Clínica de referencia:</span> <?= h($clinicaReferencia !== '' ? $clinicaReferencia : '—') ?></div>
+  <div><span class="bold">Médico que refiere:</span> <?= h($medicoRefiere !== '' ? $medicoRefiere : '—') ?></div>
+  <div><span class="bold">No. Afiliado:</span> <?= h($numeroAfiliado !== '' ? $numeroAfiliado : '—') ?></div>
+  <div><span class="bold">Representante:</span> <?= h($representante !== '' ? $representante : '—') ?></div>
+  <div><span class="bold">Teléfono:</span> <?= h($telefono !== '' ? $telefono : '—') ?></div>
 
   <div><span class="bold">Pago:</span> <?= h($pago) ?></div>
 
