@@ -208,6 +208,10 @@ try {
     }
   }
 } catch (Throwable $e) { $sessIdsDay = []; }
+// ✅ Fallback: si no pudimos detectar sesiones del día, usar la sesión actual abierta
+if (empty($sessIdsDay) && !empty($sessionId)) {
+  $sessIdsDay = [(int)$sessionId];
+}
 
 // Detectar campos disponibles
 $hasBranchInMov = colExists($pdo, "cash_movements", "branch_id");
