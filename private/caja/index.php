@@ -125,42 +125,90 @@ try {
 
   <!-- ✅ Solo estilos mínimos para tablas/cards sin romper el look -->
   <style>
-    .page-wrap{display:flex; flex-direction:column; gap:18px;}
+
+    .page-wrap{display:flex; flex-direction:column; gap:14px;}
+
+    /* Card */
     .card-soft{
       background: rgba(255,255,255,.92);
       border: 1px solid rgba(255,255,255,.35);
-      border-radius: 18px;
-      padding: 18px;
-      box-shadow: 0 12px 30px rgba(0,0,0,.08);
+      border-radius: 16px;
+      padding: 14px 16px;
+      box-shadow: 0 10px 24px rgba(0,0,0,.07);
     }
-    .row-head{display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;}
-    .muted{opacity:.85;}
+
+    /* Titles */
+    .card-soft h1{margin:0; font-size:32px; line-height:1.1; letter-spacing:.2px;}
+    .card-soft h2{margin:0; font-size:20px; line-height:1.2; letter-spacing:.2px;}
+
+    .row-head{display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center;}
+    .muted{opacity:.85; font-size:14px;}
+
     .pill{
       display:inline-flex; align-items:center; gap:8px;
-      padding:6px 10px; border-radius:999px;
-      background: rgba(255,255,255,.18);
-      border: 1px solid rgba(255,255,255,.25);
-      font-weight:700;
+      padding:5px 10px; border:1px solid rgba(0,0,0,.08);
+      border-radius:999px; font-size:13px; font-weight:700;
+      background:rgba(255,255,255,.75);
+      box-shadow: 0 6px 14px rgba(0,0,0,.05);
     }
-    .actions{display:flex; gap:10px; flex-wrap:wrap;}
-    .grid-2{display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px;}
+
+    .actions{display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;}
+
+    .btn-pill{
+      display:inline-flex; align-items:center; justify-content:center;
+      padding:10px 14px; border-radius:999px;
+      border:1px solid rgba(255,255,255,.55);
+      background: rgba(0,0,0,.08);
+      color:#fff; text-decoration:none;
+      font-weight:800; font-size:14px;
+      transition:.15s ease;
+      box-shadow: 0 10px 18px rgba(0,0,0,.10);
+    }
+    .btn-pill:hover{transform:translateY(-1px); filter:brightness(.98);}
+
+    /* Two cards layout */
+    .grid-2{
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap:14px;
+    }
     @media(max-width: 980px){ .grid-2{grid-template-columns:1fr;} }
 
-    table{width:100%; border-collapse:collapse; margin-top:12px; overflow:hidden; border-radius:14px;}
-    th,td{padding:10px 12px; border-bottom:1px solid rgba(0,0,0,.06); font-size:14px;}
-    thead th{font-weight:800;}
+    /* Table */
+    table{
+      width:100%;
+      border-collapse:collapse;
+      margin-top:10px;
+      overflow:hidden;
+      border-radius:14px;
+      background: rgba(255,255,255,.55);
+      border: 1px solid rgba(0,0,0,.06);
+    }
+    th,td{
+      padding:9px 10px;
+      border-bottom:1px solid rgba(0,0,0,.06);
+      font-size:14px;
+    }
+    thead th{font-weight:900;}
     tbody tr:last-child td{border-bottom:none;}
     .t-strong{font-weight:900;}
-  
 
-/* ACTION BUTTONS OVERRIDE (visible on white cards) */
-.actions{justify-content:flex-end; margin-top:12px;}
-.actions .btn-pill{
-  background: var(--blue);
-  border-color: var(--blue);
-  color:#fff;
-}
-.actions .btn-pill:hover{filter:brightness(0.95);}
+    /* Make header card less tall on short screens (1600x900 laptops) */
+    @media (max-height: 900px){
+      .card-soft{padding:12px 14px;}
+      .card-soft h1{font-size:28px;}
+      .card-soft h2{font-size:19px;}
+      .btn-pill{padding:9px 12px; font-size:13.5px;}
+      th,td{padding:8px 9px;}
+    }
+
+    /* ACTION BUTTONS OVERRIDE (visible on white cards) */
+    .actions .btn-pill{
+      background: var(--blue);
+      border-color: var(--blue);
+      color:#fff;
+    }
+    .actions .btn-pill:hover{filter:brightness(0.95);}
 
 </style>
 </head>
