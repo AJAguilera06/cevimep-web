@@ -1,4 +1,88 @@
 <?php
+// ... tu includes/conexión/session_start aquí ...
+
+// ===============================
+// MODO ACUSE (MISMO archivo)
+// ===============================
+if (isset($_GET['acuse'])) {
+    $id = (int)$_GET['acuse'];
+
+    // Traer el movimiento (desembolso) desde cash_movements
+    $sql = "SELECT cm.*, cs.branch_id
+            FROM cash_movements cm
+            LEFT JOIN cash_sessions cs ON cs.id = cm.session_id
+            WHERE cm.id = ? AND cm.type = 'desembolso'
+            LIMIT 1";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+
+    if (!$row) {
+        http_response_code(404);
+        echo "Acuse no encontrado.";
+        exit;
+    }
+
+    // Si guardas desembolso como NEGATIVO, para mostrarlo bonito en el acuse:
+    $montoMostrar = abs((float)$row['amount']);
+    $fecha = $row['created_at'];
+    $motivo = $row['motivo'];
+    $metodo = $row['metodo_pago'];
+    $session_id = $row['session_id'];
+
+    ?>
+    <!doctype html>
+    <html lang="es">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Acuse Desembolso #<?= htmlspecialchars($id) ?></title>
+      <style>
+        /* Acuse limpio para impresión */
+        body { font-family: Arial, sans-serif; margin: 0; padding: 16px; }
+        .ticket { max-width: 360px; margin: 0 auto; }
+        .center { text-align: center; }
+        .line { border-top: 1px dashed #999; margin: 10px 0; }
+        .row { display:flex; justify-content:space-between; gap:12px; margin: 6px 0; }
+        .small { font-size: 12px; color: #333; }
+        .big { font-size: 18px; font-weight: 700; }
+        @media print {
+          @page { margin: 8mm; }
+          body { padding: 0; }
+        }
+      </style>
+    </head>
+    <body onload="window.print()">
+      <div class="ticket">
+        <div class="center">
+          <div class="big">CEVIMEP</div>
+          <div class="small">ACUSE DE DESEMBOLSO</div>
+          <div class="small">No. <?= htmlspecialchars($id) ?></div>
+        </div>
+
+        <div class="line"></div>
+
+        <div class="row"><div class="small">Fecha</div><div class="small"><?= htmlspecialchars($fecha) ?></div></div>
+        <div class="row"><div class="small">Caja (Sesión)</div><div class="small">#<?= htmlspecialchars($session_id) ?></div></div>
+        <div class="row"><div class="small">Método</div><div class="small"><?= htmlspecialchars($metodo) ?></div></div>
+        <div class="row"><div class="small">Motivo</div><div class="small"><?= htmlspecialchars($motivo) ?></div></div>
+
+        <div class="line"></div>
+
+        <div class="row"><div class="big">Total</div><div class="big">RD$ <?= number_format($montoMostrar, 2) ?></div></div>
+
+        <div class="line"></div>
+
+        <div class="center small">Gracias.</div>
+      </div>
+    </body>
+    </html>
+    <?php
+    exit;
+}
+
+<?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 require_once __DIR__ . "/../config/db.php";
@@ -150,6 +234,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if ($amount <= 0) throw new Exception("El monto debe ser mayor que 0.");
     if ($representante === "") throw new Exception("Debes escribir el representante.");
 
+    // Desembolso debe impactar caja como monto NEGATIVO
+    $amountDb = -abs(round($amount, 2));
+
+
     // Si por alguna razón no hay sesión (fuera de horario), intentar abrir
     if ($sessionId <= 0) {
       $sessionId = caja_get_or_open_current_session($pdo, $branchId, $userId);
@@ -163,7 +251,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 VALUES
                   (?, ?, 'desembolso', ?, ?, 'efectivo', ?, ?" . ($createdCol ? ", ?" : "") . ")";
         $st = $pdo->prepare($sql);
-        $params = [$sessionId, $branchId, $motivo, $representante, round($amount,2), $userId];
+        $params = [$sessionId, $branchId, $motivo, $representante, $amountDb, $userId];
         if ($createdCol) { $params[] = $nowStr; }
         $st->execute($params);
       } else {
@@ -172,7 +260,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 VALUES
                   (?, ?, 'desembolso', ?, 'efectivo', ?, ?" . ($createdCol ? ", ?" : "") . ")";
         $st = $pdo->prepare($sql);
-        $params = [$sessionId, $branchId, $motivo, round($amount,2), $userId];
+        $params = [$sessionId, $branchId, $motivo, $amountDb, $userId];
         if ($createdCol) { $params[] = $nowStr; }
         $st->execute($params);
       }
@@ -183,7 +271,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 VALUES
                   (?, 'desembolso', ?, ?, 'efectivo', ?, ?" . ($createdCol ? ", ?" : "") . ")";
         $st = $pdo->prepare($sql);
-        $params = [$sessionId, $motivo, $representante, round($amount,2), $userId];
+        $params = [$sessionId, $motivo, $representante, $amountDb, $userId];
         if ($createdCol) { $params[] = $nowStr; }
         $st->execute($params);
       } else {
@@ -192,14 +280,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 VALUES
                   (?, 'desembolso', ?, 'efectivo', ?, ?" . ($createdCol ? ", ?" : "") . ")";
         $st = $pdo->prepare($sql);
-        $params = [$sessionId, $motivo, round($amount,2), $userId];
+        $params = [$sessionId, $motivo, $amountDb, $userId];
         if ($createdCol) { $params[] = $nowStr; }
         $st->execute($params);
       }
     }
 
+    $movementId = (int)$pdo->lastInsertId();
+
     $_SESSION["flash_success"] = "Desembolso registrado.";
-    header("Location: " . $_SERVER["PHP_SELF"] . "?ok=1");
+
+    // Abrir acuse en otra pestaña y volver a esta pantalla
+    echo "<script>
+      window.open('acuse_desembolso.php?id={$movementId}', '_blank');
+      window.location.href = '" . addslashes($_SERVER["PHP_SELF"]) . "?ok=1#historial';
+    </script>";
     exit;
 
   } catch (Throwable $e) {
@@ -379,7 +474,7 @@ if ($isPrint):
             <td>#<?php echo (int)$r["id"]; ?></td>
             <?php if ($createdCol): ?><td><?php echo h($r["created_time"] ?? ""); ?></td><?php endif; ?>
             <td><?php echo h($r["motivo"] ?? ""); ?></td>
-            <td class="right">RD$ <?php echo fmtMoney($r["amount"] ?? 0); ?></td>
+            <td class="right">RD$ <?php echo fmtMoney(abs($r["amount"] ?? 0)); ?></td>
             <td><?php echo (int)($r["created_by"] ?? 0); ?></td>
           </tr>
         <?php endforeach; ?>
@@ -387,7 +482,7 @@ if ($isPrint):
     </tbody>
   </table>
 
-  <div class="total">TOTAL DESEMBOLSADO (DÍA): RD$ <?php echo fmtMoney($totalDia); ?></div>
+  <div class="total">TOTAL DESEMBOLSADO (DÍA): RD$ <?php echo fmtMoney(abs($totalDia)); ?></div>
 
   <script>window.onload = () => window.print();</script>
 </body>
@@ -767,8 +862,7 @@ endif;
         </div>
 
         <div class="actionsCenter">
-          <button class="btnSave" type="submit">GUARDAR</button>
-          <a class="btnGhost" href="desembolso.php?print=1" target="_blank">IMPRIMIR</a>
+          <button class="btnSave" type="submit">GUARDAR E IMPRIMIR</button>
         </div>
       </form>
     </section>
@@ -787,7 +881,7 @@ endif;
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div><strong>Motivo:</strong> <?php echo h($detailRow["motivo"] ?? ""); ?></div>
-          <div><strong>Monto:</strong> RD$ <?php echo fmtMoney($detailRow["amount"] ?? 0); ?></div>
+          <div><strong>Monto:</strong> RD$ <?php echo fmtMoney(abs($detailRow["amount"] ?? 0)); ?></div>
           <?php if ($hasRepInMov): ?>
             <div><strong>Representante:</strong> <?php echo h($detailRow["representante"] ?? ""); ?></div>
           <?php endif; ?>
@@ -799,7 +893,7 @@ endif;
     <section class="historyCard">
       <div class="historyHeader">
         <div class="muted">Últimos 500 desembolsos del día en esta sucursal.</div>
-        <div class="pillSoft">TOTAL DÍA: RD$ <?php echo fmtMoney($totalDia); ?></div>
+        <div class="pillSoft">TOTAL DÍA: RD$ <?php echo fmtMoney(abs($totalDia)); ?></div>
       </div>
 
       <table class="tbl">
@@ -822,10 +916,10 @@ endif;
                 <td>#<?php echo (int)$r["id"]; ?></td>
                 <?php if ($createdCol): ?><td><?php echo h($r["created_time"] ?? ""); ?></td><?php endif; ?>
                 <td><?php echo h($r["motivo"] ?? ""); ?></td>
-                <td>RD$ <?php echo fmtMoney($r["amount"] ?? 0); ?></td>
+                <td>RD$ <?php echo fmtMoney(abs($r["amount"] ?? 0)); ?></td>
                 <td><?php echo (int)($r["created_by"] ?? 0); ?></td>
                 <td>
-                  <a class="btnDetail" href="desembolso.php?detalle=<?php echo (int)$r["id"]; ?>#historial">Detalle</a>
+                  <a class="btnDetail" href="acuse_desembolso.php?id=<?php echo (int)$r["id"]; ?>" target="_blank">Detalle</a>
                 </td>
               </tr>
             <?php endforeach; ?>
