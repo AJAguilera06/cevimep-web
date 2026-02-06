@@ -210,6 +210,14 @@ try {
     }
     .actions .btn-pill:hover{filter:brightness(0.95);}
 
+
+    .caja-header-center{text-align:center}
+    .caja-title{margin:0;font-size:28px}
+    .caja-subtitle{margin-top:6px}
+    .caja-actions{display:flex;justify-content:center;gap:10px;margin:12px 0;flex-wrap:wrap}
+    .caja-meta{display:flex;justify-content:center;gap:14px;margin-top:6px;flex-wrap:wrap}
+    .caja-note{margin-top:6px}
+
 </style>
 </head>
 
@@ -250,31 +258,26 @@ try {
   <main class="content">
     <div class="page-wrap">
 
-      <!-- HEADER / ACCIONES (tus botones) -->
-      <div class="card-soft">
-        <div class="row-head">
-          <div>
-            <h1 style="margin:0;">Caja</h1>
-            <div class="muted" style="margin-top:6px;">
-              <?= h($branchName) ?> · Hoy: <?= h($today) ?>
-            </div>
+      <!-- HEADER / ACCIONES -->
+      <div class="card-soft caja-header-center">
+        <h1 class="caja-title">Caja</h1>
+        <div class="muted caja-subtitle">
+          <?= h($branchName) ?> · Hoy: <?= h($today) ?>
+        </div>
 
-            <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
-              <span class="pill">Caja activa ahora: <?= (int)$currentCajaNum ?></span>
-              <span class="pill">Sesión activa ID: <?= (int)$activeSessionId ?></span>
-            </div>
+        <div class="caja-actions">
+          <a class="btn-pill" href="/private/caja/desembolso.php">Desembolso</a>
+          <a class="btn-pill" href="/private/caja/reporte_diario.php">Reporte diario</a>
+          <a class="btn-pill" href="/private/caja/reporte_mensual.php">Reporte mensual</a>
+        </div>
 
-            <div class="muted" style="margin-top:10px;">
-              * Las cajas se abren y cierran automáticamente por horario (sin botones).
-            </div>
-          </div>
+        <div class="caja-meta">
+          <span class="pill">Caja activa ahora: <?= (int)$currentCajaNum ?></span>
+          <span class="pill">Sesión activa ID: <?= (int)$activeSessionId ?></span>
+        </div>
 
-          <div class="actions">
-            <!-- ✅ Mantengo tus links tal cual -->
-            <a class="btn-pill" href="/private/caja/desembolso.php">Desembolso</a>
-            <a class="btn-pill" href="/private/caja/reporte_diario.php">Reporte diario</a>
-            <a class="btn-pill" href="/private/caja/reporte_mensual.php">Reporte mensual</a>
-          </div>
+        <div class="muted caja-note">
+          * Las cajas se abren y cierran automáticamente por horario (sin botones).
         </div>
       </div>
 
