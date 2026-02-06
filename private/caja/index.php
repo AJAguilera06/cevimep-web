@@ -87,7 +87,7 @@ function getTotals(PDO $pdo, int $sessionId){
     $r = ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0];
   }
 
-  $ing = (float)$r["efectivo"]+(float)$r["tarjeta"]+(float)$r["transferencia"];
+  $ing = (float)$r["efectivo"]+(float)$r["tarjeta"]+(float)$r["transferencia"]+(float)$r["cobertura"];
   $net = $ing-(float)$r["desembolso"];
   return [$r,$ing,$net];
 }
@@ -210,14 +210,6 @@ try {
     }
     .actions .btn-pill:hover{filter:brightness(0.95);}
 
-
-    .caja-header-center{text-align:center}
-    .caja-title{margin:0;font-size:28px}
-    .caja-subtitle{margin-top:6px}
-    .caja-actions{display:flex;justify-content:center;gap:10px;margin:12px 0;flex-wrap:wrap}
-    .caja-meta{display:flex;justify-content:center;gap:14px;margin-top:6px;flex-wrap:wrap}
-    .caja-note{margin-top:6px}
-
 </style>
 </head>
 
@@ -259,25 +251,28 @@ try {
     <div class="page-wrap">
 
       <!-- HEADER / ACCIONES -->
-      <div class="card-soft caja-header-center">
-        <h1 class="caja-title">Caja</h1>
-        <div class="muted caja-subtitle">
-          <?= h($branchName) ?> · Hoy: <?= h($today) ?>
+      <div class="card-soft">
+        <div class="row-head">
+          <div>
+            <h1>Caja</h1>
+            <div class="muted">
+              <?= h($branchName) ?> · Hoy: <?= h($today) ?>
+            </div>
+          </div>
+
+          <div class="actions">
+            <a class="btn-pill" href="/private/caja/desembolso.php">Desembolso</a>
+            <a class="btn-pill" href="/private/caja/reporte_diario.php">Reporte diario</a>
+            <a class="btn-pill" href="/private/caja/reporte_mensual.php">Reporte mensual</a>
+          </div>
         </div>
 
-        <div class="caja-actions">
-          <a class="btn-pill" href="/private/caja/desembolso.php">Desembolso</a>
-          <a class="btn-pill" href="/private/caja/reporte_diario.php">Reporte diario</a>
-          <a class="btn-pill" href="/private/caja/reporte_mensual.php">Reporte mensual</a>
-        </div>
-
-        <div class="caja-meta">
+        <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
           <span class="pill">Caja activa ahora: <?= (int)$currentCajaNum ?></span>
           <span class="pill">Sesión activa ID: <?= (int)$activeSessionId ?></span>
-        </div>
-
-        <div class="muted caja-note">
-          * Las cajas se abren y cierran automáticamente por horario (sin botones).
+          <span class="muted" style="margin-left:2px;">
+            * Las cajas se abren y cierran automáticamente por horario (sin botones).
+          </span>
         </div>
       </div>
 
