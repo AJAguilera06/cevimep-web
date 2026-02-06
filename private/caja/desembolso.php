@@ -1,116 +1,4 @@
 <?php
-// ... tu includes/conexión/session_start aquí ...
-
-// ===============================
-// MODO ACUSE (MISMO archivo)
-// ===============================
-if (isset($_GET['acuse'])) {
-    $id = (int)$_GET['acuse'];
-
-    // Traer el movimiento (desembolso) desde cash_movements
-    $sql = "SELECT cm.*, cs.branch_id
-            FROM cash_movements cm
-            LEFT JOIN cash_sessions cs ON cs.id = cm.session_id
-            WHERE cm.id = ? AND cm.type = 'desembolso'
-            LIMIT 1";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $id);
-    $stmt->execute();
-    $row = $stmt->get_result()->fetch_assoc();
-
-    if (!$row) {
-        http_response_code(404);
-        echo "Acuse no encontrado.";
-        exit;
-    }
-
-    // Si guardas desembolso como NEGATIVO, para mostrarlo bonito en el acuse:
-    $montoMostrar = abs((float)$row['amount']);
-    $fecha = $row['created_at'];
-    $motivo = $row['motivo'];
-    $metodo = $row['metodo_pago'];
-    $session_id = $row['session_id'];
-
-    ?>
-    <!doctype html>
-    <html lang="es">
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>Acuse Desembolso #<?= htmlspecialchars($id) ?></title>
-      <style>
-        /* Acuse limpio para impresión */
-        body { font-family: Arial, sans-serif; margin: 0; padding: 16px; }
-        .ticket { max-width: 360px; margin: 0 auto; }
-        .center { text-align: center; }
-        .line { border-top: 1px dashed #999; margin: 10px 0; }
-        .row { display:flex; justify-content:space-between; gap:12px; margin: 6px 0; }
-        .small { font-size: 12px; color: #333; }
-        .big { font-size: 18px; font-weight: 700; }
-        @media print {
-          @page { margin: 8mm; }
-          body { padding: 0; }
-        }
-      
-/* Historial con scroll */
-.historial-scroll{
-  max-height: 320px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  border-radius: 14px;
-}
-.historial-scroll table{
-  width: 100%;
-  border-collapse: separate;
-}
-.historial-scroll thead th{
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: #f3f7ff;
-}
-.historial-scroll::-webkit-scrollbar{ width: 10px; }
-.historial-scroll::-webkit-scrollbar-thumb{
-  background: rgba(0,0,0,.18);
-  border-radius: 10px;
-}
-.historial-scroll::-webkit-scrollbar-track{
-  background: rgba(0,0,0,.06);
-  border-radius: 10px;
-}
-
-</style>
-    </head>
-    <body onload="window.print()">
-      <div class="ticket">
-        <div class="center">
-          <div class="big">CEVIMEP</div>
-          <div class="small">ACUSE DE DESEMBOLSO</div>
-          <div class="small">No. <?= htmlspecialchars($id) ?></div>
-        </div>
-
-        <div class="line"></div>
-
-        <div class="row"><div class="small">Fecha</div><div class="small"><?= htmlspecialchars($fecha) ?></div></div>
-        <div class="row"><div class="small">Caja (Sesión)</div><div class="small">#<?= htmlspecialchars($session_id) ?></div></div>
-        <div class="row"><div class="small">Método</div><div class="small"><?= htmlspecialchars($metodo) ?></div></div>
-        <div class="row"><div class="small">Motivo</div><div class="small"><?= htmlspecialchars($motivo) ?></div></div>
-
-        <div class="line"></div>
-
-        <div class="row"><div class="big">Total</div><div class="big">RD$ <?= number_format($montoMostrar, 2) ?></div></div>
-
-        <div class="line"></div>
-
-        <div class="center small">Gracias.</div>
-      </div>
-    </body>
-    </html>
-    <?php
-    exit;
-}
-
-<?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 require_once __DIR__ . "/../config/db.php";
@@ -166,6 +54,117 @@ if (!empty($_SESSION["flash_error"])) {
   $error = (string)$_SESSION["flash_error"];
   unset($_SESSION["flash_error"]);
 }
+
+// ===============================
+// MODO ACUSE (mismo desembolso.php)
+// ===============================
+if (isset($_GET['acuse'])) {
+  $movId = (int)$_GET['acuse'];
+
+  // Detectar columna de fecha
+  $createdColAcuse = colExists($pdo, "cash_movements", "created_at") ? "created_at"
+                   : (colExists($pdo, "cash_movements", "created_on") ? "created_on" : null);
+
+  $cols = "id, session_id, type, motivo, metodo_pago, amount, created_by";
+  if (colExists($pdo, "cash_movements", "representante")) { $cols .= ", representante"; }
+  if ($createdColAcuse) { $cols .= ", {$createdColAcuse} AS created_time"; }
+
+  $st = $pdo->prepare("SELECT {$cols} FROM cash_movements WHERE id=? AND type='desembolso' LIMIT 1");
+  $st->execute([$movId]);
+  $r = $st->fetch(PDO::FETCH_ASSOC);
+
+  if (!$r) { http_response_code(404); echo "Acuse no encontrado."; exit; }
+
+  $monto = abs((float)($r['amount'] ?? 0));
+  $fecha = $r['created_time'] ?? '';
+  ?>
+  <!doctype html>
+  <html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Acuse de Desembolso #<?php echo (int)$r['id']; ?></title>
+    <style>
+      body{font-family:Arial,sans-serif;margin:0;padding:18px;background:#f7f9fc;}
+      .card{max-width:720px;margin:0 auto;background:#fff;border-radius:16px;padding:18px 18px 14px;
+            box-shadow:0 10px 30px rgba(0,0,0,.08);}
+      .top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;}
+      .title{font-size:20px;font-weight:800;color:#0b1b34;}
+      .sub{color:#556; font-size:13px;}
+      .pill{background:#eaf1ff;color:#0b4bd7;border-radius:999px;padding:6px 10px;font-weight:700;font-size:12px;}
+      .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;}
+      .box{border:1px solid #e6eefc;border-radius:12px;padding:12px;}
+      .lbl{font-size:12px;color:#567;font-weight:800;letter-spacing:.4px;text-transform:uppercase;margin-bottom:6px;}
+      .val{font-size:16px;font-weight:800;color:#0b1b34;}
+      .btns{display:flex;gap:10px;margin-top:14px;}
+      .btn{border:0;border-radius:12px;padding:10px 14px;font-weight:800;cursor:pointer}
+      .btnPrint{background:#0b1b34;color:#fff;}
+      .btnClose{background:#eef2f8;color:#0b1b34;text-decoration:none;display:inline-flex;align-items:center;}
+      @media print{
+        body{background:#fff;padding:0;}
+        .btns{display:none;}
+        .card{box-shadow:none;border-radius:0;}
+      }
+    /* Scroll interno para historial */
+.historial-scroll{
+  max-height: 320px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin-top: 10px;
+  border-radius: 14px;
+}
+.historial-scroll thead th{
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f3f7ff;
+}
+.historial-scroll::-webkit-scrollbar{ width: 10px; }
+.historial-scroll::-webkit-scrollbar-thumb{ background: rgba(0,0,0,.18); border-radius: 10px; }
+.historial-scroll::-webkit-scrollbar-track{ background: rgba(0,0,0,.06); border-radius: 10px; }
+</style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="top">
+        <div>
+          <div class="title">Acuse de Desembolso</div>
+          <div class="sub">CEVIMEP • Movimiento #<?php echo (int)$r['id']; ?></div>
+          <?php if ($fecha): ?><div class="sub"><?php echo h($fecha); ?></div><?php endif; ?>
+        </div>
+        <div class="pill">DESEMBOLSO</div>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="lbl">Motivo</div>
+          <div class="val"><?php echo h($r['motivo'] ?? ''); ?></div>
+        </div>
+        <div class="box">
+          <div class="lbl">Monto</div>
+          <div class="val">RD$ <?php echo fmtMoney($monto); ?></div>
+        </div>
+        <div class="box">
+          <div class="lbl">Método de pago</div>
+          <div class="val"><?php echo h($r['metodo_pago'] ?? 'efectivo'); ?></div>
+        </div>
+        <div class="box">
+          <div class="lbl">Usuario</div>
+          <div class="val">#<?php echo (int)($r['created_by'] ?? 0); ?></div>
+        </div>
+      </div>
+
+      <div class="btns">
+        <button class="btn btnPrint" onclick="window.print()">Imprimir</button>
+        <a class="btn btnClose" href="desembolso.php#historial">Cerrar</a>
+      </div>
+    </div>
+  </body>
+  </html>
+  <?php
+  exit;
+}
+
 
 $motivo = "";
 $monto  = "";
@@ -238,6 +237,9 @@ try {
   }
 } catch (Throwable $e) { $sessIdsDay = []; }
 
+// ✅ Fallback: si no detectamos sesiones del día, usar la sesión actual abierta
+if (empty($sessIdsDay) && !empty($sessionId)) { $sessIdsDay = [(int)$sessionId]; }
+
 // Detectar campos disponibles
 $hasBranchInMov = colExists($pdo, "cash_movements", "branch_id");
 $hasRepInMov    = colExists($pdo, "cash_movements", "representante");
@@ -262,10 +264,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if ($amount <= 0) throw new Exception("El monto debe ser mayor que 0.");
     if ($representante === "") throw new Exception("Debes escribir el representante.");
 
-    // Desembolso debe impactar caja como monto NEGATIVO
-    $amountDb = -abs(round($amount, 2));
-
-
     // Si por alguna razón no hay sesión (fuera de horario), intentar abrir
     if ($sessionId <= 0) {
       $sessionId = caja_get_or_open_current_session($pdo, $branchId, $userId);
@@ -279,7 +277,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 VALUES
                   (?, ?, 'desembolso', ?, ?, 'efectivo', ?, ?" . ($createdCol ? ", ?" : "") . ")";
         $st = $pdo->prepare($sql);
-        $params = [$sessionId, $branchId, $motivo, $representante, $amountDb, $userId];
+        $params = [$sessionId, $branchId, $motivo, $representante, round(-abs($amount),2), $userId];
         if ($createdCol) { $params[] = $nowStr; }
         $st->execute($params);
       } else {
@@ -288,7 +286,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 VALUES
                   (?, ?, 'desembolso', ?, 'efectivo', ?, ?" . ($createdCol ? ", ?" : "") . ")";
         $st = $pdo->prepare($sql);
-        $params = [$sessionId, $branchId, $motivo, $amountDb, $userId];
+        $params = [$sessionId, $branchId, $motivo, round(-abs($amount),2), $userId];
         if ($createdCol) { $params[] = $nowStr; }
         $st->execute($params);
       }
@@ -299,7 +297,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 VALUES
                   (?, 'desembolso', ?, ?, 'efectivo', ?, ?" . ($createdCol ? ", ?" : "") . ")";
         $st = $pdo->prepare($sql);
-        $params = [$sessionId, $motivo, $representante, $amountDb, $userId];
+        $params = [$sessionId, $motivo, $representante, round(-abs($amount),2), $userId];
         if ($createdCol) { $params[] = $nowStr; }
         $st->execute($params);
       } else {
@@ -308,21 +306,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 VALUES
                   (?, 'desembolso', ?, 'efectivo', ?, ?" . ($createdCol ? ", ?" : "") . ")";
         $st = $pdo->prepare($sql);
-        $params = [$sessionId, $motivo, $amountDb, $userId];
+        $params = [$sessionId, $motivo, round(-abs($amount),2), $userId];
         if ($createdCol) { $params[] = $nowStr; }
         $st->execute($params);
       }
     }
 
-    $movementId = (int)$pdo->lastInsertId();
-
     $_SESSION["flash_success"] = "Desembolso registrado.";
-
-    // Abrir acuse en otra pestaña y volver a esta pantalla
-    echo "<script>
-      window.open('acuse_desembolso.php?id={$movementId}', '_blank');
-      window.location.href = '" . addslashes($_SERVER["PHP_SELF"]) . "?ok=1#historial';
-    </script>";
+    $movId = (int)$pdo->lastInsertId();
+    echo "<script>window.open('desembolso.php?acuse={$movId}', '_blank'); window.location.href='desembolso.php?ok=1#historial';</script>";
     exit;
 
   } catch (Throwable $e) {
@@ -510,7 +502,7 @@ if ($isPrint):
     </tbody>
   </table>
 
-  <div class="total">TOTAL DESEMBOLSADO (DÍA): RD$ <?php echo fmtMoney(abs($totalDia)); ?></div>
+  <div class="total">TOTAL DESEMBOLSADO (DÍA): RD$ <?php echo fmtMoney($totalDia); ?></div>
 
   <script>window.onload = () => window.print();</script>
 </body>
@@ -891,7 +883,7 @@ endif;
 
         <div class="actionsCenter">
           <button class="btnSave" type="submit">GUARDAR E IMPRIMIR</button>
-        </div>
+</div>
       </form>
     </section>
 
@@ -921,11 +913,11 @@ endif;
     <section class="historyCard">
       <div class="historyHeader">
         <div class="muted">Últimos 500 desembolsos del día en esta sucursal.</div>
-        <div class="pillSoft">TOTAL DÍA: RD$ <?php echo fmtMoney(abs($totalDia)); ?></div>
+        <div class="pillSoft">TOTAL DÍA: RD$ <?php echo fmtMoney($totalDia); ?></div>
       </div>
 
       <div class="historial-scroll">
-<table class="tbl">
+      <table class="tbl">
         <thead>
           <tr>
             <th style="width:80px;">ID</th>
@@ -948,14 +940,14 @@ endif;
                 <td>RD$ <?php echo fmtMoney(abs($r["amount"] ?? 0)); ?></td>
                 <td><?php echo (int)($r["created_by"] ?? 0); ?></td>
                 <td>
-                  <a class="btnDetail" href="acuse_desembolso.php?id=<?php echo (int)$r["id"]; ?>" target="_blank">Detalle</a>
+                  <a class="btnDetail" href="desembolso.php?acuse=<?php echo (int)$r["id"]; ?>" target="_blank">Detalle</a>
                 </td>
               </tr>
             <?php endforeach; ?>
           <?php endif; ?>
         </tbody>
       </table>
-</div>
+      </div>
     </section>
 
   </div>
