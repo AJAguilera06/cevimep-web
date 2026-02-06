@@ -160,20 +160,26 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
   <link rel="stylesheet" href="/assets/css/paciente.css?v=2">
 
   <style>
-    .patients-wrap{max-width:1100px;margin:0 auto;padding:24px 18px;}
-    .patients-header{text-align:center;margin-top:10px;margin-bottom:18px;}
-    .patients-header h1{margin:0;font-size:34px;font-weight:800;}
+    /* Layout: usar todo el ancho disponible (sin card) */
+    .patients-wrap{max-width:none;width:100%;margin:0;padding:28px 26px;}
+    .patients-header{text-align:left;margin:0 0 10px;}
+    .patients-header h1{margin:0;font-size:34px;font-weight:800;line-height:1.15;}
     .patients-header p{margin:6px 0 0;opacity:.75;}
-    .patients-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:18px 0 18px;}
-    .form-card{max-width:880px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.10);padding:18px;}
-    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+    .patients-actions{display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;margin:10px 0 16px;}
+    /* Grid responsive: aprovecha pantalla grande, baja automáticamente */
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;}
     .span2{grid-column:1 / -1;}
     .input{width:100%;}
     label{display:block;font-weight:700;margin-bottom:6px;}
     .muted{font-weight:600;opacity:.65;font-size:.85em;}
-    .actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px;}
-    @media (max-width: 820px){ .grid{grid-template-columns:1fr;} .form-card{padding:14px;} }
-    .alert{max-width:880px;margin:0 auto 12px;}
+    .actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px;}
+    /* Alertas full-width dentro del contenido */
+    .alert{max-width:none;margin:0 0 12px;}
+    /* En pantallas pequeñas, un poco menos de padding */
+    @media (max-width: 820px){
+      .patients-wrap{padding:18px 14px;}
+      .patients-header h1{font-size:28px;}
+    }
   </style>
 </head>
 <body>
@@ -220,7 +226,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         <div class="alert alert-danger"><?= h($error) ?></div>
       <?php endif; ?>
 
-      <div class="form-card">
+      
         <form method="post" autocomplete="off">
           <?php if ($isAdmin): ?>
             <div class="grid" style="margin-bottom:12px;">
@@ -319,7 +325,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             <a class="btn" href="/private/patients/index.php">Cancelar</a>
           </div>
         </form>
-      </div>
 
     </div>
   </main>
