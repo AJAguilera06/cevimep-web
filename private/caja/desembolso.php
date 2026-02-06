@@ -108,12 +108,17 @@ if (isset($_GET['acuse'])) {
     
 /* ✅ Historial: evita que crezca fuera de pantalla */
 .historyCard{
-  overflow: hidden;               /* recorta el contenido interno */
+  /* Card fija: no debe crecer y salirse de la pantalla */
+  max-height: clamp(260px, calc(100vh - 560px), 420px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .historial-scroll{
-  /* Mostrar ~2 filas y luego scroll */
-  max-height: 150px;
+  /* Scroll dentro de la card (tabla) */
+  flex: 1 1 auto;
+  min-height: 140px;
   overflow-y: auto;
   overflow-x: hidden;
   margin-top: 10px;
@@ -952,7 +957,6 @@ endif;
         <div class="pillSoft">TOTAL DÍA: RD$ <?php echo fmtMoney($totalDia); ?></div>
       </div>
 
-      <div class="historial-scroll">
       <div class="historial-scroll">
       <table class="tbl">
         <thead>
