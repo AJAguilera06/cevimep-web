@@ -112,8 +112,8 @@ if (isset($_GET['acuse'])) {
 }
 
 .historial-scroll{
-  /* alto dinámico según la pantalla (no se sale) */
-  max-height: clamp(180px, calc(100vh - 620px), 320px);
+  /* Mostrar ~2 filas y luego scroll */
+  max-height: 150px;
   overflow-y: auto;
   overflow-x: hidden;
   margin-top: 10px;
@@ -126,6 +126,11 @@ if (isset($_GET['acuse'])) {
   top: 0;
   z-index: 2;
   background: #f3f7ff;
+}
+
+
+.historial-scroll tbody tr{
+  height: 52px;
 }
 .historial-scroll::-webkit-scrollbar{ width: 10px; }
 .historial-scroll::-webkit-scrollbar-thumb{ background: rgba(0,0,0,.18); border-radius: 10px; }
