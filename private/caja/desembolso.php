@@ -4,9 +4,9 @@ declare(strict_types=1);
 // Zona horaria RD (GMT-4)
 date_default_timezone_set('America/Santo_Domingo');
 
-require_once __DIR__ . '/../_guard.php'; // tu _guard.php en /private/_guard.php
+require_once __DIR__ . '/../_guard.php';
 
-// _guard.php debe cargar $pdo (PDO). Si tu variable es $db, hacemos alias:
+// Alias $db -> $pdo si aplica
 if (isset($db) && !isset($pdo) && $db instanceof PDO) { $pdo = $db; }
 if (!isset($pdo) || !($pdo instanceof PDO)) {
   http_response_code(500);
@@ -18,7 +18,6 @@ $horaActual = date('H:i');
 
 $mensaje = '';
 $tipo_mensaje = 'info';
-$print_payload = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $fecha    = $_POST['fecha'] ?? $hoy;
@@ -27,71 +26,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $motivo   = trim((string)($_POST['motivo'] ?? ''));
     $hechoPor = trim((string)($_POST['hecho_por'] ?? ''));
 
+    // En tu BD, created_by ES INT (lo confirmó el error)
+    $created_by = (int)($_SESSION['user']['id'] ?? ($_SESSION['user_id'] ?? 0));
+
     if ($monto > 0 && $motivo !== '') {
         try {
             $created_at = "{$fecha} {$hora}:00";
 
-            // Intento 1: esquema esperado (como tu historial viejo)
+            // Guardamos el "Hecho por" escrito en el campo, dentro de motivo (para no cambiar BD)
+            $motivo_db = $hechoPor !== '' ? ("Hecho por: {$hechoPor} | {$motivo}") : $motivo;
+
             $stmt = $pdo->prepare("
               INSERT INTO cash_movements (type, motivo, amount, created_at, created_by)
               VALUES (:type, :motivo, :amount, :created_at, :created_by)
             ");
             $stmt->execute([
               ':type' => 'desembolso',
-              ':motivo' => $motivo,
+              ':motivo' => $motivo_db,
               ':amount' => $monto,
               ':created_at' => $created_at,
-              ':created_by' => $hechoPor,
+              ':created_by' => $created_by,
             ]);
+
             $id = (int)$pdo->lastInsertId();
 
-            $mensaje = "✅ Desembolso registrado correctamente.";
-            $tipo_mensaje = "success";
-
-            $print_payload = [
-                'id' => $id,
-                'fecha' => $fecha,
-                'hora' => $hora,
-                'monto' => $monto,
-                'motivo' => $motivo,
-                'hecho_por' => $hechoPor,
-            ];
-        } catch (Throwable $e1) {
-            try {
-                // Intento 2: si created_at tiene default
-                $stmt = $pdo->prepare("
-                  INSERT INTO cash_movements (type, motivo, amount, created_by)
-                  VALUES (:type, :motivo, :amount, :created_by)
-                ");
-                $stmt->execute([
-                  ':type' => 'desembolso',
-                  ':motivo' => $motivo,
-                  ':amount' => $monto,
-                  ':created_by' => $hechoPor,
-                ]);
-                $id = (int)$pdo->lastInsertId();
-
-                $mensaje = "✅ Desembolso registrado correctamente.";
-                $tipo_mensaje = "success";
-
-                $print_payload = [
-                    'id' => $id,
-                    'fecha' => $fecha,
-                    'hora' => $hora,
-                    'monto' => $monto,
-                    'motivo' => $motivo,
-                    'hecho_por' => $hechoPor,
-                ];
-            } catch (Throwable $e2) {
-                // Modo debug: muestra el error real para que sepamos el campo exacto
-                $mensaje = "❌ Error al guardar el desembolso: " . $e2->getMessage();
-                $tipo_mensaje = "error";
-            }
+            // Abrir acuse en una NUEVA pestaña y luego recargar la pantalla limpia
+            header("Location: /private/caja/desembolso.php?ok=1&print_id={$id}");
+            exit;
+        } catch (Throwable $e) {
+            $mensaje = "❌ Error al guardar el desembolso: " . $e->getMessage();
+            $tipo_mensaje = "error";
         }
     } else {
         $mensaje = "⚠️ Completa Motivo y Monto (mayor a 0).";
         $tipo_mensaje = "warning";
     }
+}
+
+// Si viene print_id, abrimos el acuse en nueva pestaña con JS
+$print_id = isset($_GET['print_id']) ? (int)$_GET['print_id'] : 0;
+$ok = isset($_GET['ok']) ? (int)$_GET['ok'] : 0;
+if ($ok === 1 && $print_id > 0) {
+    $mensaje = "✅ Desembolso registrado. Abriendo acuse para imprimir…";
+    $tipo_mensaje = "success";
 }
 ?>
 <!DOCTYPE html>
@@ -100,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Caja | Registrar Desembolso</title>
-  <link rel="stylesheet" href="/assets/css/styles.css?v=70">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=80">
   <style>
     .page-wrap{max-width: 980px; margin: 0 auto;}
     .page-head{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom: 10px;}
@@ -114,11 +91,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     input[readonly]{background:#f7f7f7;}
     textarea{resize: vertical;}
     .btn-row{display:flex; justify-content:flex-end; gap:10px; margin-top: 6px;}
+
+    /* Botones más visibles */
+    .btn-strong{
+      display:inline-flex; align-items:center; gap:8px;
+      padding: 10px 14px; border-radius: 999px;
+      background: #0b5ed7; color:#fff !important;
+      border: 1px solid rgba(0,0,0,.12);
+      font-weight: 800; text-decoration:none;
+      box-shadow: 0 8px 18px rgba(11,94,215,.18);
+    }
+    .btn-strong:hover{filter: brightness(0.96);}
+    .btn-ghost{
+      display:inline-flex; align-items:center; gap:8px;
+      padding: 10px 14px; border-radius: 999px;
+      background:#fff; color:#0b5ed7 !important;
+      border: 2px solid rgba(11,94,215,.35);
+      font-weight: 800; text-decoration:none;
+    }
+    .btn-ghost:hover{background: rgba(11,94,215,.06);}
+
     .hint{font-size:12px; opacity:.75; margin-top:6px;}
-    .alertbox{border-radius:14px; padding:12px 14px; margin: 12px 0;}
+    .alertbox{border-radius:14px; padding:12px 14px; margin: 12px 0; white-space:pre-wrap;}
     .alertbox.success{background:#eaf8ef; border:1px solid #bfe7c9;}
     .alertbox.warning{background:#fff6df; border:1px solid #f0d08a;}
-    .alertbox.error{background:#ffe9e9; border:1px solid #f3b2b2; white-space:pre-wrap;}
+    .alertbox.error{background:#ffe9e9; border:1px solid #f3b2b2;}
   </style>
 </head>
 <body>
@@ -155,9 +152,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <div class="page-head">
         <div>
           <h1>💸 Registrar Desembolso</h1>
-          <p class="subhead">Registra un desembolso y genera el comprobante para imprimir.</p>
+          <p class="subhead">Registra un desembolso y genera el acuse para imprimir.</p>
         </div>
-        <a href="/private/caja/historial_desembolso.php" class="btn-pill">📄 Ver historial</a>
+        <a href="/private/caja/historial_desembolso.php" class="btn-ghost">📄 Ver historial</a>
       </div>
 
       <?php if ($mensaje): ?>
@@ -187,8 +184,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <div>
               <label>Hecho por</label>
-              <input type="text" name="hecho_por" placeholder="Ej: Juan Pérez / Caja Santiago">
-              <div class="hint">Este campo queda vacío si no lo llenas.</div>
+              <input type="text" name="hecho_por" placeholder="Ej: Claudia Peña / Caja Santiago">
+              <div class="hint">Déjalo vacío si no lo quieres en el motivo (recomendado para el acuse).</div>
             </div>
           </div>
 
@@ -198,7 +195,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           </div>
 
           <div class="btn-row">
-            <button type="submit" class="btn-pill" style="padding:12px 16px; font-weight:800;">Guardar e Imprimir</button>
+            <button type="submit" class="btn-strong">🖨️ Guardar e Imprimir</button>
           </div>
 
         </form>
@@ -212,63 +209,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
 </footer>
 
-<?php if ($print_payload): ?>
+<?php if ($print_id > 0): ?>
 <script>
-(function () {
-  const data = <?= json_encode($print_payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-
-  const html = `
-<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <title>Imprimir Desembolso #${data.id}</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body{font-family: Arial, sans-serif; margin: 16px;}
-    .box{max-width: 420px; margin: 0 auto; border: 1px solid #ddd; padding: 14px; border-radius: 10px;}
-    h2{margin:0 0 10px 0; font-size:18px; text-align:center;}
-    .row{display:flex; justify-content:space-between; margin:6px 0; gap:10px;}
-    .label{font-weight:700;}
-    .small{font-size:12px; color:#444; text-align:center; margin-top:10px;}
-    hr{border:none; border-top:1px dashed #bbb; margin:12px 0;}
-  </style>
-</head>
-<body>
-  <div class="box">
-    <h2>CEVIMEP - Desembolso</h2>
-    <hr/>
-    <div class="row"><div class="label">No.</div><div>#${data.id}</div></div>
-    <div class="row"><div class="label">Fecha</div><div>${data.fecha}</div></div>
-    <div class="row"><div class="label">Hora</div><div>${data.hora}</div></div>
-    <div class="row"><div class="label">Hecho por</div><div>${escapeHtml(data.hecho_por || '')}</div></div>
-    <hr/>
-    <div class="row"><div class="label">Motivo</div><div style="max-width:240px; text-align:right;">${escapeHtml(data.motivo)}</div></div>
-    <div class="row"><div class="label">Monto</div><div><strong>RD$ ${Number(data.monto).toFixed(2)}</strong></div></div>
-    <div class="small">Documento interno.</div>
-  </div>
-  <script>
-    window.onload = () => { window.print(); setTimeout(() => window.close(), 300); };
-  <\/script>
-</body>
-</html>`;
-
-  const w = window.open('', '_blank', 'width=520,height=720');
-  if (w) {
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
+  // Abrir el acuse en nueva pestaña (después de guardar)
+  window.open("/private/caja/acuse_desembolso.php?id=<?= (int)$print_id ?>", "_blank");
+  // Limpiar la URL para que no vuelva a abrir al recargar
+  if (window.history && window.history.replaceState) {
+    window.history.replaceState({}, document.title, "/private/caja/desembolso.php");
   }
-
-  function escapeHtml(str){
-    return String(str)
-      .replaceAll('&','&amp;')
-      .replaceAll('<','&lt;')
-      .replaceAll('>','&gt;')
-      .replaceAll('"','&quot;')
-      .replaceAll("'","&#039;");
-  }
-})();
 </script>
 <?php endif; ?>
 

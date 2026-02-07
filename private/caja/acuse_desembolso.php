@@ -1,143 +1,87 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+declare(strict_types=1);
 
-require_once __DIR__ . "/../config/db.php";
+// Zona horaria RD (GMT-4)
+date_default_timezone_set('America/Santo_Domingo');
 
-if (!isset($_SESSION["user"])) { header("Location: /login.php"); exit; }
+require_once __DIR__ . '/../_guard.php';
 
-$user = $_SESSION["user"];
-$branchId = (int)($user["branch_id"] ?? 0);
-
-date_default_timezone_set("America/Santo_Domingo");
-
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8"); }
-function fmtMoney($n){ return number_format((float)$n, 2, ".", ","); }
-
-function colExists(PDO $pdo, string $table, string $col): bool {
-  try {
-    $st = $pdo->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
-    $st->execute([$col]);
-    return (bool)$st->fetch(PDO::FETCH_ASSOC);
-  } catch (Throwable $e) { return false; }
+// Alias $db -> $pdo si aplica
+if (isset($db) && !isset($pdo) && $db instanceof PDO) { $pdo = $db; }
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+  http_response_code(500);
+  die("Error: no hay conexión PDO disponible (\$pdo).");
 }
 
-$id = (int)($_GET["id"] ?? 0);
-if ($id <= 0) { http_response_code(400); echo "ID inválido."; exit; }
+$id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+if ($id <= 0) {
+  http_response_code(400);
+  die("ID inválido.");
+}
 
-$hasBranch = colExists($pdo, "cash_movements", "branch_id");
-$hasRep    = colExists($pdo, "cash_movements", "representante");
-$createdCol = colExists($pdo, "cash_movements", "created_at") ? "created_at"
-            : (colExists($pdo, "cash_movements", "created_on") ? "created_on" : null);
+$stmt = $pdo->prepare("
+  SELECT id, type, motivo, amount, created_at, created_by
+  FROM cash_movements
+  WHERE id = :id AND type='desembolso'
+  LIMIT 1
+");
+$stmt->execute([':id' => $id]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-$where = "id = ? AND type = 'desembolso'";
-$params = [$id];
+if (!$row) {
+  http_response_code(404);
+  die("No se encontró el desembolso.");
+}
 
-if ($hasBranch) { $where .= " AND branch_id = ?"; $params[] = $branchId; }
+// Parsear "Hecho por" desde motivo (si existe)
+$motivo_raw = (string)($row['motivo'] ?? '');
+$hecho_por = '';
+$motivo = $motivo_raw;
 
-$sql = "SELECT *" . ($createdCol ? ", $createdCol AS created_time" : "") . " FROM cash_movements WHERE $where LIMIT 1";
-$st = $pdo->prepare($sql);
-$st->execute($params);
-$row = $st->fetch(PDO::FETCH_ASSOC);
+if (preg_match('/^Hecho por:\s*(.*?)\s*\|\s*(.*)$/u', $motivo_raw, $m)) {
+  $hecho_por = trim($m[1]);
+  $motivo = trim($m[2]);
+}
 
-if (!$row) { http_response_code(404); echo "No encontrado."; exit; }
-
-$fecha = $createdCol ? ($row["created_time"] ?? "") : "";
-$motivo = $row["motivo"] ?? "";
-$metodo = $row["metodo_pago"] ?? "efectivo";
-$amount = abs((float)($row["amount"] ?? 0));
-$rep = $hasRep ? ($row["representante"] ?? "") : "";
-$createdBy = (int)($row["created_by"] ?? 0);
+$created_at = (string)($row['created_at'] ?? '');
+$fecha = substr($created_at, 0, 10);
+$hora  = substr($created_at, 11, 5);
+$monto = (float)($row['amount'] ?? 0);
 ?>
 <!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>CEVIMEP | Acuse de desembolso #<?php echo (int)$row["id"]; ?></title>
+  <title>Acuse de Desembolso #<?= (int)$row['id'] ?></title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    :root{ --bg:#0b1220; --card:#0f172a; --ink:#0f172a; --muted:#64748b; --border:#e5e7eb; }
-    body{ margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; background:#f3f4f6; color:#111827; }
-    .wrap{ max-width:720px; margin:24px auto; padding:0 14px; }
-    .card{ background:#fff; border:1px solid var(--border); border-radius:14px; padding:18px; box-shadow:0 10px 25px rgba(0,0,0,.06); }
-    .top{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
-    .title{ font-size:18px; font-weight:900; letter-spacing:.2px; margin:0; }
-    .sub{ color:var(--muted); font-weight:700; margin-top:4px; font-size:12px; }
-    .pill{ display:inline-flex; align-items:center; gap:8px; background:#eff6ff; color:#1d4ed8; padding:6px 10px; border-radius:999px; font-weight:900; font-size:12px; }
-    .grid{ margin-top:14px; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-    .item{ border:1px solid var(--border); border-radius:12px; padding:10px 12px; }
-    .k{ font-size:11px; color:var(--muted); font-weight:900; text-transform:uppercase; letter-spacing:.6px; }
-    .v{ margin-top:6px; font-size:14px; font-weight:900; }
-    .amt{ font-size:20px; }
-    .actions{ margin-top:14px; display:flex; gap:10px; }
-    .btn{ border:1px solid var(--border); background:#111827; color:#fff; padding:10px 12px; border-radius:12px; font-weight:900; cursor:pointer; }
-    .btn2{ border:1px solid var(--border); background:#fff; color:#111827; }
-    @media print{
-      body{ background:#fff; }
-      .wrap{ margin:0; max-width:none; padding:0; }
-      .actions{ display:none !important; }
-      .card{ box-shadow:none; border:1px solid #ddd; border-radius:10px; }
-    }
+    body{font-family: Arial, sans-serif; margin: 16px; color:#111;}
+    .ticket{max-width: 420px; margin: 0 auto; border: 1px solid #ddd; padding: 14px; border-radius: 10px;}
+    h2{margin:0 0 10px 0; font-size:18px; text-align:center;}
+    hr{border:none; border-top:1px dashed #bbb; margin:12px 0;}
+    .row{display:flex; justify-content:space-between; gap:10px; margin:6px 0;}
+    .label{font-weight:700;}
+    .right{text-align:right;}
+    .small{font-size:12px; color:#444; text-align:center; margin-top:10px;}
+    .motivo{margin-top:8px; font-size:13px;}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card" id="acuse">
-      <div class="top">
-        <div>
-          <h1 class="title">Acuse de Desembolso</h1>
-          <div class="sub">CEVIMEP • Movimiento #<?php echo (int)$row["id"]; ?> <?php echo $fecha ? "• ".h($fecha) : ""; ?></div>
-        </div>
-        <div class="pill">DESembolso</div>
-      </div>
-
-      <div class="grid">
-        <div class="item">
-          <div class="k">Motivo</div>
-          <div class="v"><?php echo h($motivo); ?></div>
-        </div>
-
-        <div class="item">
-          <div class="k">Monto</div>
-          <div class="v amt">RD$ <?php echo fmtMoney($amount); ?></div>
-        </div>
-
-        <div class="item">
-          <div class="k">Método de pago</div>
-          <div class="v"><?php echo h($metodo); ?></div>
-        </div>
-
-        <?php if ($hasRep): ?>
-        <div class="item">
-          <div class="k">Representante</div>
-          <div class="v"><?php echo h($rep); ?></div>
-        </div>
-        <?php endif; ?>
-
-        <div class="item">
-          <div class="k">Usuario</div>
-          <div class="v">#<?php echo $createdBy; ?></div>
-        </div>
-
-        <?php if ($hasBranch): ?>
-        <div class="item">
-          <div class="k">Sucursal</div>
-          <div class="v">#<?php echo (int)($row["branch_id"] ?? 0); ?></div>
-        </div>
-        <?php endif; ?>
-      </div>
-
-      <div class="actions">
-        <button class="btn" onclick="window.print()">Imprimir</button>
-        <button class="btn btn2" onclick="window.close()">Cerrar</button>
-      </div>
-    </div>
+  <div class="ticket">
+    <h2>CEVIMEP - Acuse de Desembolso</h2>
+    <hr/>
+    <div class="row"><div class="label">No.</div><div>#<?= (int)$row['id'] ?></div></div>
+    <div class="row"><div class="label">Fecha</div><div><?= htmlspecialchars($fecha) ?></div></div>
+    <div class="row"><div class="label">Hora</div><div><?= htmlspecialchars($hora) ?></div></div>
+    <div class="row"><div class="label">Hecho por</div><div class="right"><?= htmlspecialchars($hecho_por) ?></div></div>
+    <hr/>
+    <div class="row"><div class="label">Monto</div><div><strong>RD$ <?= number_format($monto, 2) ?></strong></div></div>
+    <div class="motivo"><span class="label">Motivo:</span> <?= htmlspecialchars($motivo) ?></div>
+    <div class="small">Documento interno • Impresión automática</div>
   </div>
 
   <script>
-    // Al abrir desde "Guardar e Imprimir", imprime automáticamente
-    window.addEventListener('load', () => {
-      setTimeout(() => { window.print(); }, 250);
-    });
+    window.onload = () => { window.print(); };
   </script>
 </body>
 </html>

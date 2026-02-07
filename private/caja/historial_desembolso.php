@@ -24,20 +24,23 @@ try {
       ORDER BY id DESC
       LIMIT 500
     ");
-    $rows = $stmt->fetchAll();
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
     $error = "❌ No se pudo cargar el historial: " . $e->getMessage();
 }
 
-function to_date(string $dt): string {
-    if ($dt === '') return '';
-    // Si viene tipo "2026-02-06 21:23:00"
-    return substr($dt, 0, 10);
+function parse_motivo(string $motivo_raw): array {
+  $hecho_por = '';
+  $motivo = $motivo_raw;
+
+  if (preg_match('/^Hecho por:\s*(.*?)\s*\|\s*(.*)$/u', $motivo_raw, $m)) {
+    $hecho_por = trim($m[1]);
+    $motivo = trim($m[2]);
+  }
+  return [$motivo, $hecho_por];
 }
-function to_time(string $dt): string {
-    if ($dt === '') return '';
-    return substr($dt, 11, 5);
-}
+function to_date(string $dt): string { return $dt !== '' ? substr($dt, 0, 10) : ''; }
+function to_time(string $dt): string { return $dt !== '' ? substr($dt, 11, 5) : ''; }
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -45,7 +48,7 @@ function to_time(string $dt): string {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Caja | Historial de Desembolsos</title>
-  <link rel="stylesheet" href="/assets/css/styles.css?v=70">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=80">
   <style>
     .page-wrap{max-width: 1200px; margin: 0 auto;}
     .page-head{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom: 10px;}
@@ -58,6 +61,14 @@ function to_time(string $dt): string {
     td.amount{text-align:right; font-weight:800;}
     .muted{opacity:.75;}
     .alertbox{border-radius:14px; padding:12px 14px; margin: 12px 0; background:#ffe9e9; border:1px solid #f3b2b2; white-space:pre-wrap;}
+    .btn-ghost{
+      display:inline-flex; align-items:center; gap:8px;
+      padding: 10px 14px; border-radius: 999px;
+      background:#fff; color:#0b5ed7 !important;
+      border: 2px solid rgba(11,94,215,.35);
+      font-weight: 800; text-decoration:none;
+    }
+    .btn-ghost:hover{background: rgba(11,94,215,.06);}
   </style>
 </head>
 <body>
@@ -96,7 +107,7 @@ function to_time(string $dt): string {
           <h1>📄 Historial de Desembolsos</h1>
           <p class="muted" style="margin:6px 0 0 0;">Listado de los desembolsos registrados en Caja.</p>
         </div>
-        <a href="/private/caja/desembolso.php" class="btn-pill">➕ Nuevo desembolso</a>
+        <a href="/private/caja/desembolso.php" class="btn-ghost">➕ Nuevo desembolso</a>
       </div>
 
       <?php if ($error): ?>
@@ -113,22 +124,31 @@ function to_time(string $dt): string {
                 <th>Motivo</th>
                 <th style="text-align:right;">Monto</th>
                 <th>Hecho por</th>
+                <th>Acuse</th>
               </tr>
             </thead>
             <tbody>
             <?php if (!empty($rows)): ?>
               <?php foreach ($rows as $r): ?>
+                <?php
+                  $motivo_raw = (string)($r['motivo'] ?? '');
+                  [$motivo, $hecho_por] = parse_motivo($motivo_raw);
+                  $id = (int)($r['id'] ?? 0);
+                ?>
                 <tr>
                   <td><?= htmlspecialchars(to_date((string)($r['created_at'] ?? ''))) ?></td>
                   <td><?= htmlspecialchars(to_time((string)($r['created_at'] ?? ''))) ?></td>
-                  <td><?= htmlspecialchars((string)($r['motivo'] ?? '')) ?></td>
+                  <td><?= htmlspecialchars($motivo) ?></td>
                   <td class="amount">RD$ <?= number_format((float)($r['amount'] ?? 0), 2) ?></td>
-                  <td><?= htmlspecialchars((string)($r['created_by'] ?? '—')) ?></td>
+                  <td><?= htmlspecialchars($hecho_por ?: '—') ?></td>
+                  <td>
+                    <a class="btn-ghost" target="_blank" href="/private/caja/acuse_desembolso.php?id=<?= $id ?>">🖨️ Imprimir</a>
+                  </td>
                 </tr>
               <?php endforeach; ?>
             <?php else: ?>
               <tr>
-                <td colspan="5" style="text-align:center; padding: 14px;">No hay desembolsos registrados</td>
+                <td colspan="6" style="text-align:center; padding: 14px;">No hay desembolsos registrados</td>
               </tr>
             <?php endif; ?>
             </tbody>
