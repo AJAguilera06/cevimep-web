@@ -1,58 +1,66 @@
-das<?php
-require_once '../includes/auth.php';
-require_once '../includes/db.php';
+<?php
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/db.php';
 
-$rows = $db->query("
-  SELECT id, motivo, amount, created_at, created_by
-  FROM cash_movements
-  WHERE type='desembolso'
-  ORDER BY id DESC
-  LIMIT 500
-")->fetchAll(PDO::FETCH_ASSOC);
+$result = $conn->query("
+    SELECT d.id, d.fecha, d.monto, d.descripcion, u.nombre 
+    FROM caja_desembolsos d
+    LEFT JOIN usuarios u ON d.usuario_id = u.id
+    ORDER BY d.fecha DESC, d.id DESC
+");
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<title>Historial Desembolsos | CEVIMEP</title>
-<link rel="stylesheet" href="../assets/css/items.css">
-<style>
-.table-scroll{max-height:260px;overflow-y:auto}
-</style>
+    <meta charset="UTF-8">
+    <title>Historial de Desembolsos</title>
+    <link rel="stylesheet" href="/assets/css/styles.css">
+    <link rel="stylesheet" href="/assets/css/items.css">
 </head>
 <body>
-<?php include '../includes/topbar.php'; ?>
-<?php include '../includes/sidebar.php'; ?>
+
+<?php include __DIR__ . '/../includes/topbar.php'; ?>
+
+<div class="container">
+<?php include __DIR__ . '/../includes/sidebar.php'; ?>
 
 <main class="content">
-  <h1>HISTORIAL DE DESEMBOLSOS</h1>
+    <div class="header-flex">
+        <h1>📄 Historial de Desembolsos</h1>
+        <a href="/private/caja/desembolso.php" class="btn-secondary">
+            ➕ Nuevo Desembolso
+        </a>
+    </div>
 
-  <div class="card table-scroll">
     <table class="table">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Fecha</th>
-          <th>Motivo</th>
-          <th>Monto</th>
-          <th>Usuario</th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php foreach($rows as $r): ?>
-        <tr>
-          <td>#<?=$r['id']?></td>
-          <td><?=$r['created_at']?></td>
-          <td><?=$r['motivo']?></td>
-          <td>RD$ <?=number_format($r['amount'],2)?></td>
-          <td><?=$r['created_by']?></td>
-        </tr>
-        <?php endforeach; ?>
-      </tbody>
+        <thead>
+            <tr>
+                <th>Fecha</th>
+                <th>Monto</th>
+                <th>Descripción</th>
+                <th>Usuario</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if ($result && $result->num_rows > 0): ?>
+                <?php while ($row = $result->fetch_assoc()): ?>
+                    <tr>
+                        <td><?= htmlspecialchars($row['fecha']) ?></td>
+                        <td>RD$ <?= number_format($row['monto'], 2) ?></td>
+                        <td><?= htmlspecialchars($row['descripcion']) ?></td>
+                        <td><?= htmlspecialchars($row['nombre'] ?? '—') ?></td>
+                    </tr>
+                <?php endwhile; ?>
+            <?php else: ?>
+                <tr>
+                    <td colspan="4" style="text-align:center;">No hay desembolsos registrados</td>
+                </tr>
+            <?php endif; ?>
+        </tbody>
     </table>
-  </div>
 </main>
+</div>
 
-<?php include '../includes/footer.php'; ?>
 </body>
 </html>
