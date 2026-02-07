@@ -62,10 +62,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body>
 
-<?php include __DIR__ . '/../includes/topbar.php'; ?>
+<?php
+$topbar = __DIR__ . '/../includes/topbar.php';
+$sidebar = __DIR__ . '/../includes/sidebar.php';
 
+if (is_file($topbar)) {
+    include $topbar;
+}
+?>
 <div class="container">
-  <?php include __DIR__ . '/../includes/sidebar.php'; ?>
+<?php
+if (is_file($sidebar)) {
+    include $sidebar;
+}
+?>
 
   <main class="content">
     <div class="header-flex" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
