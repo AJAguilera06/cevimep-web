@@ -19,38 +19,72 @@ $horaActual = date('H:i');
 $mensaje = '';
 $tipo_mensaje = 'info';
 
+function get_int_cash_session_id(PDO $pdo): int {
+  // Prioridad: IDs numéricos guardados en sesión (los más comunes en sistemas de caja)
+  $candidates = [
+    'cash_session_id', 'caja_session_id', 'caja_id', 'cash_id',
+    'session_id', 'session_cash_id', 'current_cash_session_id'
+  ];
+
+  foreach ($candidates as $k) {
+    if (isset($_SESSION[$k])) {
+      $v = $_SESSION[$k];
+      // Si ya es número o string numérico
+      if (is_int($v)) return $v;
+      if (is_string($v) && ctype_digit($v)) return (int)$v;
+      if (is_numeric($v)) return (int)$v;
+    }
+  }
+
+  // Fallback: usar el último session_id registrado en cash_movements
+  try {
+    $stmt = $pdo->query("SELECT session_id FROM cash_movements ORDER BY id DESC LIMIT 1");
+    $sid = $stmt->fetchColumn();
+    if ($sid !== false && is_numeric($sid)) return (int)$sid;
+  } catch (Throwable $e) {}
+
+  return 0;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $fecha    = $_POST['fecha'] ?? $hoy;
     $hora     = $_POST['hora'] ?? $horaActual;
-    $monto    = (float)($_POST['monto'] ?? 0);
+    $monto_in = (float)($_POST['monto'] ?? 0);
     $motivo   = trim((string)($_POST['motivo'] ?? ''));
     $hechoPor = trim((string)($_POST['hecho_por'] ?? ''));
 
-    // En tu BD: created_by ES INT
+    // created_by ES INT (usuario logueado)
     $created_by = (int)($_SESSION['user']['id'] ?? ($_SESSION['user_id'] ?? 0));
 
-    // En tu BD: session_id ES OBLIGATORIO (NO TIENE DEFAULT)
-    // Tomamos primero uno de sesión si tu sistema lo define; si no, usamos el session_id() de PHP.
-    $session_id = $_SESSION['session_id'] ?? $_SESSION['cash_session_id'] ?? session_id();
+    // session_id ES INT (sesión de caja). NO es el session_id() de PHP.
+    $session_id = get_int_cash_session_id($pdo);
 
-    if ($monto > 0 && $motivo !== '') {
+    if ($session_id <= 0) {
+      $mensaje = "⚠️ No se encontró una sesión de caja válida (session_id). Abre la caja o verifica la sesión.";
+      $tipo_mensaje = "warning";
+    } elseif ($monto_in > 0 && $motivo !== '') {
         try {
             $created_at = "{$fecha} {$hora}:00";
 
-            // Guardamos el "Hecho por" escrito en el campo, dentro de motivo (sin cambiar BD)
+            // En BD, los desembolsos van NEGATIVOS (como se ve en tu tabla)
+            $amount = -abs($monto_in);
+
+            // Guardamos el texto "Hecho por" dentro de motivo para que se vea en historial/acuse sin tocar BD
             $motivo_db = $hechoPor !== '' ? ("Hecho por: {$hechoPor} | {$motivo}") : $motivo;
 
+            // metodo_pago (en tu tabla existe). Ponemos "efectivo" por defecto.
             $stmt = $pdo->prepare("
-              INSERT INTO cash_movements (type, motivo, amount, created_at, created_by, session_id)
-              VALUES (:type, :motivo, :amount, :created_at, :created_by, :session_id)
+              INSERT INTO cash_movements (session_id, type, motivo, metodo_pago, amount, created_at, created_by)
+              VALUES (:session_id, :type, :motivo, :metodo_pago, :amount, :created_at, :created_by)
             ");
             $stmt->execute([
+              ':session_id' => $session_id,
               ':type' => 'desembolso',
               ':motivo' => $motivo_db,
-              ':amount' => $monto,
+              ':metodo_pago' => 'efectivo',
+              ':amount' => $amount,
               ':created_at' => $created_at,
               ':created_by' => $created_by,
-              ':session_id' => $session_id,
             ]);
 
             $id = (int)$pdo->lastInsertId();
@@ -80,7 +114,7 @@ if ($ok === 1 && $print_id > 0) {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Caja | Registrar Desembolso</title>
-  <link rel="stylesheet" href="/assets/css/styles.css?v=90">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=100">
   <style>
     .page-wrap{max-width: 980px; margin: 0 auto;}
     .page-head{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom: 10px;}
@@ -187,7 +221,7 @@ if ($ok === 1 && $print_id > 0) {
             <div>
               <label>Hecho por</label>
               <input type="text" name="hecho_por" placeholder="Ej: Claudia Peña / Caja Santiago">
-              <div class="hint">Déjalo vacío si no lo quieres en el motivo (recomendado para el acuse).</div>
+              <div class="hint">Este texto se imprime en el acuse (se guarda dentro del motivo).</div>
             </div>
           </div>
 

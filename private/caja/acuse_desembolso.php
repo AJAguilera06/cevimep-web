@@ -1,12 +1,9 @@
 <?php
 declare(strict_types=1);
 
-// Zona horaria RD (GMT-4)
 date_default_timezone_set('America/Santo_Domingo');
-
 require_once __DIR__ . '/../_guard.php';
 
-// Alias $db -> $pdo si aplica
 if (isset($db) && !isset($pdo) && $db instanceof PDO) { $pdo = $db; }
 if (!isset($pdo) || !($pdo instanceof PDO)) {
   http_response_code(500);
@@ -14,10 +11,7 @@ if (!isset($pdo) || !($pdo instanceof PDO)) {
 }
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-if ($id <= 0) {
-  http_response_code(400);
-  die("ID inválido.");
-}
+if ($id <= 0) { http_response_code(400); die("ID inválido."); }
 
 $stmt = $pdo->prepare("
   SELECT id, type, motivo, amount, created_at, created_by
@@ -27,17 +21,11 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([':id' => $id]);
 $row = $stmt->fetch(PDO::FETCH_ASSOC);
+if (!$row) { http_response_code(404); die("No se encontró el desembolso."); }
 
-if (!$row) {
-  http_response_code(404);
-  die("No se encontró el desembolso.");
-}
-
-// Parsear "Hecho por" desde motivo (si existe)
 $motivo_raw = (string)($row['motivo'] ?? '');
 $hecho_por = '';
 $motivo = $motivo_raw;
-
 if (preg_match('/^Hecho por:\s*(.*?)\s*\|\s*(.*)$/u', $motivo_raw, $m)) {
   $hecho_por = trim($m[1]);
   $motivo = trim($m[2]);
@@ -46,7 +34,9 @@ if (preg_match('/^Hecho por:\s*(.*?)\s*\|\s*(.*)$/u', $motivo_raw, $m)) {
 $created_at = (string)($row['created_at'] ?? '');
 $fecha = substr($created_at, 0, 10);
 $hora  = substr($created_at, 11, 5);
-$monto = (float)($row['amount'] ?? 0);
+
+// En BD viene negativo, mostramos positivo en el acuse
+$monto = abs((float)($row['amount'] ?? 0));
 ?>
 <!doctype html>
 <html lang="es">

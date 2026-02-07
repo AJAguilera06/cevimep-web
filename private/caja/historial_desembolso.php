@@ -1,12 +1,9 @@
 <?php
 declare(strict_types=1);
 
-// Zona horaria RD (GMT-4)
 date_default_timezone_set('America/Santo_Domingo');
-
 require_once __DIR__ . '/../_guard.php';
 
-// Alias $db -> $pdo si aplica
 if (isset($db) && !isset($pdo) && $db instanceof PDO) { $pdo = $db; }
 if (!isset($pdo) || !($pdo instanceof PDO)) {
   http_response_code(500);
@@ -32,7 +29,6 @@ try {
 function parse_motivo(string $motivo_raw): array {
   $hecho_por = '';
   $motivo = $motivo_raw;
-
   if (preg_match('/^Hecho por:\s*(.*?)\s*\|\s*(.*)$/u', $motivo_raw, $m)) {
     $hecho_por = trim($m[1]);
     $motivo = trim($m[2]);
@@ -48,14 +44,14 @@ function to_time(string $dt): string { return $dt !== '' ? substr($dt, 11, 5) : 
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Caja | Historial de Desembolsos</title>
-  <link rel="stylesheet" href="/assets/css/styles.css?v=80">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=100">
   <style>
     .page-wrap{max-width: 1200px; margin: 0 auto;}
     .page-head{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom: 10px;}
     .page-head h1{margin:0; font-size: 40px; line-height: 1.1;}
     .card-soft{background:#fff; border-radius: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.08); padding: 14px;}
     .table-wrap{overflow:auto;}
-    table{width:100%; border-collapse: collapse; min-width: 860px;}
+    table{width:100%; border-collapse: collapse; min-width: 900px;}
     th, td{padding: 10px; border-bottom: 1px solid #f1f1f1;}
     th{font-weight:800; text-align:left; background: rgba(0,0,0,.02);}
     td.amount{text-align:right; font-weight:800;}
@@ -134,12 +130,13 @@ function to_time(string $dt): string { return $dt !== '' ? substr($dt, 11, 5) : 
                   $motivo_raw = (string)($r['motivo'] ?? '');
                   [$motivo, $hecho_por] = parse_motivo($motivo_raw);
                   $id = (int)($r['id'] ?? 0);
+                  $monto = abs((float)($r['amount'] ?? 0));
                 ?>
                 <tr>
                   <td><?= htmlspecialchars(to_date((string)($r['created_at'] ?? ''))) ?></td>
                   <td><?= htmlspecialchars(to_time((string)($r['created_at'] ?? ''))) ?></td>
                   <td><?= htmlspecialchars($motivo) ?></td>
-                  <td class="amount">RD$ <?= number_format((float)($r['amount'] ?? 0), 2) ?></td>
+                  <td class="amount">RD$ <?= number_format($monto, 2) ?></td>
                   <td><?= htmlspecialchars($hecho_por ?: '—') ?></td>
                   <td>
                     <a class="btn-ghost" target="_blank" href="/private/caja/acuse_desembolso.php?id=<?= $id ?>">🖨️ Imprimir</a>
