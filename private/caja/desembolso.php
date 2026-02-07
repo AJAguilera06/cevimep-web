@@ -26,19 +26,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $motivo   = trim((string)($_POST['motivo'] ?? ''));
     $hechoPor = trim((string)($_POST['hecho_por'] ?? ''));
 
-    // En tu BD, created_by ES INT (lo confirmó el error)
+    // En tu BD: created_by ES INT
     $created_by = (int)($_SESSION['user']['id'] ?? ($_SESSION['user_id'] ?? 0));
+
+    // En tu BD: session_id ES OBLIGATORIO (NO TIENE DEFAULT)
+    // Tomamos primero uno de sesión si tu sistema lo define; si no, usamos el session_id() de PHP.
+    $session_id = $_SESSION['session_id'] ?? $_SESSION['cash_session_id'] ?? session_id();
 
     if ($monto > 0 && $motivo !== '') {
         try {
             $created_at = "{$fecha} {$hora}:00";
 
-            // Guardamos el "Hecho por" escrito en el campo, dentro de motivo (para no cambiar BD)
+            // Guardamos el "Hecho por" escrito en el campo, dentro de motivo (sin cambiar BD)
             $motivo_db = $hechoPor !== '' ? ("Hecho por: {$hechoPor} | {$motivo}") : $motivo;
 
             $stmt = $pdo->prepare("
-              INSERT INTO cash_movements (type, motivo, amount, created_at, created_by)
-              VALUES (:type, :motivo, :amount, :created_at, :created_by)
+              INSERT INTO cash_movements (type, motivo, amount, created_at, created_by, session_id)
+              VALUES (:type, :motivo, :amount, :created_at, :created_by, :session_id)
             ");
             $stmt->execute([
               ':type' => 'desembolso',
@@ -46,11 +50,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               ':amount' => $monto,
               ':created_at' => $created_at,
               ':created_by' => $created_by,
+              ':session_id' => $session_id,
             ]);
 
             $id = (int)$pdo->lastInsertId();
 
-            // Abrir acuse en una NUEVA pestaña y luego recargar la pantalla limpia
             header("Location: /private/caja/desembolso.php?ok=1&print_id={$id}");
             exit;
         } catch (Throwable $e) {
@@ -63,7 +67,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Si viene print_id, abrimos el acuse en nueva pestaña con JS
 $print_id = isset($_GET['print_id']) ? (int)$_GET['print_id'] : 0;
 $ok = isset($_GET['ok']) ? (int)$_GET['ok'] : 0;
 if ($ok === 1 && $print_id > 0) {
@@ -77,7 +80,7 @@ if ($ok === 1 && $print_id > 0) {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Caja | Registrar Desembolso</title>
-  <link rel="stylesheet" href="/assets/css/styles.css?v=80">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=90">
   <style>
     .page-wrap{max-width: 980px; margin: 0 auto;}
     .page-head{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom: 10px;}
@@ -92,7 +95,6 @@ if ($ok === 1 && $print_id > 0) {
     textarea{resize: vertical;}
     .btn-row{display:flex; justify-content:flex-end; gap:10px; margin-top: 6px;}
 
-    /* Botones más visibles */
     .btn-strong{
       display:inline-flex; align-items:center; gap:8px;
       padding: 10px 14px; border-radius: 999px;
@@ -211,9 +213,7 @@ if ($ok === 1 && $print_id > 0) {
 
 <?php if ($print_id > 0): ?>
 <script>
-  // Abrir el acuse en nueva pestaña (después de guardar)
   window.open("/private/caja/acuse_desembolso.php?id=<?= (int)$print_id ?>", "_blank");
-  // Limpiar la URL para que no vuelva a abrir al recargar
   if (window.history && window.history.replaceState) {
     window.history.replaceState({}, document.title, "/private/caja/desembolso.php");
   }
