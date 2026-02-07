@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/../includes/_guard.php';
+require_once __DIR__ . '/../_guard.php';
 
 $user = $_SESSION['user'] ?? [];
 $hechoPor = $user['full_name'] ?? $user['nombre'] ?? $user['name'] ?? 'Usuario';
