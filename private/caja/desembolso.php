@@ -4,12 +4,16 @@ declare(strict_types=1);
 // Zona horaria RD (GMT-4)
 date_default_timezone_set('America/Santo_Domingo');
 
-require_once __DIR__ . '/../_guard.php'; // <-- tu _guard.php está en /private/_guard.php
+require_once __DIR__ . '/../_guard.php'; // tu _guard.php en /private/_guard.php
 
-// Asumimos que _guard.php deja disponible $pdo (PDO). Si no, incluye tu db.php aquí:
-// require_once __DIR__ . '/../includes/db.php';
+// _guard.php debe cargar $pdo (PDO). Si tu variable es $db, hacemos alias:
+if (isset($db) && !isset($pdo) && $db instanceof PDO) { $pdo = $db; }
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+  http_response_code(500);
+  die("Error: no hay conexión PDO disponible (\$pdo).");
+}
 
-$hoy  = date('Y-m-d');
+$hoy = date('Y-m-d');
 $horaActual = date('H:i');
 
 $mensaje = '';
@@ -23,26 +27,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $motivo   = trim((string)($_POST['motivo'] ?? ''));
     $hechoPor = trim((string)($_POST['hecho_por'] ?? ''));
 
-    // usuario_id (si existe en sesión)
-    $usuario_id = $_SESSION['user']['id'] ?? ($_SESSION['user_id'] ?? null);
-
     if ($monto > 0 && $motivo !== '') {
         try {
-            // Guardamos en estructura compatible (sin requerir columnas nuevas)
-            // Usamos descripcion para almacenar hora, hecho_por y motivo.
-            $descripcion = "Hora: {$hora} | Hecho por: {$hechoPor} | Motivo: {$motivo}";
+            $created_at = "{$fecha} {$hora}:00";
 
+            // Intento 1: esquema esperado (como tu historial viejo)
             $stmt = $pdo->prepare("
-                INSERT INTO caja_desembolsos (fecha, monto, descripcion, usuario_id)
-                VALUES (:fecha, :monto, :descripcion, :usuario_id)
+              INSERT INTO cash_movements (type, motivo, amount, created_at, created_by)
+              VALUES (:type, :motivo, :amount, :created_at, :created_by)
             ");
             $stmt->execute([
-                ':fecha' => $fecha,
-                ':monto' => $monto,
-                ':descripcion' => $descripcion,
-                ':usuario_id' => $usuario_id,
+              ':type' => 'desembolso',
+              ':motivo' => $motivo,
+              ':amount' => $monto,
+              ':created_at' => $created_at,
+              ':created_by' => $hechoPor,
             ]);
-
             $id = (int)$pdo->lastInsertId();
 
             $mensaje = "✅ Desembolso registrado correctamente.";
@@ -56,9 +56,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'motivo' => $motivo,
                 'hecho_por' => $hechoPor,
             ];
-        } catch (Throwable $e) {
-            $mensaje = "❌ Error al guardar el desembolso.";
-            $tipo_mensaje = "error";
+        } catch (Throwable $e1) {
+            try {
+                // Intento 2: si created_at tiene default
+                $stmt = $pdo->prepare("
+                  INSERT INTO cash_movements (type, motivo, amount, created_by)
+                  VALUES (:type, :motivo, :amount, :created_by)
+                ");
+                $stmt->execute([
+                  ':type' => 'desembolso',
+                  ':motivo' => $motivo,
+                  ':amount' => $monto,
+                  ':created_by' => $hechoPor,
+                ]);
+                $id = (int)$pdo->lastInsertId();
+
+                $mensaje = "✅ Desembolso registrado correctamente.";
+                $tipo_mensaje = "success";
+
+                $print_payload = [
+                    'id' => $id,
+                    'fecha' => $fecha,
+                    'hora' => $hora,
+                    'monto' => $monto,
+                    'motivo' => $motivo,
+                    'hecho_por' => $hechoPor,
+                ];
+            } catch (Throwable $e2) {
+                // Modo debug: muestra el error real para que sepamos el campo exacto
+                $mensaje = "❌ Error al guardar el desembolso: " . $e2->getMessage();
+                $tipo_mensaje = "error";
+            }
         }
     } else {
         $mensaje = "⚠️ Completa Motivo y Monto (mayor a 0).";
@@ -72,9 +100,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Caja | Registrar Desembolso</title>
-  <link rel="stylesheet" href="/assets/css/styles.css?v=60">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=70">
   <style>
-    /* Mejoras visuales sin romper tu CSS */
     .page-wrap{max-width: 980px; margin: 0 auto;}
     .page-head{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom: 10px;}
     .page-head h1{margin:0; font-size: 40px; line-height: 1.1;}
@@ -86,13 +113,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     input, textarea{width:100%; padding: 12px 12px; border:1px solid #d9d9d9; border-radius: 12px; outline:none;}
     input[readonly]{background:#f7f7f7;}
     textarea{resize: vertical;}
-    .btn-primary2{border:none; border-radius: 999px; padding: 12px 16px; font-weight:800; cursor:pointer;}
     .btn-row{display:flex; justify-content:flex-end; gap:10px; margin-top: 6px;}
     .hint{font-size:12px; opacity:.75; margin-top:6px;}
     .alertbox{border-radius:14px; padding:12px 14px; margin: 12px 0;}
     .alertbox.success{background:#eaf8ef; border:1px solid #bfe7c9;}
     .alertbox.warning{background:#fff6df; border:1px solid #f0d08a;}
-    .alertbox.error{background:#ffe9e9; border:1px solid #f3b2b2;}
+    .alertbox.error{background:#ffe9e9; border:1px solid #f3b2b2; white-space:pre-wrap;}
   </style>
 </head>
 <body>
@@ -162,7 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div>
               <label>Hecho por</label>
               <input type="text" name="hecho_por" placeholder="Ej: Juan Pérez / Caja Santiago">
-              <div class="hint">Déjalo vacío si quieres, pero recomendado para el comprobante.</div>
+              <div class="hint">Este campo queda vacío si no lo llenas.</div>
             </div>
           </div>
 
@@ -172,7 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           </div>
 
           <div class="btn-row">
-            <button type="submit" class="btn-pill btn-primary2">Guardar e Imprimir</button>
+            <button type="submit" class="btn-pill" style="padding:12px 16px; font-weight:800;">Guardar e Imprimir</button>
           </div>
 
         </form>

@@ -6,40 +6,37 @@ date_default_timezone_set('America/Santo_Domingo');
 
 require_once __DIR__ . '/../_guard.php';
 
+// Alias $db -> $pdo si aplica
+if (isset($db) && !isset($pdo) && $db instanceof PDO) { $pdo = $db; }
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+  http_response_code(500);
+  die("Error: no hay conexión PDO disponible (\$pdo).");
+}
+
 $rows = [];
 $error = '';
 
 try {
-    // Consulta compatible con tu tabla actual (id, fecha, monto, descripcion, usuario_id)
     $stmt = $pdo->query("
-        SELECT id, fecha, monto, descripcion, usuario_id
-        FROM caja_desembolsos
-        ORDER BY fecha DESC, id DESC
+      SELECT id, motivo, amount, created_at, created_by
+      FROM cash_movements
+      WHERE type='desembolso'
+      ORDER BY id DESC
+      LIMIT 500
     ");
     $rows = $stmt->fetchAll();
 } catch (Throwable $e) {
-    $error = "❌ No se pudo cargar el historial (revisa tabla/campos en BD).";
+    $error = "❌ No se pudo cargar el historial: " . $e->getMessage();
 }
 
-// Función simple para extraer campos desde descripcion
-function parse_desc(string $desc): array {
-    $out = ['hora'=>'', 'hecho_por'=>'', 'motivo'=>$desc];
-
-    // Hora: HH:MM | Hecho por: X | Motivo: Y
-    if (preg_match('/Hora:\s*([0-9]{2}:[0-9]{2})\s*\|\s*Hecho por:\s*(.*?)\s*\|\s*Motivo:\s*(.*)$/u', $desc, $m)) {
-        $out['hora'] = $m[1];
-        $out['hecho_por'] = trim($m[2]);
-        $out['motivo'] = trim($m[3]);
-        return $out;
-    }
-
-    // Fallback viejo: "Hora: HH:MM | ..."
-    if (preg_match('/Hora:\s*([0-9]{2}:[0-9]{2})\s*\|\s*(.*)$/u', $desc, $m)) {
-        $out['hora'] = $m[1];
-        $out['motivo'] = trim($m[2]);
-    }
-
-    return $out;
+function to_date(string $dt): string {
+    if ($dt === '') return '';
+    // Si viene tipo "2026-02-06 21:23:00"
+    return substr($dt, 0, 10);
+}
+function to_time(string $dt): string {
+    if ($dt === '') return '';
+    return substr($dt, 11, 5);
 }
 ?>
 <!DOCTYPE html>
@@ -48,7 +45,7 @@ function parse_desc(string $desc): array {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Caja | Historial de Desembolsos</title>
-  <link rel="stylesheet" href="/assets/css/styles.css?v=60">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=70">
   <style>
     .page-wrap{max-width: 1200px; margin: 0 auto;}
     .page-head{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom: 10px;}
@@ -60,7 +57,7 @@ function parse_desc(string $desc): array {
     th{font-weight:800; text-align:left; background: rgba(0,0,0,.02);}
     td.amount{text-align:right; font-weight:800;}
     .muted{opacity:.75;}
-    .alertbox{border-radius:14px; padding:12px 14px; margin: 12px 0; background:#ffe9e9; border:1px solid #f3b2b2;}
+    .alertbox{border-radius:14px; padding:12px 14px; margin: 12px 0; background:#ffe9e9; border:1px solid #f3b2b2; white-space:pre-wrap;}
   </style>
 </head>
 <body>
@@ -121,16 +118,12 @@ function parse_desc(string $desc): array {
             <tbody>
             <?php if (!empty($rows)): ?>
               <?php foreach ($rows as $r): ?>
-                <?php
-                  $desc = (string)($r['descripcion'] ?? '');
-                  $p = parse_desc($desc);
-                ?>
                 <tr>
-                  <td><?= htmlspecialchars((string)($r['fecha'] ?? '')) ?></td>
-                  <td><?= htmlspecialchars($p['hora']) ?></td>
-                  <td><?= htmlspecialchars($p['motivo']) ?></td>
-                  <td class="amount">RD$ <?= number_format((float)($r['monto'] ?? 0), 2) ?></td>
-                  <td><?= htmlspecialchars($p['hecho_por'] ?: '—') ?></td>
+                  <td><?= htmlspecialchars(to_date((string)($r['created_at'] ?? ''))) ?></td>
+                  <td><?= htmlspecialchars(to_time((string)($r['created_at'] ?? ''))) ?></td>
+                  <td><?= htmlspecialchars((string)($r['motivo'] ?? '')) ?></td>
+                  <td class="amount">RD$ <?= number_format((float)($r['amount'] ?? 0), 2) ?></td>
+                  <td><?= htmlspecialchars((string)($r['created_by'] ?? '—')) ?></td>
                 </tr>
               <?php endforeach; ?>
             <?php else: ?>
