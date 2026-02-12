@@ -145,20 +145,70 @@ $fullName = trim($first_name . ' ' . $last_name);
   <link rel="stylesheet" href="/assets/css/paciente.css?v=2">
 
   <style>
-    .patients-wrap{max-width:1100px;margin:0 auto;padding:24px 18px;}
-    .patients-header{text-align:center;margin-top:10px;margin-bottom:18px;}
-    .patients-header h1{margin:0;font-size:34px;font-weight:800;}
-    .patients-header p{margin:6px 0 0;opacity:.75;}
-    .patients-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:18px 0 18px;}
-    .form-card{max-width:880px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.10);padding:18px;}
-    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
-    .span2{grid-column:1 / -1;}
-    .input{width:100%;}
-    label{display:block;font-weight:700;margin-bottom:6px;}
-    .muted{font-weight:600;opacity:.65;font-size:.85em;}
-    .actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px;}
-    @media (max-width: 820px){ .grid{grid-template-columns:1fr;} .form-card{padding:14px;} }
-    .alert{max-width:880px;margin:0 auto 12px;}
+    /* Layout tipo dashboard */
+    .patients-page{max-width:1200px;margin:0 auto;padding:22px 18px 40px;}
+    .page-title{text-align:center;margin:10px 0 16px;}
+    .page-title h1{margin:0;font-size:40px;font-weight:900;}
+    .page-title p{margin:6px 0 0;opacity:.75;font-weight:700;}
+
+    /* Card igual al registrar */
+    .form-shell{
+      background:#fff;
+      border-radius:18px;
+      box-shadow:0 12px 28px rgba(0,0,0,.08);
+      padding:18px 18px 22px;
+    }
+
+    .alert{max-width:1200px;margin:0 auto 14px;}
+
+    /* Grid 4 columnas (como Create) */
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(4,minmax(0,1fr));
+      gap:14px;
+    }
+    .col-2{grid-column:span 2;}
+    .col-3{grid-column:span 3;}
+    .col-4{grid-column:1 / -1;}
+
+    .field label{
+      display:block;
+      text-align:center;
+      font-weight:900;
+      margin-bottom:6px;
+    }
+    .muted{font-weight:800;opacity:.65;font-size:.85em;}
+
+    .input, select, input[type="date"], input[type="text"], input[type="email"], input[type="tel"]{
+      width:100%;
+      border:2px solid rgba(0,0,0,.65);
+      border-radius:14px;
+      padding:11px 14px;
+      outline:none;
+      background:#fff;
+    }
+    .input:focus, select:focus, input[type="date"]:focus{
+      border-color:#0f4fa8;
+      box-shadow:0 0 0 4px rgba(15,79,168,.10);
+    }
+
+    .actions{
+      display:flex;
+      justify-content:center;
+      gap:14px;
+      margin-top:16px;
+      flex-wrap:wrap;
+    }
+
+    /* Responsive */
+    @media (max-width: 1100px){
+      .grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+      .col-3{grid-column:span 2;}
+    }
+    @media (max-width: 720px){
+      .grid{grid-template-columns:1fr;}
+      .col-2,.col-3,.col-4{grid-column:1 / -1;}
+    }
   </style>
 </head>
 <body>
@@ -185,28 +235,25 @@ $fullName = trim($first_name . ' ' . $last_name);
   </aside>
 
   <main class="content">
-    <div class="patients-wrap">
+    <div class="patients-page">
 
-      <div class="patients-header">
+      <div class="page-title">
         <h1>Editar paciente</h1>
         <p><?= h($fullName) ?></p>
-      </div>
-
-      <div class="patients-actions">
-        <a class="btn" href="/private/patients/view.php?id=<?= (int)$id ?>">← Volver</a>
       </div>
 
       <?php if ($error): ?>
         <div class="alert alert-danger"><?= h($error) ?></div>
       <?php endif; ?>
 
-      <div class="form-card">
+      <div class="form-shell">
         <form method="post" autocomplete="off">
+
           <?php if ($isAdmin): ?>
-            <div class="grid" style="margin-bottom:12px;">
-              <div class="span2">
+            <div class="grid" style="margin-bottom:14px;">
+              <div class="field col-4">
                 <label for="branch_id">Sucursal</label>
-                <select id="branch_id" name="branch_id" class="input" required>
+                <select id="branch_id" name="branch_id" required>
                   <?php foreach ($branches as $b): ?>
                     <option value="<?= (int)$b['id'] ?>" <?= ((int)$b['id'] === (int)$branch_id) ? 'selected' : '' ?>>
                       <?= h($b['name'] ?? '') ?>
@@ -218,79 +265,79 @@ $fullName = trim($first_name . ' ' . $last_name);
           <?php endif; ?>
 
           <div class="grid">
-            <div>
+            <div class="field col-1">
               <label for="no_libro">No. Libro <span class="muted">(obligatorio)</span></label>
-              <input id="no_libro" name="no_libro" class="input" value="<?= h($no_libro) ?>" required>
+              <input class="input" id="no_libro" name="no_libro" value="<?= h($no_libro) ?>" required>
             </div>
 
-            <div>
+            <div class="field col-1">
               <label for="cedula">Cédula</label>
-              <input id="cedula" name="cedula" class="input" value="<?= h($cedula) ?>">
+              <input class="input" id="cedula" name="cedula" value="<?= h($cedula) ?>">
             </div>
 
-            <div>
+            <div class="field col-1">
               <label for="first_name">Nombre <span class="muted">(obligatorio)</span></label>
-              <input id="first_name" name="first_name" class="input" value="<?= h($first_name) ?>" required>
+              <input class="input" id="first_name" name="first_name" value="<?= h($first_name) ?>" required>
             </div>
 
-            <div>
+            <div class="field col-1">
               <label for="last_name">Apellido <span class="muted">(obligatorio)</span></label>
-              <input id="last_name" name="last_name" class="input" value="<?= h($last_name) ?>" required>
+              <input class="input" id="last_name" name="last_name" value="<?= h($last_name) ?>" required>
             </div>
 
-            <div>
+            <div class="field col-1">
               <label for="phone">Teléfono</label>
-              <input id="phone" name="phone" class="input" value="<?= h($phone) ?>">
+              <input class="input" id="phone" name="phone" value="<?= h($phone) ?>">
             </div>
 
-            <div>
+            <div class="field col-1">
               <label for="email">Correo</label>
-              <input id="email" name="email" type="email" class="input" value="<?= h($email) ?>">
+              <input class="input" id="email" name="email" type="email" value="<?= h($email) ?>">
             </div>
 
-            <div>
+            <div class="field col-1">
               <label for="birth_date">Fecha de nacimiento</label>
-              <input id="birth_date" name="birth_date" type="date" class="input" value="<?= h($birth_date) ?>">
+              <input class="input" id="birth_date" name="birth_date" type="date" value="<?= h($birth_date) ?>">
             </div>
 
-            <div>
+            <div class="field col-1">
               <label for="gender">Género</label>
-              <select id="gender" name="gender" class="input">
+              <select id="gender" name="gender">
                 <option value="">— Seleccionar —</option>
-                <option value="M" <?= ($gender === 'M') ? 'selected' : '' ?>>Masculino</option>
-                <option value="F" <?= ($gender === 'F') ? 'selected' : '' ?>>Femenino</option>
-                <option value="O" <?= ($gender === 'O') ? 'selected' : '' ?>>Otro</option>
+                <option value="M" <?= ($gender === 'M' ? 'selected' : '') ?>>M</option>
+                <option value="F" <?= ($gender === 'F' ? 'selected' : '') ?>>F</option>
+                <option value="Otro" <?= ($gender === 'Otro' ? 'selected' : '') ?>>Otro</option>
               </select>
             </div>
 
-            <div>
+            <div class="field col-1">
               <label for="blood_type">Tipo de sangre</label>
-              <input id="blood_type" name="blood_type" class="input" value="<?= h($blood_type) ?>" placeholder="Ej: O+, A-">
+              <input class="input" id="blood_type" name="blood_type" placeholder="Ej: O+, A-" value="<?= h($blood_type) ?>">
             </div>
 
-            <div>
+            <div class="field col-1">
               <label for="ars">ARS</label>
-              <input id="ars" name="ars" class="input" value="<?= h($ars) ?>">
+              <input class="input" id="ars" name="ars" value="<?= h($ars) ?>">
             </div>
 
-            <div>
+            <div class="field col-1">
               <label for="numero_afiliado">Número de afiliado</label>
-              <input id="numero_afiliado" name="numero_afiliado" class="input" value="<?= h($numero_afiliado) ?>">
+              <input class="input" id="numero_afiliado" name="numero_afiliado" value="<?= h($numero_afiliado) ?>">
             </div>
 
-            <div class="span2">
+            <div class="field col-4">
               <label for="medico_refiere">Médico que refiere</label>
-              <input id="medico_refiere" name="medico_refiere" class="input" value="<?= h($medico_refiere) ?>">
+              <input class="input" id="medico_refiere" name="medico_refiere" value="<?= h($medico_refiere) ?>">
             </div>
 
-            <div class="span2">
+            <div class="field col-4">
               <label for="clinica_referencia">Clínica de referencia</label>
-              <input id="clinica_referencia" name="clinica_referencia" class="input" value="<?= h($clinica_referencia) ?>">
+              <input class="input" id="clinica_referencia" name="clinica_referencia" value="<?= h($clinica_referencia) ?>">
             </div>
 
-            <div class="span2">
+            <div class="field col-4">
               <label for="registrado_por">Registrado por</label>
-              <input id="registrado_por" name="registrado_por" class="input" value="<?= h($registrado_por) ?>">
+              <input class="input" id="registrado_por" name="registrado_por" value="<?= h($registrado_por) ?>">
             </div>
           </div>
 
@@ -298,6 +345,7 @@ $fullName = trim($first_name . ' ' . $last_name);
             <button class="btn btn-primary" type="submit">Guardar cambios</button>
             <a class="btn" href="/private/patients/view.php?id=<?= (int)$id ?>">Cancelar</a>
           </div>
+
         </form>
       </div>
 
@@ -305,6 +353,9 @@ $fullName = trim($first_name . ' ' . $last_name);
   </main>
 </div>
 
-<footer class="footer">© <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.</footer>
+<footer class="footer">
+  © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
+</footer>
+
 </body>
 </html>
