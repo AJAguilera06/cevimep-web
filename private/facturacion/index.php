@@ -366,7 +366,7 @@ function factPageUrl(int $toPage, string $q): string {
                 <span class="patient-name" title="<?= h($name) ?>"><?= h($name) ?></span>
 
                 <!-- AJUSTA ESTA RUTA si tu historial se llama diferente -->
-                <a class="btn-history" href="/private/facturacion/historial.php?patient_id=<?= $pid ?>">Ver historial</a>
+                <a class="btn-history" href="/private/facturacion/paciente.php?patient_id=<?= $pid ?>">Ver historial</a>
               </div>
             <?php endforeach; ?>
           <?php endif; ?>
