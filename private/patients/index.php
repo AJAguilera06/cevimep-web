@@ -30,9 +30,9 @@ $db_candidates = [
 ];
 
 $loaded = false;
-foreach ($db_candidates as $p) {
-  if (is_file($p)) {
-    require_once $p;
+foreach ($db_candidates as $pp) {
+  if (is_file($pp)) {
+    require_once $pp;
     $loaded = true;
     break;
   }
@@ -142,6 +142,7 @@ function buildPageUrl(int $toPage, string $search): string {
   $query['page'] = $toPage;
   return '/private/patients/index.php?' . http_build_query($query);
 }
+
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -154,52 +155,136 @@ function buildPageUrl(int $toPage, string $search): string {
   <link rel="stylesheet" href="/assets/css/paciente.css?v=2">
 
   <style>
-    /* Solo para acomodar como pediste, sin romper tu CSS */
+    .layout{display:flex;min-height:100vh;background:#eef3f8;}
+    .sidebar{
+      width:260px;
+      background:linear-gradient(180deg,#0b3e86 0%, #073064 100%);
+      color:#fff;
+      padding:18px 14px;
+      position:sticky;
+      top:0;
+      height:100vh;
+    }
+    .sidebar .brand{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      padding:10px 10px 16px;
+      font-weight:900;
+      letter-spacing:.5px;
+      border-bottom:1px solid rgba(255,255,255,.15);
+      margin-bottom:12px;
+    }
+    .dot{width:10px;height:10px;border-radius:999px;background:#12d27c;display:inline-block;}
+    .sidebar .menu-title{opacity:.9;font-weight:800;margin:10px 10px 10px;}
+    .nav{display:flex;flex-direction:column;gap:8px;padding:0 6px;}
+    .nav a{
+      display:flex;align-items:center;gap:10px;
+      padding:12px 12px;border-radius:14px;
+      color:#eaf2ff;text-decoration:none;font-weight:800;
+      background:transparent;
+    }
+    .nav a:hover{background:rgba(255,255,255,.12);}
+    .nav a.active{background:rgba(255,255,255,.16);}
+    .nav .icon{width:18px;display:inline-flex;justify-content:center;opacity:.95}
+
+    .main{flex:1;display:flex;flex-direction:column;}
+    .topbar{
+      height:64px;
+      background:linear-gradient(180deg,#0b3e86 0%, #073064 100%);
+      display:flex;align-items:center;justify-content:center;
+      position:sticky;top:0;z-index:5;
+      position:relative;
+    }
+    .topbar .center{
+      display:flex;align-items:center;gap:10px;
+      color:#fff;font-weight:900;letter-spacing:.6px;
+    }
+    .topbar .right{position:absolute;right:18px;}
+    .btn-logout{
+      display:inline-block;
+      padding:10px 18px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.35);
+      color:#fff;
+      text-decoration:none;
+      font-weight:900;
+      background:rgba(255,255,255,.08);
+    }
+    .btn-logout:hover{background:rgba(255,255,255,.14);}
+
     .patients-wrap{max-width:1200px;margin:0 auto;padding:24px 18px;}
     .patients-header{text-align:center;margin-top:10px;margin-bottom:18px;}
-    .patients-header h1{margin:0;font-size:34px;font-weight:800;}
-    .patients-header p{margin:6px 0 0;opacity:.75;}
+    .patients-header h1{margin:0;font-size:34px;font-weight:900;}
+    .patients-header p{margin:6px 0 0;opacity:.75;font-weight:600;}
     .patients-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:18px 0 18px;}
     .patients-actions form{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .patients-actions input[type="text"]{min-width:340px;max-width:520px;width:50vw;}
-    .card-table{background:#fff;border-radius:14px;box-shadow:0 10px 25px rgba(0,0,0,.08);overflow:hidden;}
-    .td-empty{text-align:center;padding:22px 10px;opacity:.75;}
+    .card-table{background:#fff;border-radius:16px;box-shadow:0 10px 25px rgba(0,0,0,.08);overflow:hidden;}
+    .td-empty{text-align:center;padding:22px 10px;opacity:.75;font-weight:700;}
     .td-actions{white-space:nowrap;}
-    .link-action{font-weight:700;text-decoration:none;}
+    .link-action{font-weight:900;text-decoration:none;}
     .sep{opacity:.5;margin:0 8px;}
 
-    /* Paginación */
-    .pagination-wrap{display:flex;justify-content:center;margin-top:14px;}
+    .pagination-wrap{display:flex;justify-content:center;margin-top:14px;margin-bottom:10px;}
     .pagination{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;}
     .page-btn{
       display:inline-block;
       padding:8px 12px;
       border-radius:10px;
       text-decoration:none;
-      font-weight:700;
+      font-weight:900;
       border:1px solid rgba(0,0,0,.12);
       background:#fff;
+      color:#0b3e86;
     }
-    .page-btn.active{
-      background:#0f4fa8;
-      border-color:#0f4fa8;
-      color:#fff;
+    .page-btn.active{background:#0f4fa8;border-color:#0f4fa8;color:#fff;}
+    .page-btn.disabled{opacity:.5;pointer-events:none;}
+    .page-info{opacity:.75;font-weight:800;margin:0 6px;}
+
+    .footer{text-align:center;padding:14px 10px;opacity:.75;font-weight:700;}
+
+    @media (max-width: 900px){
+      .sidebar{display:none;}
+      .patients-actions input[type="text"]{min-width:240px;width:72vw;}
+      .topbar .right{right:10px;}
     }
-    .page-btn.disabled{
-      opacity:.5;
-      pointer-events:none;
-    }
-    .page-info{opacity:.75;font-weight:600;margin:0 6px;}
   </style>
 </head>
 
 <body>
 <div class="layout">
 
-  <?php include __DIR__ . "/../partials/sidebar.php"; ?>
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="dot"></span>
+      <span>CEVIMEP</span>
+    </div>
+
+    <div class="menu-title">Menú</div>
+
+    <nav class="nav">
+      <a href="/private/dashboard.php"><span class="icon">🏠</span><span>Panel</span></a>
+      <a class="active" href="/private/patients/index.php"><span class="icon">👤</span><span>Pacientes</span></a>
+      <a href="/private/citas/index.php"><span class="icon">🗓️</span><span>Citas</span></a>
+      <a href="/private/facturacion/index.php"><span class="icon">🧾</span><span>Facturación</span></a>
+      <a href="/private/caja/index.php"><span class="icon">💵</span><span>Caja</span></a>
+      <a href="/private/inventario/index.php"><span class="icon">📦</span><span>Inventario</span></a>
+      <a href="/private/estadistica/index.php"><span class="icon">📊</span><span>Estadísticas</span></a>
+    </nav>
+  </aside>
 
   <main class="main">
-    <?php include __DIR__ . "/../partials/topbar.php"; ?>
+    <header class="topbar">
+      <div class="center">
+        <span class="dot"></span>
+        <span>CEVIMEP</span>
+      </div>
+      <div class="right">
+        <a class="btn-logout" href="/logout.php">Salir</a>
+      </div>
+    </header>
 
     <div class="patients-wrap">
       <div class="patients-header">
@@ -209,12 +294,7 @@ function buildPageUrl(int $toPage, string $search): string {
 
       <div class="patients-actions">
         <form method="get" action="/private/patients/index.php">
-          <input
-            type="text"
-            name="q"
-            value="<?= h($search) ?>"
-            placeholder="Buscar por nombre, No. libro, cédula, teléfono, correo"
-          >
+          <input type="text" name="q" value="<?= h($search) ?>" placeholder="Buscar por nombre, No. libro, cédula, teléfono, correo">
           <button class="btn btn-primary" type="submit">Buscar</button>
         </form>
 
@@ -239,9 +319,7 @@ function buildPageUrl(int $toPage, string $search): string {
           <tbody>
           <?php if (empty($patients)): ?>
             <tr>
-              <td colspan="9" class="td-empty">
-                No hay pacientes<?= $search ? " con ese filtro." : "." ?>
-              </td>
+              <td colspan="9" class="td-empty">No hay pacientes<?= $search ? " con ese filtro." : "." ?></td>
             </tr>
           <?php else: ?>
             <?php foreach ($patients as $row): ?>
@@ -270,7 +348,6 @@ function buildPageUrl(int $toPage, string $search): string {
         </table>
       </div>
 
-      <!-- Paginación -->
       <?php if ($totalRows > $perPage): ?>
         <div class="pagination-wrap">
           <div class="pagination">
@@ -278,7 +355,6 @@ function buildPageUrl(int $toPage, string $search): string {
                href="<?= h(buildPageUrl(max(1, $page - 1), $search)) ?>">Anterior</a>
 
             <?php
-              // Ventana de páginas (máx 5 visibles)
               $window = 2;
               $start = max(1, $page - $window);
               $end = min($totalPages, $page + $window);
@@ -309,13 +385,12 @@ function buildPageUrl(int $toPage, string $search): string {
         </div>
       <?php endif; ?>
 
+      <div class="footer">
+        © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
+      </div>
+
     </div>
   </main>
 </div>
-
-<footer class="footer">
-  © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
-</footer>
-
 </body>
 </html>
