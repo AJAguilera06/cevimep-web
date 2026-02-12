@@ -2,7 +2,12 @@
 declare(strict_types=1);
 
 require_once __DIR__ . "/../_guard.php";
-require_once __DIR__ . "/../caja/caja_lib.php";
+
+// si existe tu librería de caja, la mantenemos
+$maybeCajaLib = __DIR__ . "/../caja/caja_lib.php";
+if (file_exists($maybeCajaLib)) {
+  require_once $maybeCajaLib;
+}
 
 $conn = $pdo;
 
@@ -38,7 +43,6 @@ function tableExists(PDO $pdo, string $table): bool {
     return false;
   }
 }
-
 
 function number0($v): float {
   if ($v === null) return 0.0;
@@ -79,19 +83,82 @@ function patientExprs(PDO $pdo): array {
   return [$nameExpr, $docExpr, $telExpr, $nacExpr];
 }
 
+/* ===============================
+   FALLBACK CAJA (si no hay función)
+   =============================== */
+function cajaFallbackInsert(PDO $conn, int $branchId, int $userId, int $invoiceId, float $amount, string $method, string $desc): void {
+  $candidates = ["caja_movimientos", "caja_transacciones", "cash_movements", "cash_transactions", "movimientos_caja"];
+  $table = null;
+  foreach ($candidates as $t) {
+    if (tableExists($conn, $t)) { $table = $t; break; }
+  }
+  if ($table === null) return;
+
+  $cols = tableColumns($conn, $table);
+
+  // columnas típicas (intentamos adaptarnos)
+  $map = [
+    "branch_id"   => ["branch_id","sucursal_id","branch","sucursal"],
+    "user_id"     => ["user_id","created_by","usuario_id","user","uid"],
+    "type"        => ["type","tipo","movement_type","movimiento","categoria"],
+    "amount"      => ["amount","monto","total","importe","valor"],
+    "method"      => ["method","metodo","payment_method","forma_pago"],
+    "reference"   => ["reference","ref","invoice_id","factura_id","referencia"],
+    "description" => ["description","descripcion","concepto","detalle","nota","notes"],
+    "created_at"  => ["created_at","fecha","created_on","created"],
+  ];
+
+  $pick = function(array $opts) use ($cols) {
+    foreach ($opts as $o) if (in_array($o, $cols, true)) return $o;
+    return null;
+  };
+
+  $cBranch = $pick($map["branch_id"]);
+  $cUser   = $pick($map["user_id"]);
+  $cType   = $pick($map["type"]);
+  $cAmount = $pick($map["amount"]);
+  $cMethod = $pick($map["method"]);
+  $cRef    = $pick($map["reference"]);
+  $cDesc   = $pick($map["description"]);
+  $cAt     = $pick($map["created_at"]);
+
+  if ($cAmount === null) return;
+
+  $fields = [];
+  $vals   = [];
+
+  if ($cBranch) { $fields[] = $cBranch; $vals[] = $branchId; }
+  if ($cUser)   { $fields[] = $cUser;   $vals[] = $userId; }
+  if ($cType)   { $fields[] = $cType;   $vals[] = "ingreso"; }
+  $fields[] = $cAmount; $vals[] = $amount;
+
+  if ($cMethod) { $fields[] = $cMethod; $vals[] = $method; }
+  if ($cRef)    { $fields[] = $cRef;    $vals[] = $invoiceId; }
+  if ($cDesc)   { $fields[] = $cDesc;   $vals[] = $desc; }
+  if ($cAt)     { $fields[] = $cAt;     $vals[] = date("Y-m-d H:i:s"); }
+
+  $place = implode(",", array_fill(0, count($fields), "?"));
+  $sql = "INSERT INTO `$table` (" . implode(",", $fields) . ") VALUES ($place)";
+  $st = $conn->prepare($sql);
+  $st->execute($vals);
+}
+
+/* ===============================
+   CONTEXTO
+   =============================== */
 $user = $_SESSION["user"] ?? [];
 $patient_id = (int)($_GET["patient_id"] ?? 0);
 
-// ✅ branch_id del usuario (para filtrar productos por sede)
+// branch_id de sesión (obligatorio)
 $branch_id = (int)($user["branch_id"] ?? 0);
 
-// Fallback por si no viene en sesión
+// fallback si no viene
 if ($branch_id <= 0 && isset($user["id"])) {
   try {
     $stB = $conn->prepare("SELECT branch_id FROM users WHERE id=? LIMIT 1");
     $stB->execute([(int)$user["id"]]);
     $branch_id = (int)($stB->fetchColumn() ?: 0);
-  } catch (Throwable $e) { /* noop */ }
+  } catch (Throwable $e) {}
 }
 
 $err = "";
@@ -132,68 +199,36 @@ try {
   $cats = $conn->query("SELECT id, name FROM inventory_categories ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Throwable $e) {}
 
-/**
- * Inventario (compat): en algunos ambientes la columna `active` no existe.
- * También normalizamos nombres de columnas para no romper el selector de productos.
- */
+/* ===== detectar columnas inventory_items ===== */
 $invCols = tableColumns($conn, "inventory_items");
 
 $colItemId = "id";
 
 // category
 $colCat = "category_id";
-if (in_array("category_id", $invCols, true)) {
-  $colCat = "category_id";
-} elseif (in_array("cat_id", $invCols, true)) {
-  $colCat = "cat_id";
-} elseif (in_array("category", $invCols, true)) {
-  $colCat = "category";
-}
+if (in_array("cat_id", $invCols, true)) $colCat = "cat_id";
+if (in_array("category", $invCols, true)) $colCat = "category";
 
 // name
 $colName = "name";
-if (in_array("name", $invCols, true)) {
-  $colName = "name";
-} elseif (in_array("item_name", $invCols, true)) {
-  $colName = "item_name";
-} elseif (in_array("descripcion", $invCols, true)) {
-  $colName = "descripcion";
-}
+if (in_array("item_name", $invCols, true)) $colName = "item_name";
+if (in_array("descripcion", $invCols, true)) $colName = "descripcion";
 
 // price
 $colPrice = "sale_price";
-if (in_array("sale_price", $invCols, true)) {
-  $colPrice = "sale_price";
-} elseif (in_array("price", $invCols, true)) {
-  $colPrice = "price";
-} elseif (in_array("unit_price", $invCols, true)) {
-  $colPrice = "unit_price";
-} elseif (in_array("precio", $invCols, true)) {
-  $colPrice = "precio";
-}
+if (in_array("price", $invCols, true)) $colPrice = "price";
+if (in_array("unit_price", $invCols, true)) $colPrice = "unit_price";
+if (in_array("precio", $invCols, true)) $colPrice = "precio";
 
-// active/status (puede no existir)
+// active/status
 $colActive = null;
-if (in_array("active", $invCols, true)) {
-  $colActive = "active";
-} elseif (in_array("is_active", $invCols, true)) {
-  $colActive = "is_active";
-} elseif (in_array("status", $invCols, true)) {
-  $colActive = "status";
-}
+if (in_array("active", $invCols, true)) $colActive = "active";
+elseif (in_array("is_active", $invCols, true)) $colActive = "is_active";
+elseif (in_array("status", $invCols, true)) $colActive = "status";
 
-// ✅ Preferir filtrar por STOCK de la sede (si existe tabla de stock).
-// Esto evita que aparezcan productos de otras sedes aunque existan en el catálogo global.
+/* ===== detectar tabla de stock ===== */
 $stockTable = null;
-$stockCols  = [];
-$stockCandidates = [
-  "inventory_stock",
-  "inventory_branch_stock",
-  "inventario_stock",
-  "inventory_sucursal_stock",
-  "stock"
-];
-
+$stockCandidates = ["inventory_stock","inventory_branch_stock","inventario_stock","inventory_sucursal_stock","stock"];
 foreach ($stockCandidates as $t) {
   if (tableExists($conn, $t)) { $stockTable = $t; break; }
 }
@@ -205,125 +240,84 @@ $stockQtyCol = null;
 if ($stockTable !== null) {
   $stockCols = tableColumns($conn, $stockTable);
 
-  // item_id/product_id
-  if (in_array("item_id", $stockCols, true)) {
-    $stockItemCol = "item_id";
-  } elseif (in_array("product_id", $stockCols, true)) {
-    $stockItemCol = "product_id";
-  } elseif (in_array("inventory_item_id", $stockCols, true)) {
-    $stockItemCol = "inventory_item_id";
-  }
+  if (in_array("item_id", $stockCols, true)) $stockItemCol = "item_id";
+  elseif (in_array("product_id", $stockCols, true)) $stockItemCol = "product_id";
+  elseif (in_array("inventory_item_id", $stockCols, true)) $stockItemCol = "inventory_item_id";
 
-  // branch_id/sucursal_id
-  if (in_array("branch_id", $stockCols, true)) {
-    $stockBranchCol = "branch_id";
-  } elseif (in_array("sucursal_id", $stockCols, true)) {
-    $stockBranchCol = "sucursal_id";
-  } elseif (in_array("branch", $stockCols, true)) {
-    $stockBranchCol = "branch";
-  }
+  if (in_array("branch_id", $stockCols, true)) $stockBranchCol = "branch_id";
+  elseif (in_array("sucursal_id", $stockCols, true)) $stockBranchCol = "sucursal_id";
+  elseif (in_array("branch", $stockCols, true)) $stockBranchCol = "branch";
 
-  // quantity/qty/existencia/stock
-  if (in_array("quantity", $stockCols, true)) {
-    $stockQtyCol = "quantity";
-  } elseif (in_array("qty", $stockCols, true)) {
-    $stockQtyCol = "qty";
-  } elseif (in_array("existencia", $stockCols, true)) {
-    $stockQtyCol = "existencia";
-  } elseif (in_array("stock", $stockCols, true)) {
-    $stockQtyCol = "stock";
-  } elseif (in_array("balance", $stockCols, true)) {
-    $stockQtyCol = "balance";
-  }
+  if (in_array("quantity", $stockCols, true)) $stockQtyCol = "quantity";
+  elseif (in_array("qty", $stockCols, true)) $stockQtyCol = "qty";
+  elseif (in_array("existencia", $stockCols, true)) $stockQtyCol = "existencia";
+  elseif (in_array("stock", $stockCols, true)) $stockQtyCol = "stock";
+  elseif (in_array("balance", $stockCols, true)) $stockQtyCol = "balance";
 
-  // si falta algo clave, no usamos stock-table
   if ($stockItemCol === null || $stockBranchCol === null) {
-    $stockTable = null;
+    $stockTable = null; // inutilizable
   }
 }
 
-// ✅ Fallback: filtrar por columna sucursal en inventory_items (si existe)
+/* fallback: branch_id dentro de inventory_items */
 $colBranchItems = null;
-if (in_array("branch_id", $invCols, true)) {
-  $colBranchItems = "branch_id";
-} elseif (in_array("sucursal_id", $invCols, true)) {
-  $colBranchItems = "sucursal_id";
-} elseif (in_array("branch", $invCols, true)) {
-  $colBranchItems = "branch";
-}
+if (in_array("branch_id", $invCols, true)) $colBranchItems = "branch_id";
+elseif (in_array("sucursal_id", $invCols, true)) $colBranchItems = "sucursal_id";
+elseif (in_array("branch", $invCols, true)) $colBranchItems = "branch";
 
+/* ===== cargar items por sucursal ===== */
 $items_all = [];
 try {
-  $where = [];
-  $params = [];
+  if ($branch_id <= 0) throw new RuntimeException("No se pudo determinar la sucursal del usuario.");
 
-  if ($branch_id <= 0) {
-    throw new RuntimeException("No se pudo determinar la sucursal del usuario para filtrar productos. Cierra sesión y vuelve a entrar.");
-  }
-
-  // ===== 1) Si hay tabla de stock: solo items que tengan stock en esta sede
   if ($stockTable !== null) {
     $sql = "SELECT i.$colItemId AS id, i.$colCat AS category_id, i.$colName AS name, i.$colPrice AS sale_price
             FROM inventory_items i
             INNER JOIN $stockTable s ON s.$stockItemCol = i.$colItemId
             WHERE s.$stockBranchCol = ?";
+    $params = [$branch_id];
 
-    $params[] = $branch_id;
-
-    // si existe cantidad, opcionalmente exigir >0 para que solo se puedan facturar disponibles
-    if ($stockQtyCol !== null) {
-      $sql .= " AND COALESCE(s.$stockQtyCol,0) > 0";
-    }
-
-    if ($colActive !== null) {
-      $sql .= " AND i.$colActive=1";
-    }
-
+    if ($stockQtyCol !== null) $sql .= " AND COALESCE(s.$stockQtyCol,0) > 0";
+    if ($colActive !== null) $sql .= " AND i.$colActive=1";
     $sql .= " ORDER BY i.$colName ASC";
 
     $st = $conn->prepare($sql);
     $st->execute($params);
     $items_all = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-  // ===== 2) Si NO hay tabla de stock: usar branch_id en inventory_items si existe
   } else {
     $sql = "SELECT $colItemId AS id, $colCat AS category_id, $colName AS name, $colPrice AS sale_price
             FROM inventory_items";
-
+    $where = [];
+    $params = [];
     if ($colActive !== null) $where[] = "$colActive=1";
-    if ($colBranchItems !== null) {
-      $where[] = "$colBranchItems = ?";
-      $params[] = $branch_id;
-    }
-
-    if (!empty($where)) $sql .= " WHERE " . implode(" AND ", $where);
-
+    if ($colBranchItems !== null) { $where[] = "$colBranchItems=?"; $params[] = $branch_id; }
+    if ($where) $sql .= " WHERE " . implode(" AND ", $where);
     $sql .= " ORDER BY $colName ASC";
 
     $st = $conn->prepare($sql);
     $st->execute($params);
     $items_all = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
   }
-
 } catch (Throwable $e) {}
 
-/* ===== POST: guardar ===== */
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["action"]) && $_POST["action"] === "save_invoice") {
+/* ===============================
+   POST: guardar factura
+   =============================== */
+if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_invoice") {
   try {
     if ($patient_id <= 0) throw new Exception("Paciente inválido.");
+    if ($branch_id <= 0) throw new Exception("Sucursal inválida (branch_id).");
 
     $invoice_date    = trim((string)($_POST["invoice_date"] ?? date("Y-m-d")));
     $payment_method  = trim((string)($_POST["payment_method"] ?? "EFECTIVO"));
     $cash_received   = ($_POST["cash_received"] ?? null);
     $coverage_amount = number0($_POST["coverage_amount"] ?? 0);
+    $cash_received   = ($cash_received === "" || $cash_received === null) ? null : number0($cash_received);
+    $representative  = trim((string)($_POST["representative"] ?? ""));
 
-    $cash_received = ($cash_received === "" || $cash_received === null) ? null : number0($cash_received);
-
-    $representative = trim((string)($_POST["representative"] ?? ""));
-
-    
     if ($representative === "") throw new Exception("Debe ingresar el representante.");
-$lines = $_POST["lines"] ?? [];
+
+    $lines = $_POST["lines"] ?? [];
     if (!is_array($lines) || count($lines) === 0) throw new Exception("Debe agregar al menos un producto.");
 
     $cleanLines = [];
@@ -332,51 +326,34 @@ $lines = $_POST["lines"] ?? [];
       $qty = (int)$v;
       if ($iid > 0 && $qty > 0) $cleanLines[$iid] = $qty;
     }
-    if (count($cleanLines) === 0) throw new Exception("Debe agregar al menos un producto con cantidad válida.");
+    if (count($cleanLines) === 0) throw new Exception("Debe agregar productos con cantidad válida.");
 
     $ids = array_keys($cleanLines);
-    $in = implode(",", array_fill(0, count($ids), "?"));
-            // ✅ Mapa de items (según sede) para precios/validación
-    if ($branch_id <= 0) throw new Exception("Sucursal inválida.");
+    $in  = implode(",", array_fill(0, count($ids), "?"));
 
-    // 1) Si hay stock-table, limitar por stock de la sede
-    if (isset($stockTable) && $stockTable !== null && isset($stockItemCol) && isset($stockBranchCol)) {
+    /* Mapa items válidos por sucursal */
+    if ($stockTable !== null) {
       $sqlMap = "SELECT i.$colItemId AS id, i.$colCat AS category_id, i.$colName AS name, i.$colPrice AS sale_price
                  FROM inventory_items i
                  INNER JOIN $stockTable s ON s.$stockItemCol = i.$colItemId
                  WHERE i.$colItemId IN ($in)
                    AND s.$stockBranchCol = ?";
-
       $paramsMap = array_merge($ids, [$branch_id]);
-
-      // exigir stock > 0 si hay columna de cantidad
-      if (isset($stockQtyCol) && $stockQtyCol !== null) {
-        $sqlMap .= " AND COALESCE(s.$stockQtyCol,0) > 0";
-      }
-
+      if ($stockQtyCol !== null) $sqlMap .= " AND COALESCE(s.$stockQtyCol,0) > 0";
       if ($colActive !== null) $sqlMap .= " AND i.$colActive=1";
-
       $stMap = $conn->prepare($sqlMap);
       $stMap->execute($paramsMap);
-
-    // 2) Fallback: limitar por branch_id en inventory_items si existe
     } else {
       $sqlMap = "SELECT $colItemId AS id, $colCat AS category_id, $colName AS name, $colPrice AS sale_price
                  FROM inventory_items
                  WHERE $colItemId IN ($in)";
-
       $paramsMap = $ids;
-
-      if (isset($colBranchItems) && $colBranchItems !== null) {
-        $sqlMap .= " AND $colBranchItems = ?";
-        $paramsMap[] = $branch_id;
-      }
-
+      if ($colBranchItems !== null) { $sqlMap .= " AND $colBranchItems=?"; $paramsMap[] = $branch_id; }
       $stMap = $conn->prepare($sqlMap);
       $stMap->execute($paramsMap);
     }
 
-$mapRows = $stMap->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $mapRows = $stMap->fetchAll(PDO::FETCH_ASSOC) ?: [];
     $map = [];
     foreach ($mapRows as $r) $map[(int)$r["id"]] = $r;
 
@@ -389,7 +366,7 @@ $mapRows = $stMap->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     $total = max(0.0, $subtotal - $coverage_amount);
 
-    $change_due = 0.0;
+    $change_due = null;
     if (mb_strtoupper($payment_method) === "EFECTIVO") {
       $change_due = (float)number0($cash_received ?? 0) - $total;
     } else {
@@ -399,18 +376,11 @@ $mapRows = $stMap->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     $conn->beginTransaction();
 
-    // ===== INSERT CABECERA (con motivo si existe) =====
-    $motivo = "";
-    if (isset($_POST["motivo"])) $motivo = trim((string)$_POST["motivo"]);
+    /* INSERT CABECERA invoices */
+    $motivo = isset($_POST["motivo"]) ? trim((string)$_POST["motivo"]) : "";
+    $notes  = isset($_POST["notes"]) ? trim((string)$_POST["notes"]) : null;
+    if ($notes === "") $notes = null;
 
-    // Notas (opcional)
-    $notes = null;
-    if (isset($_POST["notes"])) {
-      $tmpNotes = trim((string)$_POST["notes"]);
-      $notes = ($tmpNotes === "") ? null : $tmpNotes;
-    }
-
-    // Compat: invoices puede variar. Intentamos lo más estable.
     $invCols2 = tableColumns($conn, "invoices");
     $hasBranch  = in_array("branch_id", $invCols2, true);
     $hasMotivo  = in_array("motivo", $invCols2, true);
@@ -419,50 +389,29 @@ $mapRows = $stMap->fetchAll(PDO::FETCH_ASSOC) ?: [];
     $hasCash    = in_array("cash_received", $invCols2, true);
     $hasChange  = in_array("change_due", $invCols2, true);
     $hasNotes   = in_array("notes", $invCols2, true);
-    
-    // Si la columna representative no existe, guardamos el representante dentro de notes para no perderlo.
+    $hasCreated = in_array("created_by", $invCols2, true);
+
     if (!$hasRep && $representative !== "" && $hasNotes) {
-      $notes = trim((string)$notes);
       $tag = "Representante: " . $representative;
-      if ($notes === "") {
-        $notes = $tag;
-      } elseif (stripos($notes, "Representante:") === false) {
-        $notes .= " | " . $tag;
-      }
-    }
-$hasCreated = in_array("created_by", $invCols2, true);
-
-    // branch_id: debe venir de la sesión (no del formulario)
-    $branch_id = (int)($user["branch_id"] ?? 0);
-
-    // Fallback: si por alguna razón no viene en sesión, lo buscamos en users.
-    if ($branch_id <= 0 && isset($user["id"])) {
-      try {
-        $stB = $conn->prepare("SELECT branch_id FROM users WHERE id = ? LIMIT 1");
-        $stB->execute([(int)$user["id"]]);
-        $branch_id = (int)($stB->fetchColumn() ?: 0);
-      } catch (Throwable $e) { /* noop */ }
+      $notes = trim((string)$notes);
+      $notes = ($notes === "" || $notes === "0") ? $tag : ($notes . " | " . $tag);
     }
 
     if ($hasBranch && $branch_id <= 0) {
-      throw new RuntimeException("No se pudo determinar la sucursal (branch_id) del usuario. Vuelve a iniciar sesión o verifica el usuario.");
+      throw new RuntimeException("No se pudo determinar la sucursal del usuario.");
     }
 
     $fields = ["patient_id","invoice_date","payment_method","subtotal","total"];
     $vals   = [$patient_id,$invoice_date,$payment_method,$subtotal,$total];
 
-    // branch_id requerido (NOT NULL sin default en producción)
-    if ($hasBranch) { $fields[] = "branch_id"; $vals[] = $branch_id; }
-
-    // Auditoría / notas
-    if ($hasNotes)   { $fields[] = "notes"; $vals[] = ($notes ?? null); }
-    if ($hasCreated) { $fields[] = "created_by"; $vals[] = (int)($user["id"] ?? 0); }
-
-    if ($hasCov)   { $fields[]="coverage_amount"; $vals[]=$coverage_amount; }
-    if ($hasCash)  { $fields[]="cash_received"; $vals[]=$cash_received; }
-    if ($hasChange){ $fields[]="change_due"; $vals[]=$change_due; }
-    if ($hasRep)   { $fields[]="representative"; $vals[]=$representative; }
-    if ($hasMotivo){ $fields[]="motivo"; $vals[]=$motivo; }
+    if ($hasBranch) { $fields[]="branch_id"; $vals[]=$branch_id; }
+    if ($hasNotes)  { $fields[]="notes"; $vals[]=($notes ?? null); }
+    if ($hasCreated){ $fields[]="created_by"; $vals[]=(int)($user["id"] ?? 0); }
+    if ($hasCov)    { $fields[]="coverage_amount"; $vals[]=$coverage_amount; }
+    if ($hasCash)   { $fields[]="cash_received"; $vals[]=$cash_received; }
+    if ($hasChange) { $fields[]="change_due"; $vals[]=$change_due; }
+    if ($hasRep)    { $fields[]="representative"; $vals[]=$representative; }
+    if ($hasMotivo) { $fields[]="motivo"; $vals[]=$motivo; }
 
     $place = implode(",", array_fill(0, count($fields), "?"));
     $sqlInv = "INSERT INTO invoices (" . implode(",", $fields) . ") VALUES ($place)";
@@ -470,12 +419,12 @@ $hasCreated = in_array("created_by", $invCols2, true);
     $stIns->execute($vals);
     $invoice_id = (int)$conn->lastInsertId();
 
-    // ===== INSERT LÍNEAS =====
-    // Compat: puede llamarse invoice_items o invoice_lines (según el esquema)
-    $linesTable = "invoice_items"; // esquema actual
+    /* INSERT LÍNEAS invoice_items */
+    $linesTable = "invoice_items";
     $lineCols = tableColumns($conn, $linesTable);
     if (!$lineCols) throw new RuntimeException("No se pudo leer la estructura de invoice_items.");
-$colItem = in_array("item_id", $lineCols, true) ? "item_id" : (in_array("inventory_item_id", $lineCols, true) ? "inventory_item_id" : "item_id");
+
+    $colItem = in_array("item_id", $lineCols, true) ? "item_id" : (in_array("inventory_item_id", $lineCols, true) ? "inventory_item_id" : "item_id");
     $colQty  = in_array("qty", $lineCols, true) ? "qty" : (in_array("quantity", $lineCols, true) ? "quantity" : "qty");
 
     $hasUnit = in_array("unit_price", $lineCols, true) || in_array("price", $lineCols, true);
@@ -488,7 +437,6 @@ $colItem = in_array("item_id", $lineCols, true) ? "item_id" : (in_array("invento
       . ($hasUnit ? ", {$colUnit}" : "")
       . ($hasLineTotal ? ", {$colLineTotal}" : "")
       . ") VALUES (?" . ", ?" . ", ?" . ($hasUnit ? ", ?" : "") . ($hasLineTotal ? ", ?" : "") . ")";
-
     $stLine = $conn->prepare($sqlLine);
 
     foreach ($cleanLines as $iid => $q) {
@@ -503,30 +451,65 @@ $colItem = in_array("item_id", $lineCols, true) ? "item_id" : (in_array("invento
       $stLine->execute($args);
     }
 
-        // ===== CAJA: registrar ingresos de la factura =====
-    // Registra el pago (efectivo/tarjeta/transferencia) y, si aplica, la cobertura como ingreso separado.
-    if (function_exists('caja_registrar_ingreso_factura')) {
-      try {
-        $uid = (int)($user['id'] ?? 0);
-        $pm  = strtolower(trim((string)$payment_method));
-        // normalizar método
-        if ($pm === 'efectivo' || $pm === 'cash') $pm = 'efectivo';
-        if ($pm === 'tarjeta'  || $pm === 'card') $pm = 'tarjeta';
-        if ($pm === 'transferencia' || $pm === 'transfer') $pm = 'transferencia';
+    /* ===============================
+       ✅ DESCONTAR INVENTARIO (POR SUCURSAL)
+       =============================== */
+    if ($stockTable !== null && $stockQtyCol !== null) {
+      // update seguro: no permite stock negativo
+      $sqlUpd = "UPDATE $stockTable
+                 SET $stockQtyCol = $stockQtyCol - ?
+                 WHERE $stockBranchCol = ?
+                   AND $stockItemCol = ?
+                   AND COALESCE($stockQtyCol,0) >= ?";
+      $stUpd = $conn->prepare($sqlUpd);
 
-        // Pago principal (total neto de cobertura)
+      foreach ($cleanLines as $iid => $q) {
+        $qty = (int)$q;
+        $stUpd->execute([$qty, $branch_id, (int)$iid, $qty]);
+        if ($stUpd->rowCount() <= 0) {
+          throw new RuntimeException("Stock insuficiente para el producto ID #{$iid} en esta sucursal.");
+        }
+      }
+    } elseif ($stockTable !== null) {
+      // hay tabla stock pero no detectó columna cantidad -> intentamos igual sin validación
+      // (no debería pasar en tu caso porque inventory_stock tiene quantity)
+      $sqlUpd = "UPDATE $stockTable SET {$stockQtyCol}={$stockQtyCol} WHERE 1=1";
+      // no hacemos nada si no hay qty col
+    }
+
+    /* ===============================
+       ✅ CAJA: registrar ingresos
+       =============================== */
+    $uid = (int)($user["id"] ?? 0);
+    $pm  = strtolower(trim((string)$payment_method));
+    if ($pm === "cash") $pm = "efectivo";
+    if ($pm === "card") $pm = "tarjeta";
+    if ($pm === "transfer") $pm = "transferencia";
+
+    // 1) si existe función oficial, úsala
+    if (function_exists("caja_registrar_ingreso_factura")) {
+      try {
         caja_registrar_ingreso_factura($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$total, (string)$pm);
 
-        // Cobertura (si existe)
         if ((float)$coverage_amount > 0) {
-          caja_registrar_ingreso_factura($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$coverage_amount, 'cobertura');
+          caja_registrar_ingreso_factura($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$coverage_amount, "cobertura");
         }
       } catch (Throwable $e) {
-        // No detenemos la facturación si falla caja
+        // 2) fallback si falla
+        cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$total, (string)$pm, "Ingreso por factura #{$invoice_id}");
+        if ((float)$coverage_amount > 0) {
+          cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$coverage_amount, "cobertura", "Cobertura factura #{$invoice_id}");
+        }
+      }
+    } else {
+      // 2) fallback directo
+      cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$total, (string)$pm, "Ingreso por factura #{$invoice_id}");
+      if ((float)$coverage_amount > 0) {
+        cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$coverage_amount, "cobertura", "Cobertura factura #{$invoice_id}");
       }
     }
 
-$conn->commit();
+    $conn->commit();
 
     $last_invoice_id = $invoice_id;
     $ok = "Factura creada (#{$invoice_id}).";
@@ -546,12 +529,13 @@ $today = date("Y-m-d");
   <title>Nueva factura - CEVIMEP</title>
   <link rel="stylesheet" href="/assets/css/styles.css?v=<?php echo time(); ?>">
   <link rel="stylesheet" href="/assets/css/facturacion.css?v=<?php echo time(); ?>">
+
   <style>
-    .page-wrap{max-width:1100px;margin:0 auto;padding:18px}
-    .card{background:#fff;border-radius:18px;box-shadow:0 10px 25px rgba(0,0,0,.08);padding:18px}
+    .page-wrap{max-width:1400px !important; width:100% !important;margin:0 auto;padding:18px}
+    .card{background:#fff;border-radius:18px;box-shadow:0 10px 25px rgba(0,0,0,.08);padding:18px;width:100%}
     .title{font-size:34px;font-weight:900;text-align:center;margin:10px 0 8px}
     .subtitle{font-size:14px;color:#334155;text-align:center;margin-bottom:10px;font-weight:600}
-    .alert{padding:10px 12px;border-radius:12px;margin:10px auto;max-width:900px}
+    .alert{padding:10px 12px;border-radius:12px;margin:10px auto;max-width:1100px}
     .alert.err{background:#fee2e2;border:1px solid #fecaca;color:#991b1b}
     .alert.ok{background:#dcfce7;border:1px solid #bbf7d0;color:#166534}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -566,7 +550,7 @@ $today = date("Y-m-d");
     .btnrow{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
     .btn{height:40px;border-radius:12px;border:1px solid transparent;padding:0 14px;font-weight:900;cursor:pointer}
     .btn.primary{background:#0b4d87;color:#fff}
-    .btn.light{background:#eef2ff;color:#1e3a8a;border-color:#dbeafe}
+    .btn.light{background:#eef2ff;color:#1e3a8a;border-color:#dbeafe;text-decoration:none;display:inline-flex;align-items:center}
     .lines{width:100%;border-collapse:separate;border-spacing:0;margin-top:10px}
     .lines th,.lines td{padding:10px 10px;border-bottom:1px solid #eef2f6;font-size:13px}
     .lines th{color:#0b4d87;text-align:left;font-weight:900;font-size:12px}
@@ -576,36 +560,17 @@ $today = date("Y-m-d");
     .totals .row{display:flex;justify-content:space-between;gap:10px;margin:6px 0;font-weight:900}
     .mini{font-size:12px;opacity:.75;font-weight:700}
 
-    .content{
-      align-items:flex-start;
-      justify-content:center;
-      text-align:left;
-      overflow:auto;
-      padding:24px 0;
-    }
-    .page-wrap{max-width:1100px;margin:0 auto;padding:18px;width:100%;}
-    .card{border-radius:18px;}
-    input,select,textarea{font-family:inherit;}
-    .btn.primary{background:#0b4d87;}
-  </style>
-  <style>
-    /* Ajuste solo para esta pantalla: más ancho para evitar scroll */
-    .page-wrap{max-width:1400px !important; width:100% !important;}
-    .fact-card{width:100% !important;}
-    .card{width:100% !important;}
-    .content{overflow:auto;}
+    .content{align-items:flex-start;justify-content:center;text-align:left;overflow:auto;padding:24px 0;}
   </style>
 </head>
 <body>
 
-<!-- TOPBAR -->
 <header class="navbar">
   <div class="inner">
     <div class="brand">
       <span class="dot"></span>
       <span>CEVIMEP</span>
     </div>
-
     <div class="nav-right">
       <a href="/logout.php" class="btn-pill">Salir</a>
     </div>
@@ -613,10 +578,8 @@ $today = date("Y-m-d");
 </header>
 
 <div class="layout">
-  <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="menu-title">Menú</div>
-
     <nav class="menu">
       <a href="/private/dashboard.php">🏠 Panel</a>
       <a href="/private/patients/index.php">👤 Pacientes</a>
@@ -627,14 +590,6 @@ $today = date("Y-m-d");
       <a href="/private/estadistica/index.php">📊 Estadísticas</a>
     </nav>
   </aside>
-
-  <!-- CONTENIDO -->
-  <main class="content">
-
-<?php if (file_exists(__DIR__ . "/../partials/_topbar.php")) include __DIR__ . "/../partials/_topbar.php"; ?>
-
-<div class="layout">
-  <?php if (file_exists(__DIR__ . "/../partials/_sidebar.php")) include __DIR__ . "/../partials/_sidebar.php"; ?>
 
   <main class="content">
     <div class="page-wrap">
@@ -670,6 +625,7 @@ $today = date("Y-m-d");
                 <label>Fecha</label>
                 <input type="date" name="invoice_date" value="<?php echo h($today); ?>">
               </div>
+
               <div>
                 <label>Método de pago</label>
                 <select name="payment_method" id="payment_method">
@@ -729,12 +685,6 @@ $today = date("Y-m-d");
                 </select>
               </div>
 
-              <?php if (empty($items_all)): ?>
-                <div class="alert err" style="margin-top:10px;">
-                  No se pudieron cargar los productos del inventario. Verifica la tabla <b>inventory_items</b> (columnas y/o estado activo).
-                </div>
-              <?php endif; ?>
-
               <div>
                 <label>Cantidad</label>
                 <input type="number" id="qty" value="1" min="1">
@@ -778,8 +728,6 @@ $today = date("Y-m-d");
   </main>
 </div>
 
-<?php if (file_exists(__DIR__ . "/../partials/_footer.php")) include __DIR__ . "/../partials/_footer.php"; ?>
-
 <script>
 (function(){
   const money = (n)=> {
@@ -818,109 +766,104 @@ $today = date("Y-m-d");
   function filterItems(){
     const c = Number(catFilter.value||0);
     [...itemSel.options].forEach((opt, idx)=>{
-      if (idx===0) return;
-      const oc = Number(opt.dataset.cat||0);
-      opt.hidden = (c>0 && oc!==c);
+      if (idx === 0) return;
+      const oc = Number(opt.getAttribute("data-cat")||0);
+      opt.style.display = (c===0 || c===oc) ? "" : "none";
     });
-    if (itemSel.selectedOptions[0] && itemSel.selectedOptions[0].hidden) itemSel.value="0";
-  }
-
-  function render(){
-    tbody.innerHTML = "";
-    hidden.innerHTML = "";
-    Object.keys(lines).forEach((id)=>{
-      const it = lines[id];
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td><strong>${it.name}</strong></td>
-        <td>
-          <input type="number" min="1" value="${it.qty}" style="max-width:90px"
-            data-id="${id}" class="qtyLine">
-        </td>
-        <td class="money">${money(it.price)}</td>
-        <td class="money">${money(it.price*it.qty)}</td>
-      `;
-      tbody.appendChild(tr);
-
-      const inp = document.createElement("input");
-      inp.type="hidden";
-      inp.name = `lines[${id}]`;
-      inp.value = String(it.qty);
-      hidden.appendChild(inp);
-    });
-
-    [...document.querySelectorAll(".qtyLine")].forEach(inp=>{
-      inp.addEventListener("input", ()=>{
-        const id = inp.dataset.id;
-        const q  = Math.max(1, parseInt(inp.value||"1",10));
-        lines[id].qty = q;
-        render();
-        recalc();
-      });
-    });
+    itemSel.value = "0";
   }
 
   function recalc(){
-    let subtotal = 0;
+    let sub = 0;
     Object.keys(lines).forEach((id)=>{
-      const it = lines[id];
-      subtotal += (Number(it.price)||0) * (Number(it.qty)||0);
+      const ln = lines[id];
+      sub += (Number(ln.price||0) * Number(ln.qty||0));
     });
 
-    const cov = Math.max(0, Number(covInp.value||0));
-    const total = Math.max(0, subtotal - cov);
+    const cov = Number(covInp.value||0);
+    const total = Math.max(0, sub - cov);
 
+    const method = (payment.value||"").toUpperCase();
     let change = 0;
-    if ((payment.value||"").toUpperCase()==="EFECTIVO"){
+    if (method === "EFECTIVO") {
       const cash = Number(cashInp.value||0);
       change = cash - total;
     } else {
       change = 0;
     }
 
-    tSub.textContent = money(subtotal);
+    tSub.textContent = money(sub);
     tCov.textContent = money(cov);
     tTotal.textContent = money(total);
     tChange.textContent = money(change);
   }
 
+  function render(){
+    tbody.innerHTML = "";
+    hidden.innerHTML = "";
+
+    Object.keys(lines).forEach((id)=>{
+      const ln = lines[id];
+
+      const tr = document.createElement("tr");
+
+      const tdName = document.createElement("td");
+      tdName.textContent = ln.name;
+
+      const tdQty = document.createElement("td");
+      tdQty.textContent = ln.qty;
+
+      const tdPrice = document.createElement("td");
+      tdPrice.textContent = money(ln.price);
+
+      const tdTotal = document.createElement("td");
+      tdTotal.textContent = money(Number(ln.price) * Number(ln.qty));
+
+      tr.appendChild(tdName);
+      tr.appendChild(tdQty);
+      tr.appendChild(tdPrice);
+      tr.appendChild(tdTotal);
+      tbody.appendChild(tr);
+
+      // hidden inputs para el POST
+      const inp = document.createElement("input");
+      inp.type = "hidden";
+      inp.name = "lines[" + id + "]";
+      inp.value = ln.qty;
+      hidden.appendChild(inp);
+    });
+
+    recalc();
+  }
+
   btnAdd.addEventListener("click", ()=>{
-    const opt = itemSel.selectedOptions[0];
-    const id  = Number(itemSel.value||0);
-    const qty = Math.max(1, parseInt(qtyInp.value||"1",10));
-    if (!id || !opt) return;
+    const opt = itemSel.options[itemSel.selectedIndex];
+    const id = Number(itemSel.value||0);
+    if (!id) return;
 
+    const qty = Math.max(1, Number(qtyInp.value||1));
     const name = opt.textContent.trim();
-    const price = Number(opt.dataset.price||0);
-    const cat = Number(opt.dataset.cat||0);
+    const price = Number(opt.getAttribute("data-price")||0);
+    const cat = Number(opt.getAttribute("data-cat")||0);
 
-    if (!lines[id]) lines[id] = {name, price, qty:0, cat};
-    lines[id].qty += qty;
+    if (!lines[id]) {
+      lines[id] = {name, price, qty, cat};
+    } else {
+      lines[id].qty += qty;
+    }
 
     render();
-    recalc();
   });
 
+  catFilter.addEventListener("change", filterItems);
   payment.addEventListener("change", syncPaymentUI);
   cashInp.addEventListener("input", recalc);
   covInp.addEventListener("input", recalc);
-  catFilter.addEventListener("change", ()=>{
-    filterItems();
-  });
 
-  // init
   filterItems();
   syncPaymentUI();
-  recalc();
 })();
 </script>
-
-  </main>
-</div>
-
-<footer class="footer">
-  © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
-</footer>
 
 </body>
 </html>
