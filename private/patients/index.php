@@ -14,9 +14,6 @@ if (!isset($_SESSION['user'])) {
 $user = $_SESSION['user'];
 $branchId = (int)($user['branch_id'] ?? 0);
 
-$nombreSucursal = $user['full_name'] ?? 'CEVIMEP';
-$rol = $user['role'] ?? '';
-
 if ($branchId <= 0) {
     header("Location: /private/dashboard.php");
     exit;
@@ -76,7 +73,7 @@ if ($page < 1) $page = 1;
 $offset = ($page - 1) * $perPage;
 
 /* ===============================
-   WHERE + PARAMS (posicionales)
+   WHERE + PARAMS
    =============================== */
 $where = " WHERE p.branch_id = ? ";
 $params = [$branchId];
@@ -98,7 +95,7 @@ if ($search !== '') {
 }
 
 /* ===============================
-   TOTAL (para calcular páginas)
+   TOTAL
    =============================== */
 $countSql = "SELECT COUNT(*) FROM patients p {$where}";
 $countStmt = $pdo->prepare($countSql);
@@ -114,7 +111,7 @@ if ($page > $totalPages) {
 }
 
 /* ===============================
-   LISTADO (limitado a 8)
+   LISTADO (8 por página)
    =============================== */
 $sql = "
     SELECT
@@ -149,11 +146,66 @@ function buildPageUrl(int $toPage, string $search): string {
 <head>
     <meta charset="UTF-8">
     <title>Pacientes | CEVIMEP</title>
+    <!-- MISMO CSS DEL DASHBOARD -->
     <link rel="stylesheet" href="/assets/css/styles.css?v=50">
     <link rel="stylesheet" href="/assets/css/paciente.css?v=2">
 
     <style>
-        /* Solo para la paginación (sin tocar tu dashboard.css) */
+        /* ✅ Esto arregla “lo mal puesto” SIN tocar sidebar/topbar del dashboard */
+        .content{ width:100%; } /* por si tu CSS tiene align-items raro */
+        .patients-page{
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px 18px 40px;
+        }
+        .patients-header{
+            text-align:center;
+            margin: 10px 0 18px;
+        }
+        .patients-header h1{
+            margin:0;
+            font-size: 42px;
+            font-weight: 900;
+        }
+        .patients-header p{
+            margin: 6px 0 0;
+            opacity: .75;
+            font-weight: 600;
+        }
+        .patients-actions{
+            display:flex;
+            gap:12px;
+            justify-content:center;
+            flex-wrap:wrap;
+            align-items:center;
+            margin: 18px 0;
+        }
+        .patients-actions form{
+            display:flex;
+            gap:10px;
+            flex-wrap:wrap;
+            justify-content:center;
+            align-items:center;
+        }
+        .patients-actions input[type="text"]{
+            min-width: 360px;
+            max-width: 560px;
+            width: 50vw;
+        }
+        .patients-card{
+            background:#fff;
+            border-radius:14px;
+            box-shadow:0 10px 25px rgba(0,0,0,.08);
+            overflow:hidden;
+        }
+        .td-empty{
+            text-align:center;
+            padding: 22px 10px;
+            opacity:.75;
+            font-weight:700;
+        }
+
+        /* Paginación */
         .pagination-wrap{display:flex;justify-content:center;margin-top:14px;}
         .pagination{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;}
         .page-btn{
@@ -168,11 +220,15 @@ function buildPageUrl(int $toPage, string $search): string {
         .page-btn.active{background:#0f4fa8;border-color:#0f4fa8;color:#fff;}
         .page-btn.disabled{opacity:.5;pointer-events:none;}
         .page-info{opacity:.75;font-weight:700;margin-left:8px;}
+
+        @media (max-width: 900px){
+            .patients-actions input[type="text"]{min-width: 240px; width: 75vw;}
+        }
     </style>
 </head>
 <body>
 
-<!-- TOPBAR (IGUAL AL DASHBOARD) -->
+<!-- ✅ TOPBAR EXACTO DEL DASHBOARD -->
 <header class="navbar">
     <div class="inner">
         <div class="brand">
@@ -188,7 +244,7 @@ function buildPageUrl(int $toPage, string $search): string {
 
 <div class="layout">
 
-    <!-- SIDEBAR (IGUAL AL DASHBOARD) -->
+    <!-- ✅ SIDEBAR EXACTO DEL DASHBOARD -->
     <aside class="sidebar">
         <div class="menu-title">Menú</div>
 
@@ -203,31 +259,30 @@ function buildPageUrl(int $toPage, string $search): string {
         </nav>
     </aside>
 
-    <!-- CONTENIDO (IGUAL AL DASHBOARD) -->
+    <!-- CONTENIDO -->
     <main class="content">
+        <div class="patients-page">
 
-        <div class="patients-header" style="text-align:center;margin:22px 0 14px;">
-            <h1 style="margin:0;font-size:42px;font-weight:900;">Pacientes</h1>
-            <p style="margin:8px 0 0;opacity:.75;font-weight:600;">Listado filtrado por sucursal (automático).</p>
-        </div>
+            <div class="patients-header">
+                <h1>Pacientes</h1>
+                <p>Listado filtrado por sucursal (automático).</p>
+            </div>
 
-        <div class="patients-actions" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:18px 0 18px;">
-            <form method="get" action="/private/patients/index.php" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                <input
-                    type="text"
-                    name="q"
-                    value="<?= h($search) ?>"
-                    placeholder="Buscar por nombre, No. libro, cédula, teléfono, correo"
-                    style="min-width:340px;max-width:520px;width:50vw;"
-                >
-                <button class="btn btn-primary" type="submit">Buscar</button>
-            </form>
+            <div class="patients-actions">
+                <form method="get" action="/private/patients/index.php">
+                    <input
+                        type="text"
+                        name="q"
+                        value="<?= h($search) ?>"
+                        placeholder="Buscar por nombre, No. libro, cédula, teléfono, correo"
+                    >
+                    <button class="btn btn-primary" type="submit">Buscar</button>
+                </form>
 
-            <a class="btn" href="/private/patients/create.php">Registrar nuevo paciente</a>
-        </div>
+                <a class="btn" href="/private/patients/create.php">Registrar nuevo paciente</a>
+            </div>
 
-        <div class="patients-table" style="max-width:1200px;margin:0 auto;">
-            <div style="background:#fff;border-radius:14px;box-shadow:0 10px 25px rgba(0,0,0,.08);overflow:hidden;">
+            <div class="patients-card">
                 <table class="table">
                     <thead>
                     <tr>
@@ -245,7 +300,7 @@ function buildPageUrl(int $toPage, string $search): string {
                     <tbody>
                     <?php if (empty($patients)): ?>
                         <tr>
-                            <td colspan="9" style="text-align:center;padding:22px 10px;opacity:.75;font-weight:700;">
+                            <td colspan="9" class="td-empty">
                                 No hay pacientes<?= $search ? " con ese filtro." : "." ?>
                             </td>
                         </tr>
@@ -275,48 +330,49 @@ function buildPageUrl(int $toPage, string $search): string {
                     </tbody>
                 </table>
             </div>
-        </div>
 
-        <?php if ($totalRows > $perPage): ?>
-            <div class="pagination-wrap">
-                <div class="pagination">
-                    <a class="page-btn <?= ($page <= 1 ? 'disabled' : '') ?>"
-                       href="<?= h(buildPageUrl(max(1, $page - 1), $search)) ?>">Anterior</a>
+            <?php if ($totalRows > $perPage): ?>
+                <div class="pagination-wrap">
+                    <div class="pagination">
+                        <a class="page-btn <?= ($page <= 1 ? 'disabled' : '') ?>"
+                           href="<?= h(buildPageUrl(max(1, $page - 1), $search)) ?>">Anterior</a>
 
-                    <?php
-                    $window = 2;
-                    $start = max(1, $page - $window);
-                    $end   = min($totalPages, $page + $window);
+                        <?php
+                        $window = 2;
+                        $start = max(1, $page - $window);
+                        $end   = min($totalPages, $page + $window);
 
-                    if ($start > 1) {
-                        echo '<a class="page-btn" href="' . h(buildPageUrl(1, $search)) . '">1</a>';
-                        if ($start > 2) echo '<span class="page-info">…</span>';
-                    }
+                        if ($start > 1) {
+                            echo '<a class="page-btn" href="' . h(buildPageUrl(1, $search)) . '">1</a>';
+                            if ($start > 2) echo '<span class="page-info">…</span>';
+                        }
 
-                    for ($i = $start; $i <= $end; $i++) {
-                        $active = ($i === $page) ? 'active' : '';
-                        echo '<a class="page-btn ' . $active . '" href="' . h(buildPageUrl($i, $search)) . '">' . $i . '</a>';
-                    }
+                        for ($i = $start; $i <= $end; $i++) {
+                            $active = ($i === $page) ? 'active' : '';
+                            echo '<a class="page-btn ' . $active . '" href="' . h(buildPageUrl($i, $search)) . '">' . $i . '</a>';
+                        }
 
-                    if ($end < $totalPages) {
-                        if ($end < $totalPages - 1) echo '<span class="page-info">…</span>';
-                        echo '<a class="page-btn" href="' . h(buildPageUrl($totalPages, $search)) . '">' . $totalPages . '</a>';
-                    }
-                    ?>
+                        if ($end < $totalPages) {
+                            if ($end < $totalPages - 1) echo '<span class="page-info">…</span>';
+                            echo '<a class="page-btn" href="' . h(buildPageUrl($totalPages, $search)) . '">' . $totalPages . '</a>';
+                        }
+                        ?>
 
-                    <a class="page-btn <?= ($page >= $totalPages ? 'disabled' : '') ?>"
-                       href="<?= h(buildPageUrl(min($totalPages, $page + 1), $search)) ?>">Siguiente</a>
+                        <a class="page-btn <?= ($page >= $totalPages ? 'disabled' : '') ?>"
+                           href="<?= h(buildPageUrl(min($totalPages, $page + 1), $search)) ?>">Siguiente</a>
 
-                    <span class="page-info">Página <?= (int)$page ?> de <?= (int)$totalPages ?> (<?= (int)$totalRows ?>)</span>
+                        <span class="page-info">
+                            Página <?= (int)$page ?> de <?= (int)$totalPages ?> (<?= (int)$totalRows ?>)
+                        </span>
+                    </div>
                 </div>
-            </div>
-        <?php endif; ?>
+            <?php endif; ?>
 
-        <div style="height:24px;"></div>
+        </div>
     </main>
 </div>
 
-<!-- FOOTER (IGUAL AL DASHBOARD) -->
+<!-- ✅ FOOTER EXACTO DEL DASHBOARD -->
 <footer class="footer">
     © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
 </footer>
