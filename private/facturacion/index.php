@@ -109,69 +109,101 @@ function factPageUrl(int $toPage, string $q): string {
   <meta charset="UTF-8">
   <title>Facturación | CEVIMEP</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-
   <link rel="stylesheet" href="/assets/css/styles.css?v=60">
 
   <style>
-    /* Wrapper para que NO se desbarate la vista */
     .content{ width:100%; }
 
-    /* Panel derecho (lista de pacientes) */
+    /* ===== LAYOUT ===== */
+    .fact-wrap{
+      padding: 26px 22px 40px;
+      display:flex;
+      gap: 18px;
+      align-items:flex-start;
+      justify-content:space-between;
+    }
+    .fact-left{
+      flex: 1;
+      min-width: 360px;
+      padding-top: 70px;
+      text-align:center;
+    }
+    .fact-left h1{margin:0;font-size:48px;font-weight:900;}
+    .fact-left p{margin:10px auto 0;max-width:560px;opacity:.85;font-weight:700;}
+
+    /* ===== PANEL DERECHO (bien pegado dentro del main, sin subir al topbar) ===== */
     .fact-panel{
-      position: relative;
-      max-width: 520px;
-      width: 520px;
-      margin-left: auto;
+      width: 540px;
+      max-width: 540px;
       background: rgba(255,255,255,.92);
-      border-radius: 16px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.12);
+      border-radius: 18px;
+      box-shadow: 0 14px 34px rgba(0,0,0,.14);
       border: 1px solid rgba(0,0,0,.06);
       overflow: hidden;
+      margin-top: 20px;              /* ✅ baja el panel para que no se suba */
     }
-    .fact-panel-inner{ padding: 16px 16px 14px; }
-
-    .fact-top{
-      display:flex;
-      gap:10px;
-      align-items:center;
-      justify-content:space-between;
-      margin-bottom: 8px;
+    .fact-panel-header{
+      padding: 16px 18px 10px;
+      border-bottom: 1px solid rgba(0,0,0,.06);
+      background: rgba(245,248,252,.9);
     }
-    .fact-top h3{ margin:0; font-size: 18px; font-weight: 900; }
-    .fact-top .sub{ font-weight: 800; opacity: .7; margin: 2px 0 0; }
+    .fact-panel-header .title{
+      font-size: 18px;
+      font-weight: 900;
+      margin: 0;
+      line-height: 1.1;
+    }
+    .fact-panel-header .sub{
+      margin: 4px 0 0;
+      font-weight: 800;
+      opacity: .7;
+    }
 
+    /* ===== BUSCADOR (alineado y bonito) ===== */
     .fact-search{
+      padding: 12px 18px 12px;
       display:flex;
-      gap:10px;
+      gap: 10px;
       align-items:center;
-      margin: 10px 0 12px;
+      border-bottom: 1px solid rgba(0,0,0,.06);
+      background: #fff;
     }
     .fact-search input{
-      width: 100%;
+      flex: 1;
       border-radius: 12px;
       min-height: 42px;
       padding: 9px 12px;
-      border: 1px solid rgba(0,0,0,.15);
-      outline: none;
+      border: 1px solid rgba(0,0,0,.16);
+      outline:none;
     }
     .fact-search input:focus{
       border-color:#0f4fa8;
       box-shadow:0 0 0 4px rgba(15,79,168,.10);
     }
+    .fact-search button{
+      min-height: 42px;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-weight: 900;
+    }
 
-    .patient-list{ display:flex; flex-direction:column; gap: 0; }
+    /* ===== LISTA ===== */
+    .patient-list{
+      max-height: 520px;             /* ✅ para que no crezca infinito */
+      overflow: auto;
+      background: #fff;
+    }
     .patient-row{
       display:flex;
       align-items:center;
       justify-content:space-between;
       gap: 12px;
-      padding: 14px 10px;
+      padding: 14px 18px;
       border-top: 1px solid rgba(0,0,0,.06);
     }
     .patient-name{
       font-weight: 900;
       color:#0b3e86;
-      text-decoration:none;
       max-width: 320px;
       overflow:hidden;
       text-overflow:ellipsis;
@@ -190,9 +222,19 @@ function factPageUrl(int $toPage, string $q): string {
     }
     .btn-history:hover{ background: rgba(0,160,60,.16); }
 
-    /* Paginación */
-    .pagination-wrap{ display:flex; justify-content:center; margin: 12px 0 0; }
-    .pagination{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:center; }
+    /* ===== PAGINACIÓN ABAJO EN EL PANEL ===== */
+    .panel-footer{
+      padding: 12px 14px 14px;
+      border-top: 1px solid rgba(0,0,0,.06);
+      background: rgba(245,248,252,.9);
+    }
+    .pagination{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:center;
+    }
     .page-btn{
       display:inline-block;
       padding:8px 12px;
@@ -203,40 +245,14 @@ function factPageUrl(int $toPage, string $q): string {
       background:#fff;
       color:#0f4fa8;
     }
-    .page-btn.active{ background:#0f4fa8; border-color:#0f4fa8; color:#fff; }
-    .page-btn.disabled{ opacity:.5; pointer-events:none; }
-    .page-info{ opacity:.75; font-weight:800; margin-left:6px; }
-
-    /* Layout general como dashboard */
-    .fact-wrap{
-      padding: 28px 22px 40px;
-      display:flex;
-      gap: 18px;
-      align-items:flex-start;
-      justify-content:space-between;
-    }
-    .fact-left{
-      flex: 1;
-      min-width: 340px;
-      padding: 60px 0 0;
-      text-align:center;
-    }
-    .fact-left h1{
-      margin:0;
-      font-size: 44px;
-      font-weight: 900;
-    }
-    .fact-left p{
-      margin: 10px auto 0;
-      max-width: 520px;
-      opacity: .85;
-      font-weight: 700;
-    }
+    .page-btn.active{background:#0f4fa8;border-color:#0f4fa8;color:#fff;}
+    .page-btn.disabled{opacity:.5;pointer-events:none;}
+    .page-info{opacity:.75;font-weight:900;margin-left:6px;}
 
     @media (max-width: 1100px){
-      .fact-wrap{ flex-direction:column; }
-      .fact-panel{ width: 100%; max-width: 720px; margin: 0 auto; }
-      .fact-left{ padding-top: 10px; }
+      .fact-wrap{flex-direction:column;}
+      .fact-panel{width:100%;max-width:720px;margin:0 auto;}
+      .fact-left{padding-top: 10px;}
     }
   </style>
 </head>
@@ -278,78 +294,72 @@ function factPageUrl(int $toPage, string $q): string {
       </div>
 
       <div class="fact-panel">
-        <div class="fact-panel-inner">
-          <div class="fact-top">
-            <div>
-              <h3>Pacientes</h3>
-              <div class="sub">Sucursal actual</div>
-            </div>
-          </div>
-
-          <form class="fact-search" method="get" action="/private/facturacion/index.php">
-            <input type="text" name="q" value="<?= h($q) ?>" placeholder="Buscar paciente...">
-            <button class="btn btn-primary" type="submit">Buscar</button>
-          </form>
-
-          <div class="patient-list">
-            <?php if (empty($patients)): ?>
-              <div class="patient-row" style="justify-content:center; font-weight:800; opacity:.75;">
-                No hay pacientes<?= ($q !== '' ? " con ese filtro." : ".") ?>
-              </div>
-            <?php else: ?>
-              <?php foreach ($patients as $p): ?>
-                <?php
-                  $pid = (int)$p['id'];
-                  $name = trim((string)($p['first_name'] ?? '') . ' ' . (string)($p['last_name'] ?? ''));
-                ?>
-                <div class="patient-row">
-                  <span class="patient-name" title="<?= h($name) ?>"><?= h($name) ?></span>
-
-                  <!-- Ajusta esta ruta si tu historial se llama diferente -->
-                  <a class="btn-history" href="/private/facturacion/historial.php?patient_id=<?= $pid ?>">Ver historial</a>
-                </div>
-              <?php endforeach; ?>
-            <?php endif; ?>
-          </div>
-
-          <?php if ($totalRows > $perPage): ?>
-            <div class="pagination-wrap">
-              <div class="pagination">
-                <a class="page-btn <?= ($page <= 1 ? 'disabled' : '') ?>"
-                   href="<?= h(factPageUrl(max(1, $page - 1), $q)) ?>">Anterior</a>
-
-                <?php
-                  $window = 2;
-                  $start = max(1, $page - $window);
-                  $end   = min($totalPages, $page + $window);
-
-                  if ($start > 1) {
-                    echo '<a class="page-btn" href="' . h(factPageUrl(1, $q)) . '">1</a>';
-                    if ($start > 2) echo '<span class="page-info">…</span>';
-                  }
-
-                  for ($i = $start; $i <= $end; $i++) {
-                    $active = ($i === $page) ? 'active' : '';
-                    echo '<a class="page-btn '.$active.'" href="' . h(factPageUrl($i, $q)) . '">' . $i . '</a>';
-                  }
-
-                  if ($end < $totalPages) {
-                    if ($end < $totalPages - 1) echo '<span class="page-info">…</span>';
-                    echo '<a class="page-btn" href="' . h(factPageUrl($totalPages, $q)) . '">' . $totalPages . '</a>';
-                  }
-                ?>
-
-                <a class="page-btn <?= ($page >= $totalPages ? 'disabled' : '') ?>"
-                   href="<?= h(factPageUrl(min($totalPages, $page + 1), $q)) ?>">Siguiente</a>
-
-                <span class="page-info">
-                  Página <?= (int)$page ?> de <?= (int)$totalPages ?> (<?= (int)$totalRows ?>)
-                </span>
-              </div>
-            </div>
-          <?php endif; ?>
-
+        <div class="fact-panel-header">
+          <p class="title">Pacientes</p>
+          <p class="sub">Sucursal actual</p>
         </div>
+
+        <form class="fact-search" method="get" action="/private/facturacion/index.php">
+          <input type="text" name="q" value="<?= h($q) ?>" placeholder="Buscar paciente...">
+          <button class="btn btn-primary" type="submit">Buscar</button>
+        </form>
+
+        <div class="patient-list">
+          <?php if (empty($patients)): ?>
+            <div class="patient-row" style="justify-content:center; font-weight:900; opacity:.75;">
+              No hay pacientes<?= ($q !== '' ? " con ese filtro." : ".") ?>
+            </div>
+          <?php else: ?>
+            <?php foreach ($patients as $p): ?>
+              <?php
+                $pid = (int)$p['id'];
+                $name = trim((string)($p['first_name'] ?? '') . ' ' . (string)($p['last_name'] ?? ''));
+              ?>
+              <div class="patient-row">
+                <span class="patient-name" title="<?= h($name) ?>"><?= h($name) ?></span>
+
+                <!-- AJUSTA ESTA RUTA si tu historial se llama diferente -->
+                <a class="btn-history" href="/private/facturacion/historial.php?patient_id=<?= $pid ?>">Ver historial</a>
+              </div>
+            <?php endforeach; ?>
+          <?php endif; ?>
+        </div>
+
+        <?php if ($totalRows > $perPage): ?>
+          <div class="panel-footer">
+            <div class="pagination">
+              <a class="page-btn <?= ($page <= 1 ? 'disabled' : '') ?>"
+                 href="<?= h(factPageUrl(max(1, $page - 1), $q)) ?>">Anterior</a>
+
+              <?php
+                $window = 2;
+                $start = max(1, $page - $window);
+                $end   = min($totalPages, $page + $window);
+
+                if ($start > 1) {
+                  echo '<a class="page-btn" href="' . h(factPageUrl(1, $q)) . '">1</a>';
+                  if ($start > 2) echo '<span class="page-info">…</span>';
+                }
+
+                for ($i = $start; $i <= $end; $i++) {
+                  $active = ($i === $page) ? 'active' : '';
+                  echo '<a class="page-btn '.$active.'" href="' . h(factPageUrl($i, $q)) . '">' . $i . '</a>';
+                }
+
+                if ($end < $totalPages) {
+                  if ($end < $totalPages - 1) echo '<span class="page-info">…</span>';
+                  echo '<a class="page-btn" href="' . h(factPageUrl($totalPages, $q)) . '">' . $totalPages . '</a>';
+                }
+              ?>
+
+              <a class="page-btn <?= ($page >= $totalPages ? 'disabled' : '') ?>"
+                 href="<?= h(factPageUrl(min($totalPages, $page + 1), $q)) ?>">Siguiente</a>
+
+              <span class="page-info">Página <?= (int)$page ?> de <?= (int)$totalPages ?> (<?= (int)$totalRows ?>)</span>
+            </div>
+          </div>
+        <?php endif; ?>
+
       </div>
 
     </div>
