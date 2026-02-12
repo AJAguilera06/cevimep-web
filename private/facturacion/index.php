@@ -58,7 +58,6 @@ $page = (int)($_GET['page'] ?? 1);
 if ($page < 1) $page = 1;
 $offset = ($page - 1) * $perPage;
 
-/* WHERE + params */
 $where = " WHERE branch_id = ? ";
 $params = [$branchId];
 
@@ -74,7 +73,6 @@ if ($q !== '') {
   $params[] = $like;
 }
 
-/* Total */
 $countStmt = $pdo->prepare("SELECT COUNT(*) FROM patients {$where}");
 $countStmt->execute($params);
 $totalRows = (int)$countStmt->fetchColumn();
@@ -86,7 +84,6 @@ if ($page > $totalPages) {
   $offset = ($page - 1) * $perPage;
 }
 
-/* Listado */
 $listStmt = $pdo->prepare("
   SELECT id, first_name, last_name
   FROM patients
@@ -112,40 +109,79 @@ function factPageUrl(int $toPage, string $q): string {
   <link rel="stylesheet" href="/assets/css/styles.css?v=60">
 
   <style>
-    .content{ width:100%; }
+    /* Ajusta estas alturas si tu navbar/footer cambian en tu CSS */
+    :root{
+      --topbar-h: 72px;
+      --footer-h: 56px;
+    }
 
-    /* ===== LAYOUT ===== */
-    .fact-wrap{
-      padding: 26px 22px 40px;
+    /* Asegura que el área central sea EXACTA entre las dos barras */
+    html, body { height:100%; }
+    body { margin:0; }
+
+    .layout { min-height: calc(100vh - var(--topbar-h) - var(--footer-h)); }
+    .content{
+      width:100%;
+      padding:0; /* para que no empuje el contenido hacia abajo */
+    }
+
+    /* Contenedor principal de facturación dentro del área blanca */
+    .fact-shell{
+      height: calc(100vh - var(--topbar-h) - var(--footer-h));
+      padding: 18px 18px 18px;
+      box-sizing: border-box;
       display:flex;
       gap: 18px;
-      align-items:flex-start;
-      justify-content:space-between;
+      align-items: stretch; /* ✅ misma altura en ambos lados */
+      justify-content: space-between;
     }
+
+    /* Lado izquierdo */
     .fact-left{
       flex: 1;
       min-width: 360px;
-      padding-top: 70px;
+      background: transparent;
+      display:flex;
+      align-items:center;
+      justify-content:center;
       text-align:center;
+      padding: 10px;
     }
-    .fact-left h1{margin:0;font-size:48px;font-weight:900;}
-    .fact-left p{margin:10px auto 0;max-width:560px;opacity:.85;font-weight:700;}
+    .fact-left-inner{
+      max-width: 700px;
+    }
+    .fact-left h1{
+      margin:0;
+      font-size: 54px;
+      font-weight: 900;
+      letter-spacing: .2px;
+    }
+    .fact-left p{
+      margin: 10px auto 0;
+      max-width: 560px;
+      opacity: .85;
+      font-weight: 700;
+    }
 
-    /* ===== PANEL DERECHO (bien pegado dentro del main, sin subir al topbar) ===== */
+    /* Panel derecho: ocupa la altura completa del área blanca */
     .fact-panel{
-      width: 540px;
-      max-width: 540px;
+      width: 560px;
+      max-width: 560px;
+      height: 100%;
       background: rgba(255,255,255,.92);
       border-radius: 18px;
       box-shadow: 0 14px 34px rgba(0,0,0,.14);
       border: 1px solid rgba(0,0,0,.06);
       overflow: hidden;
-      margin-top: 20px;              /* ✅ baja el panel para que no se suba */
+      display:flex;
+      flex-direction: column;
     }
+
     .fact-panel-header{
       padding: 16px 18px 10px;
       border-bottom: 1px solid rgba(0,0,0,.06);
       background: rgba(245,248,252,.9);
+      text-align:center;
     }
     .fact-panel-header .title{
       font-size: 18px;
@@ -159,7 +195,7 @@ function factPageUrl(int $toPage, string $q): string {
       opacity: .7;
     }
 
-    /* ===== BUSCADOR (alineado y bonito) ===== */
+    /* Buscador horizontal bien alineado */
     .fact-search{
       padding: 12px 18px 12px;
       display:flex;
@@ -183,13 +219,14 @@ function factPageUrl(int $toPage, string $q): string {
     .fact-search button{
       min-height: 42px;
       border-radius: 12px;
-      padding: 10px 14px;
+      padding: 10px 16px;
       font-weight: 900;
+      white-space: nowrap;
     }
 
-    /* ===== LISTA ===== */
+    /* LISTA: aquí va el scroll, no en el panel entero */
     .patient-list{
-      max-height: 520px;             /* ✅ para que no crezca infinito */
+      flex: 1;
       overflow: auto;
       background: #fff;
     }
@@ -222,7 +259,7 @@ function factPageUrl(int $toPage, string $q): string {
     }
     .btn-history:hover{ background: rgba(0,160,60,.16); }
 
-    /* ===== PAGINACIÓN ABAJO EN EL PANEL ===== */
+    /* Footer del panel (paginación) fijo abajo */
     .panel-footer{
       padding: 12px 14px 14px;
       border-top: 1px solid rgba(0,0,0,.06);
@@ -249,10 +286,18 @@ function factPageUrl(int $toPage, string $q): string {
     .page-btn.disabled{opacity:.5;pointer-events:none;}
     .page-info{opacity:.75;font-weight:900;margin-left:6px;}
 
+    /* Responsive */
     @media (max-width: 1100px){
-      .fact-wrap{flex-direction:column;}
-      .fact-panel{width:100%;max-width:720px;margin:0 auto;}
-      .fact-left{padding-top: 10px;}
+      .fact-shell{
+        height: auto;
+        min-height: calc(100vh - var(--topbar-h) - var(--footer-h));
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .fact-panel{ width:100%; max-width: 780px; margin: 0 auto; height: auto; }
+      .patient-list{ max-height: 520px; }
+      .fact-left{ min-width: auto; }
+      .fact-left h1{ font-size: 44px; }
     }
   </style>
 </head>
@@ -286,14 +331,16 @@ function factPageUrl(int $toPage, string $q): string {
   </aside>
 
   <main class="content">
-    <div class="fact-wrap">
+    <div class="fact-shell">
 
-      <div class="fact-left">
-        <h1>Facturación</h1>
-        <p>Selecciona un paciente para ver su historial y crear una factura.</p>
-      </div>
+      <section class="fact-left">
+        <div class="fact-left-inner">
+          <h1>Facturación</h1>
+          <p>Selecciona un paciente para ver su historial y crear una factura.</p>
+        </div>
+      </section>
 
-      <div class="fact-panel">
+      <section class="fact-panel">
         <div class="fact-panel-header">
           <p class="title">Pacientes</p>
           <p class="sub">Sucursal actual</p>
@@ -360,7 +407,7 @@ function factPageUrl(int $toPage, string $q): string {
           </div>
         <?php endif; ?>
 
-      </div>
+      </section>
 
     </div>
   </main>
