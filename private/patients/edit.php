@@ -14,7 +14,9 @@ $user = $_SESSION['user'];
 $isAdmin = (($user['role'] ?? '') === 'admin');
 $userBranchId = (int)($user['branch_id'] ?? 0);
 
-/* DB */
+/* ===============================
+   DB (ruta robusta)
+   =============================== */
 $db_candidates = [
   __DIR__ . '/../config/db.php',
   __DIR__ . '/../../config/db.php',
@@ -24,59 +26,88 @@ $db_candidates = [
 
 $loaded = false;
 foreach ($db_candidates as $p) {
-  if (is_file($p)) { require_once $p; $loaded = true; break; }
+  if (is_file($p)) {
+    require_once $p;
+    $loaded = true;
+    break;
+  }
 }
+
 if (!$loaded || !isset($pdo) || !($pdo instanceof PDO)) {
   http_response_code(500);
   echo "Error crítico: no se pudo cargar la conexión a la base de datos.";
   exit;
 }
 
-function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
-
-/* Read patient */
-$id = (int)($_GET['id'] ?? 0);
-if ($id <= 0) { header("Location: /private/patients/index.php"); exit; }
-
-if ($isAdmin) {
-  $stmt = $pdo->prepare("SELECT * FROM patients WHERE id = :id");
-  $stmt->execute(['id' => $id]);
-} else {
-  if ($userBranchId <= 0) { header("Location: /logout.php"); exit; }
-  $stmt = $pdo->prepare("SELECT * FROM patients WHERE id = :id AND branch_id = :bid");
-  $stmt->execute(['id' => $id, 'bid' => $userBranchId]);
+function h($v): string {
+  return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 }
 
-$p = $stmt->fetch(PDO::FETCH_ASSOC);
-if (!$p) { http_response_code(404); echo "Paciente no encontrado."; exit; }
+/* ===============================
+   Obtener paciente
+   =============================== */
+$id = (int)($_GET['id'] ?? 0);
+if ($id <= 0) {
+  header("Location: /private/patients/index.php");
+  exit;
+}
 
+if ($isAdmin) {
+  $st = $pdo->prepare("SELECT * FROM patients WHERE id = :id LIMIT 1");
+  $st->execute(['id' => $id]);
+} else {
+  if ($userBranchId <= 0) {
+    header("Location: /logout.php");
+    exit;
+  }
+  $st = $pdo->prepare("SELECT * FROM patients WHERE id = :id AND branch_id = :bid LIMIT 1");
+  $st->execute(['id' => $id, 'bid' => $userBranchId]);
+}
+
+$p = $st->fetch(PDO::FETCH_ASSOC);
+if (!$p) {
+  http_response_code(404);
+  echo "Paciente no encontrado.";
+  exit;
+}
+
+/* ===============================
+   Sucursal (admin puede elegir)
+   =============================== */
 $branch_id = (int)($p['branch_id'] ?? $userBranchId);
 $branches = [];
+
 if ($isAdmin) {
   $branches = $pdo->query("SELECT id, name FROM branches ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+  if ($branch_id <= 0 && !empty($branches)) {
+    $branch_id = (int)$branches[0]['id'];
+  }
 }
 
 $error = "";
 
-/* Defaults */
-$no_libro = (string)($p['no_libro'] ?? '');
-$first_name = (string)($p['first_name'] ?? '');
-$last_name = (string)($p['last_name'] ?? '');
-$cedula = (string)($p['cedula'] ?? '');
-$phone = (string)($p['phone'] ?? '');
-$email = (string)($p['email'] ?? '');
-$birth_date = (string)($p['birth_date'] ?? '');
-$gender = (string)($p['gender'] ?? '');
-$blood_type = (string)($p['blood_type'] ?? '');
-$medico_refiere = (string)($p['medico_refiere'] ?? '');
+/* Defaults (prellenados) */
+$no_libro           = (string)($p['no_libro'] ?? '');
+$first_name         = (string)($p['first_name'] ?? '');
+$last_name          = (string)($p['last_name'] ?? '');
+$cedula             = (string)($p['cedula'] ?? '');
+$phone              = (string)($p['phone'] ?? '');
+$email              = (string)($p['email'] ?? '');
+$birth_date         = (string)($p['birth_date'] ?? '');
+$gender             = (string)($p['gender'] ?? '');
+$blood_type         = (string)($p['blood_type'] ?? '');
+$medico_refiere     = (string)($p['medico_refiere'] ?? '');
 $clinica_referencia = (string)($p['clinica_referencia'] ?? '');
-$ars = (string)($p['ars'] ?? '');
-$numero_afiliado = (string)($p['numero_afiliado'] ?? '');
-$registrado_por = (string)($p['registrado_por'] ?? '');
+$ars                = (string)($p['ars'] ?? '');
+$numero_afiliado    = (string)($p['numero_afiliado'] ?? '');
+$registrado_por     = (string)($p['registrado_por'] ?? '');
 
-$fullName = trim($first_name . ' ' . $last_name);
+/* Normalizar género viejo ("Otro") a "O" para que marque igual que create.php */
+if ($gender === 'Otro') $gender = 'O';
 
-/* POST */
+/* ===============================
+   POST (guardar cambios)
+   =============================== */
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
   $no_libro           = trim((string)($_POST['no_libro'] ?? ''));
   $first_name         = trim((string)($_POST['first_name'] ?? ''));
@@ -87,20 +118,28 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
   $birth_date         = trim((string)($_POST['birth_date'] ?? ''));
   $gender             = trim((string)($_POST['gender'] ?? ''));
   $blood_type         = trim((string)($_POST['blood_type'] ?? ''));
+
   $medico_refiere     = trim((string)($_POST['medico_refiere'] ?? ''));
   $clinica_referencia = trim((string)($_POST['clinica_referencia'] ?? ''));
   $ars                = trim((string)($_POST['ars'] ?? ''));
   $numero_afiliado    = trim((string)($_POST['numero_afiliado'] ?? ''));
   $registrado_por     = trim((string)($_POST['registrado_por'] ?? ''));
 
-  if ($isAdmin) { $branch_id = (int)($_POST['branch_id'] ?? $branch_id); }
-  else { $branch_id = $userBranchId; }
+  if ($isAdmin) {
+    $branch_id = (int)($_POST['branch_id'] ?? $branch_id);
+  } else {
+    $branch_id = $userBranchId;
+  }
 
-  if ($branch_id <= 0) $error = "Sucursal inválida.";
-  elseif ($no_libro === '') $error = "El No. Libro es obligatorio.";
-  elseif ($first_name === '' || $last_name === '') $error = "Nombre y apellido son obligatorios.";
-  else {
+  if ($branch_id <= 0) {
+    $error = "Sucursal inválida.";
+  } elseif ($no_libro === '') {
+    $error = "El No. Libro es obligatorio.";
+  } elseif ($first_name === '' || $last_name === '') {
+    $error = "Nombre y apellido son obligatorios.";
+  } else {
     try {
+      /* evitar duplicados por sucursal + no_libro */
       $chk = $pdo->prepare("SELECT id FROM patients WHERE branch_id = :bid AND no_libro = :nl AND id <> :id LIMIT 1");
       $chk->execute(['bid' => $branch_id, 'nl' => $no_libro, 'id' => $id]);
       if ($chk->fetchColumn()) {
@@ -115,15 +154,26 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         ");
 
         $up->execute([
-          'nl'=>$no_libro,'fn'=>$first_name,'ln'=>$last_name,
-          'ced'=>($cedula!==''?$cedula:null),'ph'=>($phone!==''?$phone:null),'em'=>($email!==''?$email:null),
-          'bd'=>($birth_date!==''?$birth_date:null),'ge'=>($gender!==''?$gender:null),'bt'=>($blood_type!==''?$blood_type:null),
-          'bid'=>$branch_id,'mr'=>($medico_refiere!==''?$medico_refiere:null),'cr'=>($clinica_referencia!==''?$clinica_referencia:null),
-          'ars'=>($ars!==''?$ars:null),'na'=>($numero_afiliado!==''?$numero_afiliado:null),'rp'=>($registrado_por!==''?$registrado_por:null),
-          'id'=>$id
+          'nl'  => $no_libro,
+          'fn'  => $first_name,
+          'ln'  => $last_name,
+          'ced' => $cedula !== '' ? $cedula : null,
+          'ph'  => $phone !== '' ? $phone : null,
+          'em'  => $email !== '' ? $email : null,
+          'bd'  => $birth_date !== '' ? $birth_date : null,
+          'ge'  => $gender !== '' ? $gender : null,
+          'bt'  => $blood_type !== '' ? $blood_type : null,
+          'bid' => $branch_id,
+          'mr'  => $medico_refiere !== '' ? $medico_refiere : null,
+          'cr'  => $clinica_referencia !== '' ? $clinica_referencia : null,
+          'ars' => $ars !== '' ? $ars : null,
+          'na'  => $numero_afiliado !== '' ? $numero_afiliado : null,
+          'rp'  => $registrado_por !== '' ? $registrado_por : null,
+          'id'  => $id,
         ]);
 
-        header("Location: /private/patients/view.php?id=".$id);
+        /* al guardar, vuelve al listado (si prefieres view.php dime y lo cambio) */
+        header("Location: /private/patients/index.php");
         exit;
       }
     } catch (Throwable $e) {
@@ -131,8 +181,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     }
   }
 }
-
-$fullName = trim($first_name . ' ' . $last_name);
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -144,79 +192,47 @@ $fullName = trim($first_name . ' ' . $last_name);
   <link rel="stylesheet" href="/assets/css/styles.css?v=60">
   <link rel="stylesheet" href="/assets/css/paciente.css?v=2">
 
+  <!-- MISMO STYLE DEL create.php -->
   <style>
-    /* Layout tipo dashboard */
-    .patients-page{max-width:1200px;margin:0 auto;padding:22px 18px 40px;}
-    .page-title{text-align:center;margin:10px 0 16px;}
-    .page-title h1{margin:0;font-size:40px;font-weight:900;}
-    .page-title p{margin:6px 0 0;opacity:.75;font-weight:700;}
-
-    /* Card igual al registrar */
-    .form-shell{
-      background:#fff;
-      border-radius:18px;
-      box-shadow:0 12px 28px rgba(0,0,0,.08);
-      padding:18px 18px 22px;
-    }
-
-    .alert{max-width:1200px;margin:0 auto 14px;}
-
-    /* Grid 4 columnas (como Create) */
-    .grid{
-      display:grid;
-      grid-template-columns:repeat(4,minmax(0,1fr));
-      gap:14px;
-    }
-    .col-2{grid-column:span 2;}
-    .col-3{grid-column:span 3;}
-    .col-4{grid-column:1 / -1;}
-
-    .field label{
-      display:block;
-      text-align:center;
-      font-weight:900;
-      margin-bottom:6px;
-    }
-    .muted{font-weight:800;opacity:.65;font-size:.85em;}
-
-    .input, select, input[type="date"], input[type="text"], input[type="email"], input[type="tel"]{
+    .patients-wrap{max-width:100%;margin:0 auto;padding:36px 24px 26px;}
+    .patients-header{text-align:center;margin-top:0;margin-bottom:14px;}
+    .patients-header h1{margin:0;font-size:28px;font-weight:800;letter-spacing:.2px;}
+    .patients-header p{display:none;}
+    .patients-actions{display:none;}
+    .form-card{max-width:100%;margin:0 auto;background:rgba(255,255,255,.92);backdrop-filter: blur(10px);border:1px solid rgba(0,0,0,.06);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.10);padding:18px 18px 16px;}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px 14px;align-items:start;}
+    .span2{grid-column:1 / -1;}
+    .input{width:100%;}
+    label{display:block;font-weight:700;margin-bottom:4px;font-size:13px;}
+    .muted{font-weight:600;opacity:.65;font-size:.85em;}
+    .actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px;}
+    .patients-wrap .input,
+    .patients-wrap select,
+    .patients-wrap textarea{
       width:100%;
-      border:2px solid rgba(0,0,0,.65);
-      border-radius:14px;
-      padding:11px 14px;
-      outline:none;
-      background:#fff;
+      border-radius:12px;
+      padding:9px 12px;
+      min-height:42px;
     }
-    .input:focus, select:focus, input[type="date"]:focus{
-      border-color:#0f4fa8;
-      box-shadow:0 0 0 4px rgba(15,79,168,.10);
+    .patients-wrap textarea{min-height:86px;}
+    @media (max-width: 980px){
+      .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px 14px;align-items:start;}
+      .form-card{max-width:100%;margin:0 auto;background:rgba(255,255,255,.92);backdrop-filter: blur(10px);border:1px solid rgba(0,0,0,.06);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.10);padding:18px 18px 16px;}
     }
-
-    .actions{
-      display:flex;
-      justify-content:center;
-      gap:14px;
-      margin-top:16px;
-      flex-wrap:wrap;
-    }
-
-    /* Responsive */
-    @media (max-width: 1100px){
-      .grid{grid-template-columns:repeat(2,minmax(0,1fr));}
-      .col-3{grid-column:span 2;}
-    }
-    @media (max-width: 720px){
-      .grid{grid-template-columns:1fr;}
-      .col-2,.col-3,.col-4{grid-column:1 / -1;}
-    }
+    .alert{max-width:100%;margin:0 auto 12px;}
   </style>
 </head>
 <body>
 
 <header class="navbar">
   <div class="inner">
-    <div class="brand"><span class="dot"></span><span>CEVIMEP</span></div>
-    <div class="nav-right"><a href="/logout.php" class="btn-pill">Salir</a></div>
+    <div class="brand">
+      <span class="dot"></span>
+      <span>CEVIMEP</span>
+    </div>
+    <div class="nav-right">
+      <a href="/logout.php" class="btn-pill">Salir</a>
+    </div>
   </div>
 </header>
 
@@ -235,25 +251,23 @@ $fullName = trim($first_name . ' ' . $last_name);
   </aside>
 
   <main class="content">
-    <div class="patients-page">
+    <div class="patients-wrap">
 
-      <div class="page-title">
+      <div class="patients-header">
         <h1>Editar paciente</h1>
-        <p><?= h($fullName) ?></p>
       </div>
 
       <?php if ($error): ?>
         <div class="alert alert-danger"><?= h($error) ?></div>
       <?php endif; ?>
 
-      <div class="form-shell">
+      <div class="form-card">
         <form method="post" autocomplete="off">
-
           <?php if ($isAdmin): ?>
-            <div class="grid" style="margin-bottom:14px;">
-              <div class="field col-4">
+            <div class="grid" style="margin-bottom:12px;">
+              <div class="span2">
                 <label for="branch_id">Sucursal</label>
-                <select id="branch_id" name="branch_id" required>
+                <select id="branch_id" name="branch_id" class="input" required>
                   <?php foreach ($branches as $b): ?>
                     <option value="<?= (int)$b['id'] ?>" <?= ((int)$b['id'] === (int)$branch_id) ? 'selected' : '' ?>>
                       <?= h($b['name'] ?? '') ?>
@@ -265,87 +279,86 @@ $fullName = trim($first_name . ' ' . $last_name);
           <?php endif; ?>
 
           <div class="grid">
-            <div class="field col-1">
+            <div>
               <label for="no_libro">No. Libro <span class="muted">(obligatorio)</span></label>
-              <input class="input" id="no_libro" name="no_libro" value="<?= h($no_libro) ?>" required>
+              <input id="no_libro" name="no_libro" class="input" value="<?= h($no_libro) ?>" required>
             </div>
 
-            <div class="field col-1">
+            <div>
               <label for="cedula">Cédula</label>
-              <input class="input" id="cedula" name="cedula" value="<?= h($cedula) ?>">
+              <input id="cedula" name="cedula" class="input" value="<?= h($cedula) ?>">
             </div>
 
-            <div class="field col-1">
+            <div>
               <label for="first_name">Nombre <span class="muted">(obligatorio)</span></label>
-              <input class="input" id="first_name" name="first_name" value="<?= h($first_name) ?>" required>
+              <input id="first_name" name="first_name" class="input" value="<?= h($first_name) ?>" required>
             </div>
 
-            <div class="field col-1">
+            <div>
               <label for="last_name">Apellido <span class="muted">(obligatorio)</span></label>
-              <input class="input" id="last_name" name="last_name" value="<?= h($last_name) ?>" required>
+              <input id="last_name" name="last_name" class="input" value="<?= h($last_name) ?>" required>
             </div>
 
-            <div class="field col-1">
+            <div>
               <label for="phone">Teléfono</label>
-              <input class="input" id="phone" name="phone" value="<?= h($phone) ?>">
+              <input id="phone" name="phone" class="input" value="<?= h($phone) ?>">
             </div>
 
-            <div class="field col-1">
+            <div>
               <label for="email">Correo</label>
-              <input class="input" id="email" name="email" type="email" value="<?= h($email) ?>">
+              <input id="email" name="email" type="email" class="input" value="<?= h($email) ?>">
             </div>
 
-            <div class="field col-1">
+            <div>
               <label for="birth_date">Fecha de nacimiento</label>
-              <input class="input" id="birth_date" name="birth_date" type="date" value="<?= h($birth_date) ?>">
+              <input id="birth_date" name="birth_date" type="date" class="input" value="<?= h($birth_date) ?>">
             </div>
 
-            <div class="field col-1">
+            <div>
               <label for="gender">Género</label>
-              <select id="gender" name="gender">
+              <select id="gender" name="gender" class="input">
                 <option value="">— Seleccionar —</option>
-                <option value="M" <?= ($gender === 'M' ? 'selected' : '') ?>>M</option>
-                <option value="F" <?= ($gender === 'F' ? 'selected' : '') ?>>F</option>
-                <option value="Otro" <?= ($gender === 'Otro' ? 'selected' : '') ?>>Otro</option>
+                <option value="M" <?= ($gender === 'M') ? 'selected' : '' ?>>Masculino</option>
+                <option value="F" <?= ($gender === 'F') ? 'selected' : '' ?>>Femenino</option>
+                <option value="O" <?= ($gender === 'O') ? 'selected' : '' ?>>Otro</option>
               </select>
             </div>
 
-            <div class="field col-1">
+            <div>
               <label for="blood_type">Tipo de sangre</label>
-              <input class="input" id="blood_type" name="blood_type" placeholder="Ej: O+, A-" value="<?= h($blood_type) ?>">
+              <input id="blood_type" name="blood_type" class="input" value="<?= h($blood_type) ?>" placeholder="Ej: O+, A-">
             </div>
 
-            <div class="field col-1">
+            <div>
               <label for="ars">ARS</label>
-              <input class="input" id="ars" name="ars" value="<?= h($ars) ?>">
+              <input id="ars" name="ars" class="input" value="<?= h($ars) ?>">
             </div>
 
-            <div class="field col-1">
+            <div>
               <label for="numero_afiliado">Número de afiliado</label>
-              <input class="input" id="numero_afiliado" name="numero_afiliado" value="<?= h($numero_afiliado) ?>">
+              <input id="numero_afiliado" name="numero_afiliado" class="input" value="<?= h($numero_afiliado) ?>">
             </div>
 
-            <div class="field col-4">
+            <div class="span2">
               <label for="medico_refiere">Médico que refiere</label>
-              <input class="input" id="medico_refiere" name="medico_refiere" value="<?= h($medico_refiere) ?>">
+              <input id="medico_refiere" name="medico_refiere" class="input" value="<?= h($medico_refiere) ?>">
             </div>
 
-            <div class="field col-4">
+            <div class="span2">
               <label for="clinica_referencia">Clínica de referencia</label>
-              <input class="input" id="clinica_referencia" name="clinica_referencia" value="<?= h($clinica_referencia) ?>">
+              <input id="clinica_referencia" name="clinica_referencia" class="input" value="<?= h($clinica_referencia) ?>">
             </div>
 
-            <div class="field col-4">
+            <div class="span2">
               <label for="registrado_por">Registrado por</label>
-              <input class="input" id="registrado_por" name="registrado_por" value="<?= h($registrado_por) ?>">
+              <input id="registrado_por" name="registrado_por" class="input" value="<?= h($registrado_por) ?>">
             </div>
           </div>
 
           <div class="actions">
             <button class="btn btn-primary" type="submit">Guardar cambios</button>
-            <a class="btn" href="/private/patients/view.php?id=<?= (int)$id ?>">Cancelar</a>
+            <a class="btn" href="/private/patients/index.php">Cancelar</a>
           </div>
-
         </form>
       </div>
 
