@@ -65,7 +65,53 @@ function calcAge($birthDate): string {
 $search = trim((string)($_GET['q'] ?? ''));
 
 /* ===============================
-   SQL (PARAMS POSICIONALES -> NO HY093)
+   PAGINACIÓN
+   =============================== */
+$perPage = 8;
+$page = (int)($_GET['page'] ?? 1);
+if ($page < 1) $page = 1;
+$offset = ($page - 1) * $perPage;
+
+/* ===============================
+   WHERE + PARAMS (posicionales)
+   =============================== */
+$where = " WHERE p.branch_id = ? ";
+$params = [$branchId];
+
+if ($search !== '') {
+  $where .= " AND (
+    p.no_libro LIKE ?
+    OR CONCAT(p.first_name, ' ', p.last_name) LIKE ?
+    OR p.cedula LIKE ?
+    OR p.phone LIKE ?
+    OR p.email LIKE ?
+  )";
+  $like = "%{$search}%";
+  $params[] = $like;
+  $params[] = $like;
+  $params[] = $like;
+  $params[] = $like;
+  $params[] = $like;
+}
+
+/* ===============================
+   TOTAL (para calcular páginas)
+   =============================== */
+$countSql = "SELECT COUNT(*) FROM patients p {$where}";
+$countStmt = $pdo->prepare($countSql);
+$countStmt->execute($params);
+$totalRows = (int)$countStmt->fetchColumn();
+
+$totalPages = (int)ceil($totalRows / $perPage);
+if ($totalPages < 1) $totalPages = 1;
+
+if ($page > $totalPages) {
+  $page = $totalPages;
+  $offset = ($page - 1) * $perPage;
+}
+
+/* ===============================
+   LISTADO (limitado a 8)
    =============================== */
 $sql = "
   SELECT
@@ -80,33 +126,22 @@ $sql = "
     p.gender,
     p.blood_type
   FROM patients p
-  WHERE p.branch_id = ?
+  {$where}
+  ORDER BY p.id DESC
+  LIMIT {$perPage} OFFSET {$offset}
 ";
-
-$params = [$branchId];
-
-if ($search !== '') {
-  $sql .= " AND (
-    p.no_libro LIKE ?
-    OR CONCAT(p.first_name, ' ', p.last_name) LIKE ?
-    OR p.cedula LIKE ?
-    OR p.phone LIKE ?
-    OR p.email LIKE ?
-  )";
-  $like = "%{$search}%";
-  // repetir el mismo valor por cada LIKE
-  $params[] = $like;
-  $params[] = $like;
-  $params[] = $like;
-  $params[] = $like;
-  $params[] = $like;
-}
-
-$sql .= " ORDER BY p.id DESC";
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+/* Helper para links de paginación (mantiene q y page) */
+function buildPageUrl(int $toPage, string $search): string {
+  $query = [];
+  if ($search !== '') $query['q'] = $search;
+  $query['page'] = $toPage;
+  return '/private/patients/index.php?' . http_build_query($query);
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -125,43 +160,48 @@ $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
     .patients-header h1{margin:0;font-size:34px;font-weight:800;}
     .patients-header p{margin:6px 0 0;opacity:.75;}
     .patients-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:18px 0 18px;}
-    .patients-actions form{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;}
-    .patients-actions input{min-width:320px;}
-    .patients-table{margin-top:10px;}
+    .patients-actions form{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .patients-actions input[type="text"]{min-width:340px;max-width:520px;width:50vw;}
+    .card-table{background:#fff;border-radius:14px;box-shadow:0 10px 25px rgba(0,0,0,.08);overflow:hidden;}
+    .td-empty{text-align:center;padding:22px 10px;opacity:.75;}
+    .td-actions{white-space:nowrap;}
+    .link-action{font-weight:700;text-decoration:none;}
+    .sep{opacity:.5;margin:0 8px;}
+
+    /* Paginación */
+    .pagination-wrap{display:flex;justify-content:center;margin-top:14px;}
+    .pagination{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;}
+    .page-btn{
+      display:inline-block;
+      padding:8px 12px;
+      border-radius:10px;
+      text-decoration:none;
+      font-weight:700;
+      border:1px solid rgba(0,0,0,.12);
+      background:#fff;
+    }
+    .page-btn.active{
+      background:#0f4fa8;
+      border-color:#0f4fa8;
+      color:#fff;
+    }
+    .page-btn.disabled{
+      opacity:.5;
+      pointer-events:none;
+    }
+    .page-info{opacity:.75;font-weight:600;margin:0 6px;}
   </style>
 </head>
+
 <body>
-
-<header class="navbar">
-  <div class="inner">
-    <div class="brand">
-      <span class="dot"></span>
-      <span>CEVIMEP</span>
-    </div>
-    <div class="nav-right">
-      <a href="/logout.php" class="btn-pill">Salir</a>
-    </div>
-  </div>
-</header>
-
 <div class="layout">
 
-  <aside class="sidebar">
-    <div class="menu-title">Menú</div>
-    <nav class="menu">
-      <a href="/private/dashboard.php">🏠 Panel</a>
-      <a class="active" href="/private/patients/index.php">👤 Pacientes</a>
-      <a href="/private/citas/index.php">📅 Citas</a>
-      <a href="/private/facturacion/index.php">🧾 Facturación</a>
-      <a href="/private/caja/index.php">💳 Caja</a>
-      <a href="/private/inventario/index.php">📦 Inventario</a>
-      <a href="/private/estadistica/index.php">📊 Estadísticas</a>
-    </nav>
-  </aside>
+  <?php include __DIR__ . "/../partials/sidebar.php"; ?>
 
-  <main class="content">
+  <main class="main">
+    <?php include __DIR__ . "/../partials/topbar.php"; ?>
+
     <div class="patients-wrap">
-
       <div class="patients-header">
         <h1>Pacientes</h1>
         <p>Listado filtrado por sucursal (automático).</p>
@@ -170,11 +210,10 @@ $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
       <div class="patients-actions">
         <form method="get" action="/private/patients/index.php">
           <input
-            class="input"
-            type="search"
+            type="text"
             name="q"
-            placeholder="Buscar por nombre, No. libro, cédula, teléfono, correo..."
             value="<?= h($search) ?>"
+            placeholder="Buscar por nombre, No. libro, cédula, teléfono, correo"
           >
           <button class="btn btn-primary" type="submit">Buscar</button>
         </form>
@@ -230,6 +269,45 @@ $patients = $stmt->fetchAll(PDO::FETCH_ASSOC);
           </tbody>
         </table>
       </div>
+
+      <!-- Paginación -->
+      <?php if ($totalRows > $perPage): ?>
+        <div class="pagination-wrap">
+          <div class="pagination">
+            <a class="page-btn <?= ($page <= 1 ? 'disabled' : '') ?>"
+               href="<?= h(buildPageUrl(max(1, $page - 1), $search)) ?>">Anterior</a>
+
+            <?php
+              // Ventana de páginas (máx 5 visibles)
+              $window = 2;
+              $start = max(1, $page - $window);
+              $end = min($totalPages, $page + $window);
+
+              if ($start > 1) {
+                echo '<a class="page-btn" href="' . h(buildPageUrl(1, $search)) . '">1</a>';
+                if ($start > 2) echo '<span class="page-info">…</span>';
+              }
+
+              for ($i = $start; $i <= $end; $i++) {
+                $active = ($i === $page) ? 'active' : '';
+                echo '<a class="page-btn ' . $active . '" href="' . h(buildPageUrl($i, $search)) . '">' . $i . '</a>';
+              }
+
+              if ($end < $totalPages) {
+                if ($end < $totalPages - 1) echo '<span class="page-info">…</span>';
+                echo '<a class="page-btn" href="' . h(buildPageUrl($totalPages, $search)) . '">' . $totalPages . '</a>';
+              }
+            ?>
+
+            <a class="page-btn <?= ($page >= $totalPages ? 'disabled' : '') ?>"
+               href="<?= h(buildPageUrl(min($totalPages, $page + 1), $search)) ?>">Siguiente</a>
+
+            <span class="page-info">
+              Página <?= (int)$page ?> de <?= (int)$totalPages ?> (<?= (int)$totalRows ?>)
+            </span>
+          </div>
+        </div>
+      <?php endif; ?>
 
     </div>
   </main>
