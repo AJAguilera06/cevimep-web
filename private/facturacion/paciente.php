@@ -17,65 +17,56 @@ if ($branch_id <= 0) {
 
 $patient_id = (int)($_GET["patient_id"] ?? 0);
 if ($patient_id <= 0) {
-  header("Location: /private/facturacion/index.php");
-  exit;
+  http_response_code(400);
+  die("Paciente inválido (patient_id).");
 }
 
-/* Datos del paciente (en esta sucursal) */
-$stP = $conn->prepare("
-  SELECT id, full_name
-  FROM patients
-  WHERE branch_id = ? AND id = ?
+/** Datos del paciente (solo en esta sucursal) */
+$stmt = $conn->prepare("
+  SELECT p.id, p.first_name, p.last_name, b.name AS branch_name
+  FROM patients p
+  INNER JOIN branches b ON b.id = p.branch_id
+  WHERE p.id = :pid AND p.branch_id = :bid
   LIMIT 1
 ");
-$stP->execute([$branch_id, $patient_id]);
-$patient = $stP->fetch(PDO::FETCH_ASSOC);
+$stmt->execute(["pid" => $patient_id, "bid" => $branch_id]);
+$patient = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$patient) {
-  $_SESSION["flash_error"] = "Paciente no encontrado en esta sucursal.";
-  header("Location: /private/facturacion/index.php");
-  exit;
+  http_response_code(404);
+  die("Paciente no encontrado en esta sucursal.");
 }
 
-/* Nombre sucursal */
-$branch_name = (string)($user["branch_name"] ?? "Sucursal");
-
-/* Total facturas + monto total (global) */
-$stSum = $conn->prepare("
-  SELECT COUNT(*) AS c, COALESCE(SUM(total),0) AS s
-  FROM invoices
-  WHERE branch_id = ? AND patient_id = ?
+/** Facturas del paciente en esta sucursal */
+$stmt = $conn->prepare("
+  SELECT i.id,
+         DATE(i.created_at) AS invoice_date,
+         i.payment_method,
+         i.total
+  FROM invoices i
+  WHERE i.patient_id = :pid
+    AND i.branch_id  = :bid
+  ORDER BY i.id DESC
 ");
-$stSum->execute([$branch_id, $patient_id]);
-$sumRow = $stSum->fetch(PDO::FETCH_ASSOC);
+$stmt->execute(["pid" => $patient_id, "bid" => $branch_id]);
+$invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-$total_invoices = (int)($sumRow["c"] ?? 0);
-$total_amount   = (float)($sumRow["s"] ?? 0);
-
-/* Facturas (todas) */
-$stI = $conn->prepare("
-  SELECT id, invoice_date, payment_method, total, created_at
-  FROM invoices
-  WHERE branch_id = ? AND patient_id = ?
-  ORDER BY id DESC
-");
-$stI->execute([$branch_id, $patient_id]);
-$invoices = $stI->fetchAll(PDO::FETCH_ASSOC);
-
-/* Flash */
-$flash_ok = $_SESSION["flash_success"] ?? "";
-$flash_err = $_SESSION["flash_error"] ?? "";
-unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
+/** Totales */
+$total_count = count($invoices);
+$total_amount = 0.0;
+foreach ($invoices as $inv) {
+  $total_amount += (float)$inv["total"];
+}
 ?>
 <!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CEVIMEP | Facturación - Paciente</title>
+  <title>CEVIMEP | Facturación</title>
 
-  <!-- Dashboard base -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=<?= time() ?>">
+  <link rel="stylesheet" href="../assets/css/style.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
 
   <style>
     /* Layout general de esta pantalla */
@@ -122,108 +113,73 @@ unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
       text-decoration:none;
       display:inline-flex;
       align-items:center;
-      justify-content:center;
-      gap:8px;
-      transition: transform .12s ease, filter .15s ease, box-shadow .18s ease;
-      white-space: nowrap;
+      gap:10px;
+      transition: transform .08s ease;
     }
-    .btn-ui:hover{ filter: brightness(.98); transform: translateY(-1px); box-shadow: 0 10px 22px rgba(0,0,0,.08); }
-    .btn-ui:active{ transform: translateY(0); box-shadow:none; }
+    .btn-ui:active{ transform: scale(.98); }
+    .btn-light{ background:#fff; border:1px solid #dbe8f7; color:#0b4d87; }
+    .btn-primary{ background:#0b63b6; color:#fff; }
 
-    .btn-primary-ui{
-      background: #0b4d87;
-      color:#fff;
-    }
-    .btn-ghost-ui{
-      background:#fff;
-      color:#0b4d87;
-      border:1px solid rgba(2,21,44,.12);
-    }
-
-    .flash-ok, .flash-err{
-      margin: 10px 0 14px;
-      padding: 12px 14px;
-      border-radius: 14px;
-      font-weight: 900;
-      font-size: 13px;
-    }
-    .flash-ok{ background:#e8fff1; color:#0a7a3a; border:1px solid rgba(10,122,58,.15); }
-    .flash-err{ background:#fff0f0; color:#b42318; border:1px solid rgba(180,35,24,.16); }
-
-    .fact-meta{
-      display:flex;
-      align-items:flex-start;
-      justify-content:space-between;
+    .cards{
+      display:grid;
+      grid-template-columns: 1fr;
       gap: 12px;
-      flex-wrap:wrap;
-      margin-bottom: 12px;
-    }
-    .fact-patient .name{
-      font-size: 18px;
-      font-weight: 950;
-      margin-bottom: 4px;
-    }
-    .fact-patient .branch{
-      font-size: 13px;
-      opacity:.75;
-      font-weight: 900;
     }
 
-    .chips{
+    .card{
+      background: rgba(255,255,255,.88);
+      border: 1px solid rgba(210,230,250,.9);
+      border-radius: 18px;
+      box-shadow: 0 14px 36px rgba(0,0,0,.08);
+      padding: 16px;
+    }
+
+    .patient-head{
+      text-align:center;
+      margin-bottom: 10px;
+    }
+    .patient-name{
+      font-weight: 950;
+      font-size: 18px;
+      margin: 0;
+    }
+    .patient-branch{
+      margin: 2px 0 0;
+      opacity: .75;
+      font-weight: 850;
+      font-size: 13px;
+    }
+
+    .totals{
       display:flex;
-      gap: 10px;
-      flex-wrap:wrap;
-      align-items:center;
       justify-content:flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 8px;
     }
     .chip{
-      background:#fff;
-      border:1px solid rgba(2,21,44,.10);
+      border: 1px solid rgba(210,230,250,.95);
       border-radius: 999px;
       padding: 8px 12px;
+      background:#fff;
       font-weight: 950;
+      color:#0b4d87;
       font-size: 13px;
-      box-shadow: 0 6px 18px rgba(0,0,0,.04);
+      display:inline-flex;
+      gap: 8px;
+      align-items:center;
       white-space: nowrap;
     }
 
-    .table-card{
-      background:#fff;
-      border-radius: 18px;
-      border:1px solid rgba(2,21,44,.10);
-      box-shadow: 0 10px 30px rgba(0,0,0,.06);
-      overflow:hidden;
-    }
-    .card-head{
-      padding: 14px 16px;
-      border-bottom:1px solid rgba(2,21,44,.08);
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-    }
-    .card-head h3{
-      margin:0;
-      font-weight: 950;
-      font-size: 16px;
-    }
-
-    /* ✅ AQUÍ el fix: solo ~5 filas visibles, luego scroll */
     .table-wrap{
-      width:100%;
-      overflow-x:auto;
-      overflow-y:auto;
-      max-height: 330px; /* ~5 filas aprox */
-      border-radius: 14px;
-      border:1px solid rgba(2,21,44,.06);
-      -webkit-overflow-scrolling: touch;
+      margin-top: 8px;
     }
-
-    /* Scroll bonito */
-    .table-wrap::-webkit-scrollbar{ width: 8px; height: 8px; }
-    .table-wrap::-webkit-scrollbar-track{ background: #f1f5f9; border-radius: 999px; }
-    .table-wrap::-webkit-scrollbar-thumb{ background: rgba(11,77,135,.55); border-radius: 999px; }
-    .table-wrap::-webkit-scrollbar-thumb:hover{ background: rgba(11,77,135,.8); }
+    .table-title{
+      margin: 0 0 10px;
+      font-size: 18px;
+      font-weight: 950;
+      color:#0b4d87;
+    }
 
     table{ width:100%; border-collapse:separate; border-spacing:0; min-width: 820px; }
     th, td{ padding:12px 10px; border-bottom:1px solid #eef2f6; font-size:13px; }
@@ -233,42 +189,47 @@ unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
     }
     tr:last-child td{ border-bottom:none; }
 
+    /* Scroll: mostrar máx. 5 facturas visibles y luego scroll */
+    .table-scroll{
+      max-height: 360px; /* ~5 filas + encabezado */
+      overflow: auto;
+      border: 1px solid #eef2f6;
+      border-radius: 16px;
+      background:#fff;
+      -webkit-overflow-scrolling: touch;
+    }
+
     .money{ font-weight: 950; white-space: nowrap; }
 
     .pill{
       display:inline-flex;
       align-items:center;
       gap:8px;
-      padding:6px 10px;
-      border-radius:999px;
-      font-weight:900;
-      font-size:12px;
-      background:#eef6ff;
+      padding: 7px 12px;
+      border-radius: 999px;
+      border:1px solid #dbe8f7;
+      background:#f7fbff;
+      font-weight: 900;
       color:#0b4d87;
-      border:1px solid rgba(2,21,44,.12);
+      font-size: 12px;
       text-decoration:none;
-      transition: transform .12s ease, filter .15s ease;
-      white-space: nowrap;
     }
-    .pill:hover{ filter: brightness(.98); transform: translateY(-1px); }
-    .muted{ color: rgba(2,21,44,.60); font-weight: 800; text-align:center; padding: 18px 10px; }
+    .muted{ opacity:.75; font-weight: 800; text-align:center; padding: 18px 10px; }
 
-    @media (max-width: 560px){
-      .fact-title h1{ font-size: 28px; }
-      .table-wrap{ max-height: 320px; }
-      table{ min-width: 720px; }
+    .content-inner{
+      padding: 0 14px 16px;
     }
   </style>
 </head>
 
 <body>
 
-<div class="app">
-  <?php include __DIR__ . "/../_sidebar.php"; ?>
+<?php include __DIR__ . "/../partials/sidebar.php"; ?>
 
-  <main class="main">
-    <?php include __DIR__ . "/../_topbar.php"; ?>
+<div class="main-content">
+  <?php include __DIR__ . "/../partials/topbar.php"; ?>
 
+  <div class="content-inner">
     <div class="fact-page">
 
       <div class="fact-header">
@@ -278,32 +239,29 @@ unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
         </div>
 
         <div class="fact-actions">
-          <a class="btn-ui btn-ghost-ui" href="/private/facturacion/index.php">← Volver</a>
-          <a class="btn-ui btn-primary-ui" href="/private/facturacion/nueva.php?patient_id=<?= (int)$patient_id ?>">➕ Nueva factura</a>
+          <a class="btn-ui btn-light" href="index.php">← Volver</a>
+          <a class="btn-ui btn-primary" href="nueva.php?patient_id=<?= (int)$patient_id ?>">➕ Nueva factura</a>
         </div>
       </div>
 
-      <?php if ($flash_ok): ?><div class="flash-ok"><?= h($flash_ok) ?></div><?php endif; ?>
-      <?php if ($flash_err): ?><div class="flash-err"><?= h($flash_err) ?></div><?php endif; ?>
+      <div class="cards">
+        <div class="card">
+          <div class="patient-head">
+            <p class="patient-name">
+              <?= h(($patient["first_name"] ?? "") . " " . ($patient["last_name"] ?? "")) ?>
+            </p>
+            <p class="patient-branch">Sucursal: <?= h($patient["branch_name"] ?? "") ?></p>
 
-      <div class="fact-meta">
-        <div class="fact-patient">
-          <div class="name"><?= h($patient["full_name"] ?? "Paciente") ?></div>
-          <div class="branch">Sucursal: <strong><?= h($branch_name) ?></strong></div>
-        </div>
+            <div class="totals">
+              <span class="chip">Total facturas: <strong><?= (int)$total_count ?></strong></span>
+              <span class="chip">Monto total: <strong>RD$ <?= number_format((float)$total_amount, 2) ?></strong></span>
+            </div>
+          </div>
 
-        <div class="chips">
-          <div class="chip">Total facturas: <strong><?= (int)$total_invoices ?></strong></div>
-          <div class="chip">Monto total: <strong>RD$ <?= number_format((float)$total_amount, 2) ?></strong></div>
-        </div>
-      </div>
+          <div class="table-wrap">
+            <h3 class="table-title">Facturas</h3>
 
-      <div class="table-card">
-        <div class="card-head">
-          <h3>Facturas</h3>
-        </div>
-
-        <div class="table-wrap">
+            <div class="table-scroll">
           <table>
             <thead>
               <tr>
@@ -326,22 +284,20 @@ unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
                     <td><?= h($inv["payment_method"]) ?></td>
                     <td class="money">RD$ <?= number_format((float)$inv["total"], 2) ?></td>
                     <td>
-                      <a class="pill" target="_blank" href="/private/facturacion/print.php?id=<?= (int)$inv["id"] ?>">🧾 Ver</a>
+                      <a class="pill" href="ver.php?id=<?= (int)$inv["id"] ?>">📄 Ver</a>
                     </td>
                   </tr>
                 <?php endforeach; ?>
               <?php endif; ?>
             </tbody>
-          </table>
+                    </table>
+        </div>
+          </div>
         </div>
       </div>
 
     </div>
-  </main>
-</div>
-
-<div class="footer">
-  <div class="inner">© <?= $year ?> CEVIMEP. Todos los derechos reservados.</div>
+  </div>
 </div>
 
 </body>
