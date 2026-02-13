@@ -67,46 +67,20 @@ foreach ($invoices as $inv) {
     <link rel="stylesheet" href="/assets/css/styles.css?v=50">
 
     <style>
-        /* Manteniendo tu estilo, solo afinamos el contenido interno */
-        .page-wrap{
-            padding: 18px;
-        }
+        /* Solo ajustes locales, sin cambiar tu estilo base */
+        .page-wrap{ padding: 18px; }
         .page-header{
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            gap:12px;
-            flex-wrap:wrap;
-            margin-bottom: 14px;
+            display:flex; align-items:center; justify-content:space-between;
+            gap:12px; flex-wrap:wrap; margin-bottom: 14px;
         }
         .page-header h1{
-            margin:0;
-            font-size: 38px;
-            font-weight: 900;
-            letter-spacing: -.5px;
+            margin:0; font-size: 44px; font-weight: 900; letter-spacing: -.5px;
         }
-        .page-subtitle{
-            margin: 6px 0 0;
-            opacity: .75;
-            font-weight: 700;
-        }
+        .page-subtitle{ margin: 6px 0 0; opacity:.75; font-weight: 700; }
 
-        .actions{
-            display:flex;
-            gap:10px;
-            flex-wrap:wrap;
-            align-items:center;
-        }
-        .btn-pill.secondary{
-            background:#fff;
-            color:#0b4d87;
-            border:1px solid #d7e7fb;
-        }
-        .btn-pill.primary{
-            background:#0b63b6;
-            color:#fff;
-            border:1px solid #0b63b6;
-        }
+        .actions{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+        .btn-pill.secondary{ background:#fff; color:#0b4d87; border:1px solid #d7e7fb; }
+        .btn-pill.primary{ background:#0b63b6; color:#fff; border:1px solid #0b63b6; }
 
         .card{
             background:#fff;
@@ -116,27 +90,12 @@ foreach ($invoices as $inv) {
             padding: 16px;
         }
 
-        .patient-center{
-            text-align:center;
-            margin-bottom: 12px;
-        }
-        .patient-center .name{
-            font-size: 18px;
-            font-weight: 900;
-            margin:0;
-        }
-        .patient-center .branch{
-            margin: 3px 0 0;
-            opacity:.75;
-            font-weight: 700;
-            font-size: 13px;
-        }
+        .patient-center{ text-align:center; margin-bottom: 12px; }
+        .patient-center .name{ font-size: 18px; font-weight: 900; margin:0; }
+        .patient-center .branch{ margin:3px 0 0; opacity:.75; font-weight:700; font-size:13px; }
 
         .chips{
-            display:flex;
-            justify-content:flex-end;
-            gap:10px;
-            flex-wrap:wrap;
+            display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;
             margin-top: 10px;
         }
         .chip{
@@ -155,14 +114,16 @@ foreach ($invoices as $inv) {
             font-size: 18px;
             font-weight: 900;
             color:#0b4d87;
+            text-align:center;
         }
 
-        /* Scroll: máximo 5 visibles aprox. */
+        /* Scroll: máximo ~5 filas visibles */
         .table-scroll{
-            max-height: 360px; /* ~5 filas + header */
+            max-height: 360px;
             overflow: auto;
             border: 1px solid #eef2f6;
             border-radius: 14px;
+            background:#fff;
         }
 
         table{
@@ -189,10 +150,7 @@ foreach ($invoices as $inv) {
             z-index: 2;
         }
 
-        .money{
-            font-weight: 900;
-            white-space: nowrap;
-        }
+        .money{ font-weight: 900; white-space: nowrap; }
 
         .mini-btn{
             display:inline-flex;
@@ -319,6 +277,11 @@ foreach ($invoices as $inv) {
     </main>
 
 </div>
+
+<!-- FOOTER (igual dashboard.php) -->
+<footer class="footer">
+    © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
+</footer>
 
 </body>
 </html>
