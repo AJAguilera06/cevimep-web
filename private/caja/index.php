@@ -9,16 +9,14 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 
 if (!isset($_SESSION["user"])) { header("Location: /login.php"); exit; }
 
+date_default_timezone_set("America/Santo_Domingo");
+
 $user = $_SESSION["user"];
 $year = date("Y");
 
 $isAdmin  = (($user["role"] ?? "") === "admin");
 $branchId = (int)($user["branch_id"] ?? 0);
 $userId   = (int)($user["id"] ?? 0);
-
-if (!$isAdmin && $branchId <= 0) { header("Location: /logout.php"); exit; }
-
-date_default_timezone_set("America/Santo_Domingo");
 
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function fmtMoney($n){ return number_format((float)$n, 2, ".", ","); }
@@ -27,16 +25,50 @@ $today = date("Y-m-d");
 
 require_once __DIR__ . "/caja_lib.php";
 
-// Mantener este comportamiento si lo usas (no lo quito)
+/**
+ * ✅ Branch efectivo:
+ * - Si el usuario tiene branch_id > 0, usamos ese.
+ * - Si es admin y branch_id = 0, usamos ?branch_id=... si viene
+ * - Si no viene, usamos el primer branch de la BD.
+ */
+$effectiveBranchId = $branchId;
+
+if ($effectiveBranchId <= 0 && $isAdmin) {
+  $effectiveBranchId = (int)($_GET["branch_id"] ?? 0);
+
+  if ($effectiveBranchId <= 0) {
+    try {
+      $st = $pdo->query("SELECT id FROM branches ORDER BY id ASC LIMIT 1");
+      $effectiveBranchId = (int)($st->fetchColumn() ?: 0);
+    } catch (Throwable $e) {
+      $effectiveBranchId = 0;
+    }
+  }
+}
+
+// Si no es admin y no tiene sucursal, fuera.
+if (!$isAdmin && $effectiveBranchId <= 0) {
+  header("Location: /logout.php"); exit;
+}
+
+// Si es admin y aun así no encontró branch, no seguir
+if ($isAdmin && $effectiveBranchId <= 0) {
+  die("No hay sucursales configuradas.");
+}
+
+/**
+ * Mantener comportamiento de auto-cerrar/abrir sesión actual (no lo quito)
+ * ✅ IMPORTANTE: usar el branch efectivo
+ */
 try {
   if (function_exists("caja_get_or_open_current_session")) {
-    caja_get_or_open_current_session($pdo, $branchId, $userId);
+    caja_get_or_open_current_session($pdo, $effectiveBranchId, $userId);
   }
 } catch (Throwable $e) {}
 
 /**
- * ✅ NUEVO: trae TODAS las sesiones del día por branch_id + date_open + caja_num
- * (sin filtrar por shift_start/shift_end para no perder movimientos)
+ * ✅ Traer TODAS las sesiones del día por:
+ * branch_id + date_open + caja_num
  */
 function getSessionIds(PDO $pdo, int $branchId, string $dateOpen, int $cajaNum): array {
   try {
@@ -62,7 +94,8 @@ function getSessionIds(PDO $pdo, int $branchId, string $dateOpen, int $cajaNum):
 }
 
 /**
- * ✅ NUEVO: suma movimientos de TODAS las sesiones encontradas
+ * ✅ Sumar movimientos de todas las sesiones del día
+ * (tu cash_movements usa: type, metodo_pago, amount)
  */
 function getTotalsBySessionIds(PDO $pdo, array $sessionIds): array {
   $base = ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0];
@@ -79,7 +112,7 @@ function getTotalsBySessionIds(PDO $pdo, array $sessionIds): array {
         COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='efectivo' THEN amount END),0) AS efectivo,
         COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='tarjeta' THEN amount END),0) AS tarjeta,
         COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='transferencia' THEN amount END),0) AS transferencia,
-        COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago IN ('cobertura','seguro','ars') THEN amount END),0) AS cobertura,
+        COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='cobertura' THEN amount END),0) AS cobertura,
         COALESCE(SUM(CASE WHEN type='desembolso' THEN amount END),0) AS desembolso
       FROM cash_movements
       WHERE session_id IN ($ph)
@@ -90,15 +123,15 @@ function getTotalsBySessionIds(PDO $pdo, array $sessionIds): array {
     $r = $base;
   }
 
+  // ingresos = efectivo + tarjeta + transferencia + cobertura
   $ing = (float)$r["efectivo"] + (float)$r["tarjeta"] + (float)$r["transferencia"] + (float)$r["cobertura"];
   $net = $ing - (float)$r["desembolso"];
 
   return [$r, $ing, $net];
 }
 
-// Sesiones del día por caja_num
-$idsCaja1 = getSessionIds($pdo, $branchId, $today, 1);
-$idsCaja2 = getSessionIds($pdo, $branchId, $today, 2);
+$idsCaja1 = getSessionIds($pdo, $effectiveBranchId, $today, 1);
+$idsCaja2 = getSessionIds($pdo, $effectiveBranchId, $today, 2);
 
 [$r1, $ing1, $net1] = getTotalsBySessionIds($pdo, $idsCaja1);
 [$r2, $ing2, $net2] = getTotalsBySessionIds($pdo, $idsCaja2);
@@ -107,6 +140,14 @@ $sum = [
   1 => ["r"=>$r1, "ing"=>$ing1, "net"=>$net1],
   2 => ["r"=>$r2, "ing"=>$ing2, "net"=>$net2],
 ];
+
+// (Opcional) nombre de sucursal para admin (solo visual)
+$branchName = "";
+try {
+  $st = $pdo->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
+  $st->execute([$effectiveBranchId]);
+  $branchName = (string)($st->fetchColumn() ?: "");
+} catch (Throwable $e) {}
 ?>
 <!doctype html>
 <html lang="es">
@@ -114,49 +155,7 @@ $sum = [
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CEVIMEP | Caja</title>
-
   <link rel="stylesheet" href="/assets/css/styles.css?v=50">
-
-  <style>
-    .caja-container{ max-width:1080px; margin:0 auto; width:100%; padding:12px 10px 6px; }
-
-    .card-soft{
-      background: rgba(255,255,255,.92);
-      border: 1px solid rgba(255,255,255,.35);
-      border-radius: 16px;
-      padding: 16px 18px;
-      box-shadow: 0 10px 24px rgba(0,0,0,.07);
-    }
-
-    .header-card{
-      display:flex; flex-direction:column; align-items:center; text-align:center;
-      gap:12px; padding:18px 18px;
-    }
-    .header-card h1{ margin:0; font-size:34px; line-height:1.1; font-weight:900; }
-
-    .actions{
-      display:flex; gap:12px; flex-wrap:wrap; justify-content:center;
-    }
-    .actions .btn-pill{
-      background: var(--blue);
-      border-color: var(--blue);
-      color:#fff;
-      padding: 10px 16px;
-      border-radius: 999px;
-      font-weight: 900;
-    }
-
-    .grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; }
-    @media (max-width: 980px){ .grid-2{ grid-template-columns:1fr; } }
-
-    .box-title{ text-align:center; font-weight:900; margin:0 0 12px; font-size:18px; }
-
-    table{ width:100%; border-collapse:collapse; }
-    th, td{ padding:10px 8px; border-bottom:1px solid #eef2f6; font-size:13px; }
-    th{ text-align:left; color:#0b4d87; font-weight:900; }
-    td:last-child, th:last-child{ text-align:right; font-weight:900; white-space:nowrap; }
-    .t-strong{ font-weight:900; }
-  </style>
 </head>
 
 <body>
@@ -190,20 +189,27 @@ $sum = [
   <main class="content">
     <div class="caja-container">
 
-      <div class="card-soft header-card">
+      <div class="caja-header">
         <h1>Caja</h1>
-        <div class="actions">
+
+        <?php if ($isAdmin && $branchName !== ""): ?>
+          <div style="margin-top:6px; font-weight:800; opacity:.75;">
+            Sucursal: <?= h($branchName) ?>
+          </div>
+        <?php endif; ?>
+
+        <div class="caja-actions">
           <a class="btn-pill" href="/private/caja/desembolso.php">Desembolso</a>
           <a class="btn-pill" href="/private/caja/reporte_diario.php">Reporte diario</a>
           <a class="btn-pill" href="/private/caja/reporte_mensual.php">Reporte mensual</a>
         </div>
       </div>
 
-      <div class="grid-2">
+      <div class="caja-grid">
 
-        <div class="card-soft">
-          <div class="box-title">Caja 1 (08:00 AM - 01:00 PM)</div>
-          <table>
+        <div class="caja-card">
+          <div class="caja-title">Caja 1 (08:00 AM - 01:00 PM)</div>
+          <table class="caja-table">
             <thead><tr><th>Concepto</th><th>Monto</th></tr></thead>
             <tbody>
               <tr><td>Efectivo</td><td>RD$ <?= fmtMoney($sum[1]["r"]["efectivo"]) ?></td></tr>
@@ -211,15 +217,15 @@ $sum = [
               <tr><td>Transferencia</td><td>RD$ <?= fmtMoney($sum[1]["r"]["transferencia"]) ?></td></tr>
               <tr><td>Cobertura</td><td>RD$ <?= fmtMoney($sum[1]["r"]["cobertura"]) ?></td></tr>
               <tr><td>Desembolsos</td><td>- RD$ <?= fmtMoney($sum[1]["r"]["desembolso"]) ?></td></tr>
-              <tr><td class="t-strong">Total ingresos</td><td class="t-strong">RD$ <?= fmtMoney($sum[1]["ing"]) ?></td></tr>
-              <tr><td class="t-strong">Neto</td><td class="t-strong">RD$ <?= fmtMoney($sum[1]["net"]) ?></td></tr>
+              <tr class="strong"><td>Total ingresos</td><td>RD$ <?= fmtMoney($sum[1]["ing"]) ?></td></tr>
+              <tr class="strong"><td>Neto</td><td>RD$ <?= fmtMoney($sum[1]["net"]) ?></td></tr>
             </tbody>
           </table>
         </div>
 
-        <div class="card-soft">
-          <div class="box-title">Caja 2 (01:00 PM - 06:00 PM)</div>
-          <table>
+        <div class="caja-card">
+          <div class="caja-title">Caja 2 (01:00 PM - 06:00 PM)</div>
+          <table class="caja-table">
             <thead><tr><th>Concepto</th><th>Monto</th></tr></thead>
             <tbody>
               <tr><td>Efectivo</td><td>RD$ <?= fmtMoney($sum[2]["r"]["efectivo"]) ?></td></tr>
@@ -227,8 +233,8 @@ $sum = [
               <tr><td>Transferencia</td><td>RD$ <?= fmtMoney($sum[2]["r"]["transferencia"]) ?></td></tr>
               <tr><td>Cobertura</td><td>RD$ <?= fmtMoney($sum[2]["r"]["cobertura"]) ?></td></tr>
               <tr><td>Desembolsos</td><td>- RD$ <?= fmtMoney($sum[2]["r"]["desembolso"]) ?></td></tr>
-              <tr><td class="t-strong">Total ingresos</td><td class="t-strong">RD$ <?= fmtMoney($sum[2]["ing"]) ?></td></tr>
-              <tr><td class="t-strong">Neto</td><td class="t-strong">RD$ <?= fmtMoney($sum[2]["net"]) ?></td></tr>
+              <tr class="strong"><td>Total ingresos</td><td>RD$ <?= fmtMoney($sum[2]["ing"]) ?></td></tr>
+              <tr class="strong"><td>Neto</td><td>RD$ <?= fmtMoney($sum[2]["net"]) ?></td></tr>
             </tbody>
           </table>
         </div>
