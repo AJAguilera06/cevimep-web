@@ -34,29 +34,58 @@ require_once __DIR__ . "/caja_lib.php";
 // Auto cerrar vencidas y abrir sesión actual (sin botones)
 try { caja_get_or_open_current_session($pdo, $branchId, $userId); } catch (Throwable $e) {}
 
-function getSession(PDO $pdo, int $branchId, int $cajaNum, string $date, string $shiftStart, string $shiftEnd){
+/**
+ * ✅ NUEVO: Traer TODAS las sesiones del día por branch_id + date_open + caja_num
+ * (sin depender del shift_start/shift_end para no perder facturas con tolerancia)
+ */
+function getSessionIdsByDayAndCaja(PDO $pdo, int $branchId, int $cajaNum, string $dateOpen): array {
   try {
-    $st = $pdo->prepare("SELECT * FROM cash_sessions
-                         WHERE branch_id=? AND date_open=? AND caja_num=? AND shift_start=? AND shift_end=?
-                         ORDER BY id DESC LIMIT 1");
-    $st->execute([$branchId, $date, $cajaNum, $shiftStart, $shiftEnd]);
-    return $st->fetch(PDO::FETCH_ASSOC) ?: null;
+    $st = $pdo->prepare("
+      SELECT id
+      FROM cash_sessions
+      WHERE branch_id = ?
+        AND date_open  = ?
+        AND caja_num   = ?
+      ORDER BY id ASC
+    ");
+    $st->execute([$branchId, $dateOpen, $cajaNum]);
+    $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $ids = [];
+    foreach ($rows as $r) {
+      $id = (int)($r["id"] ?? 0);
+      if ($id > 0) $ids[] = $id;
+    }
+    return $ids;
   } catch (Throwable $e) {
-    return null;
+    return [];
   }
 }
 
-function getTotals(PDO $pdo, int $sessionId){
+/**
+ * ✅ NUEVO: Totales sumando TODOS los movimientos de TODAS las sesiones del día
+ */
+function getTotals(PDO $pdo, array $sessionIds){
+  if (empty($sessionIds)) {
+    $r = ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0];
+    $ing = 0.0; $net = 0.0;
+    return [$r,$ing,$net];
+  }
+
   try {
-    $st = $pdo->prepare("SELECT
+    $placeholders = implode(",", array_fill(0, count($sessionIds), "?"));
+
+    $st = $pdo->prepare("
+      SELECT
         COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='efectivo' THEN amount END),0) AS efectivo,
         COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='tarjeta' THEN amount END),0) AS tarjeta,
         COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='transferencia' THEN amount END),0) AS transferencia,
         COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago IN ('cobertura','seguro','ars') THEN amount END),0) AS cobertura,
         COALESCE(SUM(CASE WHEN type='desembolso' THEN amount END),0) AS desembolso
       FROM cash_movements
-      WHERE session_id=?");
-    $st->execute([$sessionId]);
+      WHERE session_id IN ($placeholders)
+    ");
+    $st->execute($sessionIds);
+
     $r = $st->fetch(PDO::FETCH_ASSOC) ?: ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0];
   } catch (Throwable $e) {
     $r = ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0];
@@ -67,19 +96,23 @@ function getTotals(PDO $pdo, int $sessionId){
   return [$r,$ing,$net];
 }
 
+/**
+ * Horarios oficiales SOLO para mostrar (no para filtrar sesiones)
+ */
 [$s1Start,$s1End] = ["08:00:00","13:00:00"];
 [$s2Start,$s2End] = ["13:00:00","18:00:00"];
 
-$caja1 = getSession($pdo, $branchId, 1, $today, $s1Start, $s1End);
-$caja2 = getSession($pdo, $branchId, 2, $today, $s2Start, $s2End);
+// ✅ En vez de 1 sola sesión, ahora traemos TODAS las sesiones del día
+$sessionIdsCaja1 = getSessionIdsByDayAndCaja($pdo, $branchId, 1, $today);
+$sessionIdsCaja2 = getSessionIdsByDayAndCaja($pdo, $branchId, 2, $today);
 
 $sum = [
   1 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
   2 => ["r"=>["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0], "ing"=>0, "net"=>0],
 ];
 
-if ($caja1) { [$r,$ing,$net] = getTotals($pdo, (int)$caja1["id"]); $sum[1]=["r"=>$r,"ing"=>$ing,"net"=>$net]; }
-if ($caja2) { [$r,$ing,$net] = getTotals($pdo, (int)$caja2["id"]); $sum[2]=["r"=>$r,"ing"=>$ing,"net"=>$net]; }
+if (!empty($sessionIdsCaja1)) { [$r,$ing,$net] = getTotals($pdo, $sessionIdsCaja1); $sum[1]=["r"=>$r,"ing"=>$ing,"net"=>$net]; }
+if (!empty($sessionIdsCaja2)) { [$r,$ing,$net] = getTotals($pdo, $sessionIdsCaja2); $sum[2]=["r"=>$r,"ing"=>$ing,"net"=>$net]; }
 ?>
 <!doctype html>
 <html lang="es">
@@ -91,7 +124,7 @@ if ($caja2) { [$r,$ing,$net] = getTotals($pdo, (int)$caja2["id"]); $sum[2]=["r"=
   <link rel="stylesheet" href="/assets/css/styles.css?v=50">
 
   <style>
-    /* ✅ Contenedor centrado (esto es CLAVE para que se vea como tu 2da imagen) */
+    /* ✅ Contenedor centrado */
     .caja-container{
       max-width: 1080px;
       margin: 0 auto;
@@ -99,7 +132,6 @@ if ($caja2) { [$r,$ing,$net] = getTotals($pdo, (int)$caja2["id"]); $sum[2]=["r"=
       padding: 12px 10px 6px;
     }
 
-    /* Card general */
     .card-soft{
       background: rgba(255,255,255,.92);
       border: 1px solid rgba(255,255,255,.35);
@@ -108,7 +140,6 @@ if ($caja2) { [$r,$ing,$net] = getTotals($pdo, (int)$caja2["id"]); $sum[2]=["r"=
       box-shadow: 0 10px 24px rgba(0,0,0,.07);
     }
 
-    /* Header (igual a tu imagen: título + botones centrados) */
     .header-card{
       display:flex;
       flex-direction:column;
@@ -136,58 +167,49 @@ if ($caja2) { [$r,$ing,$net] = getTotals($pdo, (int)$caja2["id"]); $sum[2]=["r"=
       padding: 10px 16px;
       border-radius: 999px;
       font-weight: 900;
-      text-decoration:none;
-      box-shadow: 0 10px 18px rgba(0,0,0,.10);
-      transition: .15s ease;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      font-size:14px;
     }
-    .actions .btn-pill:hover{ transform: translateY(-1px); filter: brightness(.96); }
 
-    /* Grid 2 cards */
     .grid-2{
-      margin-top: 14px;
       display:grid;
       grid-template-columns: 1fr 1fr;
-      gap: 14px;
+      gap: 16px;
+      margin-top: 16px;
     }
     @media (max-width: 980px){
       .grid-2{ grid-template-columns: 1fr; }
     }
 
-    /* Títulos dentro de cards centrados como tu imagen */
     .box-title{
-      margin: 0;
       text-align:center;
-      font-size: 18px;
       font-weight: 900;
+      margin: 0 0 12px;
+      font-size: 18px;
     }
 
-    /* Tabla */
     table{
       width:100%;
-      border-collapse:collapse;
-      margin-top: 12px;
-      border-radius:14px;
-      overflow:hidden;
-      background: rgba(255,255,255,.55);
-      border: 1px solid rgba(0,0,0,.06);
+      border-collapse: collapse;
     }
-    th,td{
-      padding: 10px 12px;
-      border-bottom: 1px solid rgba(0,0,0,.06);
+    th, td{
+      padding: 10px 8px;
+      border-bottom: 1px solid #eef2f6;
+      font-size: 13px;
+    }
+    th{
+      text-align:left;
+      color:#0b4d87;
+      font-weight: 900;
+    }
+    td:last-child, th:last-child{
+      text-align:right;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .row-strong td{
+      font-weight: 900;
+      border-bottom: none;
+      padding-top: 14px;
       font-size: 14px;
-    }
-    thead th{ font-weight: 900; }
-    tbody tr:last-child td{ border-bottom:none; }
-    .t-strong{ font-weight: 900; }
-
-    /* Ajuste leve para pantallas bajitas (sin deformar) */
-    @media (max-height: 900px){
-      .header-card h1{ font-size: 30px; }
-      .actions .btn-pill{ padding: 9px 14px; }
     }
   </style>
 </head>
@@ -223,7 +245,6 @@ if ($caja2) { [$r,$ing,$net] = getTotals($pdo, (int)$caja2["id"]); $sum[2]=["r"=
   <main class="content">
     <div class="caja-container">
 
-      <!-- ✅ Header EXACTO como tu 2da imagen -->
       <div class="card-soft header-card">
         <h1>Caja</h1>
         <div class="actions">
@@ -233,11 +254,10 @@ if ($caja2) { [$r,$ing,$net] = getTotals($pdo, (int)$caja2["id"]); $sum[2]=["r"=
         </div>
       </div>
 
-      <!-- ✅ Dos cards exactamente como tu 2da imagen -->
       <div class="grid-2">
 
         <div class="card-soft">
-          <h2 class="box-title">Caja 1 (08:00 AM - 01:00 PM)</h2>
+          <div class="box-title">Caja 1 (08:00 AM - 01:00 PM)</div>
           <table>
             <thead>
               <tr><th>Concepto</th><th>Monto</th></tr>
@@ -246,16 +266,16 @@ if ($caja2) { [$r,$ing,$net] = getTotals($pdo, (int)$caja2["id"]); $sum[2]=["r"=
               <tr><td>Efectivo</td><td>RD$ <?= fmtMoney($sum[1]["r"]["efectivo"]) ?></td></tr>
               <tr><td>Tarjeta</td><td>RD$ <?= fmtMoney($sum[1]["r"]["tarjeta"]) ?></td></tr>
               <tr><td>Transferencia</td><td>RD$ <?= fmtMoney($sum[1]["r"]["transferencia"]) ?></td></tr>
-              <tr><td>Cobertura</td><td>RD$ <?= fmtMoney($sum[1]["r"]["cobertura"] ?? 0) ?></td></tr>
+              <tr><td>Cobertura</td><td>RD$ <?= fmtMoney($sum[1]["r"]["cobertura"]) ?></td></tr>
               <tr><td>Desembolsos</td><td>- RD$ <?= fmtMoney($sum[1]["r"]["desembolso"]) ?></td></tr>
-              <tr><td class="t-strong">Total ingresos</td><td class="t-strong">RD$ <?= fmtMoney($sum[1]["ing"]) ?></td></tr>
-              <tr><td class="t-strong">Neto</td><td class="t-strong">RD$ <?= fmtMoney($sum[1]["net"]) ?></td></tr>
+              <tr class="row-strong"><td>Total ingresos</td><td>RD$ <?= fmtMoney($sum[1]["ing"]) ?></td></tr>
+              <tr class="row-strong"><td>Neto</td><td>RD$ <?= fmtMoney($sum[1]["net"]) ?></td></tr>
             </tbody>
           </table>
         </div>
 
         <div class="card-soft">
-          <h2 class="box-title">Caja 2 (01:00 PM - 06:00 PM)</h2>
+          <div class="box-title">Caja 2 (01:00 PM - 06:00 PM)</div>
           <table>
             <thead>
               <tr><th>Concepto</th><th>Monto</th></tr>
@@ -264,10 +284,10 @@ if ($caja2) { [$r,$ing,$net] = getTotals($pdo, (int)$caja2["id"]); $sum[2]=["r"=
               <tr><td>Efectivo</td><td>RD$ <?= fmtMoney($sum[2]["r"]["efectivo"]) ?></td></tr>
               <tr><td>Tarjeta</td><td>RD$ <?= fmtMoney($sum[2]["r"]["tarjeta"]) ?></td></tr>
               <tr><td>Transferencia</td><td>RD$ <?= fmtMoney($sum[2]["r"]["transferencia"]) ?></td></tr>
-              <tr><td>Cobertura</td><td>RD$ <?= fmtMoney($sum[2]["r"]["cobertura"] ?? 0) ?></td></tr>
+              <tr><td>Cobertura</td><td>RD$ <?= fmtMoney($sum[2]["r"]["cobertura"]) ?></td></tr>
               <tr><td>Desembolsos</td><td>- RD$ <?= fmtMoney($sum[2]["r"]["desembolso"]) ?></td></tr>
-              <tr><td class="t-strong">Total ingresos</td><td class="t-strong">RD$ <?= fmtMoney($sum[2]["ing"]) ?></td></tr>
-              <tr><td class="t-strong">Neto</td><td class="t-strong">RD$ <?= fmtMoney($sum[2]["net"]) ?></td></tr>
+              <tr class="row-strong"><td>Total ingresos</td><td>RD$ <?= fmtMoney($sum[2]["ing"]) ?></td></tr>
+              <tr class="row-strong"><td>Neto</td><td>RD$ <?= fmtMoney($sum[2]["net"]) ?></td></tr>
             </tbody>
           </table>
         </div>
@@ -279,7 +299,7 @@ if ($caja2) { [$r,$ing,$net] = getTotals($pdo, (int)$caja2["id"]); $sum[2]=["r"=
 </div>
 
 <footer class="footer">
-  © <?= (int)$year ?> CEVIMEP. Todos los derechos reservados.
+  © <?= h($year) ?> CEVIMEP. Todos los derechos reservados.
 </footer>
 
 </body>
