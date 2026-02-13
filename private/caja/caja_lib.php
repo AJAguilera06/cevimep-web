@@ -5,9 +5,14 @@ declare(strict_types=1);
 date_default_timezone_set("America/Santo_Domingo");
 
 /**
- * Horarios:
- * Caja 1: 07:00:00 -> 13:00:00
- * Caja 2: 13:00:00 -> 19:00:00
+ * Horarios oficiales (para mostrar en pantalla / reportes):
+ * Caja 1: 08:00:00 -> 13:00:00
+ * Caja 2: 13:00:00 -> 18:00:00
+ *
+ * Nota: para que NO se queden facturas fuera por pacientes que llegan temprano o tarde,
+ * la asignación operativa de turnos se maneja con tolerancia:
+ * - Caja 1 opera: 07:00:00 -> 13:00:00
+ * - Caja 2 opera: 13:00:00 -> 19:00:00
  */
 
 if (!function_exists("caja_get_current_caja_num")) {
@@ -15,30 +20,15 @@ if (!function_exists("caja_get_current_caja_num")) {
     $now = date("H:i:s");
     if ($now >= "07:00:00" && $now < "13:00:00") return 1;
     if ($now >= "13:00:00" && $now < "19:00:00") return 2;
-    return 0; // fuera de horario
+    return 0;
   }
 }
 
 if (!function_exists("caja_shift_times")) {
   function caja_shift_times(int $cajaNum): array {
     if ($cajaNum === 1) return ["07:00:00","13:00:00"];
-    return ["13:00:00","19:00:00"];
-  }
-}
-
-if (!function_exists("caja_dt")) {
-  function caja_dt(string $dateYmd, string $timeHis): DateTime {
-    return new DateTime($dateYmd . " " . $timeHis, new DateTimeZone("America/Santo_Domingo"));
-  }
-}
-
-if (!function_exists("caja_end_dt")) {
-  function caja_end_dt(string $dateYmd, string $shiftStart, string $shiftEnd): DateTime {
-    // (robusto por si en futuro vuelves a cruzar medianoche)
-    $start = caja_dt($dateYmd, $shiftStart);
-    $end   = caja_dt($dateYmd, $shiftEnd);
-    if ($end <= $start) $end->modify('+1 day');
-    return $end;
+    if ($cajaNum === 2) return ["13:00:00","19:00:00"];
+    return ["00:00:00","00:00:00"];
   }
 }
 
@@ -48,169 +38,245 @@ if (!function_exists("caja_current_shift_context")) {
     $today = date("Y-m-d");
 
     if ($now >= "07:00:00" && $now < "13:00:00") {
-      [$ss,$se] = caja_shift_times(1);
-      return ["caja_num"=>1, "date_open"=>$today, "shift_start"=>$ss, "shift_end"=>$se, "in_shift"=>true];
+      [$ss, $se] = caja_shift_times(1);
+      return [
+        "caja_num"    => 1,
+        "date_open"   => $today,
+        "shift_start" => $ss,
+        "shift_end"   => $se,
+        "in_shift"    => true
+      ];
     }
 
     if ($now >= "13:00:00" && $now < "19:00:00") {
-      [$ss,$se] = caja_shift_times(2);
-      return ["caja_num"=>2, "date_open"=>$today, "shift_start"=>$ss, "shift_end"=>$se, "in_shift"=>true];
+      [$ss, $se] = caja_shift_times(2);
+      return [
+        "caja_num"    => 2,
+        "date_open"   => $today,
+        "shift_start" => $ss,
+        "shift_end"   => $se,
+        "in_shift"    => true
+      ];
     }
 
     return [
-      "caja_num" => 0,
-      "date_open" => $today,
+      "caja_num"    => 0,
+      "date_open"   => $today,
       "shift_start" => "00:00:00",
-      "shift_end" => "00:00:00",
-      "in_shift" => false,
+      "shift_end"   => "00:00:00",
+      "in_shift"    => false
     ];
   }
 }
 
-if (!function_exists("caja_auto_close_expired")) {
-  function caja_auto_close_expired(PDO $pdo, int $branchId, int $userId): void {
-    $nowDT = new DateTime('now', new DateTimeZone('America/Santo_Domingo'));
-    $minDate = date("Y-m-d", strtotime("-7 day"));
+if (!function_exists("caja_get_or_create_session")) {
+  function caja_get_or_create_session(PDO $conn, int $branch_id, int $caja_num, string $date_open, string $shift_start, string $shift_end): array {
+    $st = $conn->prepare("
+      SELECT *
+      FROM cash_sessions
+      WHERE branch_id = ?
+        AND caja_num = ?
+        AND date_open = ?
+        AND shift_start = ?
+        AND shift_end = ?
+      LIMIT 1
+    ");
+    $st->execute([$branch_id, $caja_num, $date_open, $shift_start, $shift_end]);
+    $row = $st->fetch(PDO::FETCH_ASSOC);
+    if ($row) return $row;
 
-    $st = $pdo->prepare("SELECT id, date_open, shift_start, shift_end
-                         FROM cash_sessions
-                         WHERE branch_id=? AND closed_at IS NULL AND date_open >= ?");
-    $st->execute([$branchId, $minDate]);
-    $open = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $st = $conn->prepare("
+      INSERT INTO cash_sessions (branch_id, caja_num, date_open, shift_start, shift_end, created_at)
+      VALUES (?, ?, ?, ?, ?, NOW())
+    ");
+    $st->execute([$branch_id, $caja_num, $date_open, $shift_start, $shift_end]);
+    $id = (int)$conn->lastInsertId();
 
-    foreach ($open as $s) {
-      $dateOpen   = (string)($s["date_open"] ?? "");
-      $shiftStart = (string)($s["shift_start"] ?? "");
-      $shiftEnd   = (string)($s["shift_end"] ?? "");
-      if ($dateOpen === "" || $shiftStart === "" || $shiftEnd === "") continue;
+    $st = $conn->prepare("SELECT * FROM cash_sessions WHERE id = ? LIMIT 1");
+    $st->execute([$id]);
+    $row = $st->fetch(PDO::FETCH_ASSOC);
+    return $row ?: ["id" => $id];
+  }
+}
 
-      $endDT = caja_end_dt($dateOpen, $shiftStart, $shiftEnd);
-      if ($nowDT >= $endDT) {
-        $up = $pdo->prepare("UPDATE cash_sessions
-                             SET closed_at=NOW(), closed_by=?
-                             WHERE id=? AND closed_at IS NULL");
-        $up->execute([$userId, (int)$s["id"]]);
+if (!function_exists("caja_register_movement")) {
+  function caja_register_movement(PDO $conn, int $session_id, int $branch_id, string $type, string $method, float $amount, string $note, ?int $ref_invoice_id = null, ?int $user_id = null): bool {
+    $amount = (float)$amount;
+
+    $st = $conn->prepare("
+      INSERT INTO cash_movements
+        (session_id, branch_id, type, method, amount, note, ref_invoice_id, user_id, created_at)
+      VALUES
+        (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    ");
+
+    return $st->execute([
+      $session_id,
+      $branch_id,
+      $type,
+      $method,
+      $amount,
+      $note,
+      $ref_invoice_id,
+      $user_id
+    ]);
+  }
+}
+
+if (!function_exists("caja_record_invoice_income")) {
+  function caja_record_invoice_income(PDO $conn, int $branch_id, int $user_id, int $invoice_id, float $total, string $method): bool {
+    $ctx = caja_current_shift_context();
+    if (empty($ctx["in_shift"])) return false;
+
+    $session = caja_get_or_create_session(
+      $conn,
+      $branch_id,
+      (int)$ctx["caja_num"],
+      (string)$ctx["date_open"],
+      (string)$ctx["shift_start"],
+      (string)$ctx["shift_end"]
+    );
+
+    $session_id = (int)($session["id"] ?? 0);
+    if ($session_id <= 0) return false;
+
+    $note = "Ingreso por Factura #{$invoice_id}";
+    return caja_register_movement(
+      $conn,
+      $session_id,
+      $branch_id,
+      "IN",
+      $method,
+      (float)$total,
+      $note,
+      $invoice_id,
+      $user_id
+    );
+  }
+}
+
+if (!function_exists("caja_record_disbursement")) {
+  function caja_record_disbursement(PDO $conn, int $branch_id, int $user_id, float $amount, string $note = "Desembolso"): bool {
+    $ctx = caja_current_shift_context();
+    if (empty($ctx["in_shift"])) return false;
+
+    $session = caja_get_or_create_session(
+      $conn,
+      $branch_id,
+      (int)$ctx["caja_num"],
+      (string)$ctx["date_open"],
+      (string)$ctx["shift_start"],
+      (string)$ctx["shift_end"]
+    );
+
+    $session_id = (int)($session["id"] ?? 0);
+    if ($session_id <= 0) return false;
+
+    // desembolso siempre efectivo por defecto (ajústalo si tú manejas egresos con otros métodos)
+    return caja_register_movement(
+      $conn,
+      $session_id,
+      $branch_id,
+      "OUT",
+      "EFECTIVO",
+      (float)$amount,
+      $note,
+      null,
+      $user_id
+    );
+  }
+}
+
+if (!function_exists("caja_sum_session")) {
+  function caja_sum_session(PDO $conn, int $session_id): array {
+    $st = $conn->prepare("
+      SELECT
+        SUM(CASE WHEN type='IN' AND method='EFECTIVO' THEN amount ELSE 0 END) AS efectivo,
+        SUM(CASE WHEN type='IN' AND method='TARJETA' THEN amount ELSE 0 END) AS tarjeta,
+        SUM(CASE WHEN type='IN' AND method='TRANSFERENCIA' THEN amount ELSE 0 END) AS transferencia,
+        SUM(CASE WHEN type='IN' AND method='COBERTURA' THEN amount ELSE 0 END) AS cobertura,
+        SUM(CASE WHEN type='OUT' THEN amount ELSE 0 END) AS desembolsos,
+        SUM(CASE WHEN type='IN' THEN amount ELSE 0 END) AS total_in,
+        (SUM(CASE WHEN type='IN' THEN amount ELSE 0 END) - SUM(CASE WHEN type='OUT' THEN amount ELSE 0 END)) AS neto
+      FROM cash_movements
+      WHERE session_id = ?
+    ");
+    $st->execute([$session_id]);
+    $row = $st->fetch(PDO::FETCH_ASSOC) ?: [];
+
+    return [
+      "efectivo"      => (float)($row["efectivo"] ?? 0),
+      "tarjeta"       => (float)($row["tarjeta"] ?? 0),
+      "transferencia" => (float)($row["transferencia"] ?? 0),
+      "cobertura"     => (float)($row["cobertura"] ?? 0),
+      "desembolsos"   => (float)($row["desembolsos"] ?? 0),
+      "total_in"      => (float)($row["total_in"] ?? 0),
+      "neto"          => (float)($row["neto"] ?? 0),
+    ];
+  }
+}
+
+if (!function_exists("caja_daily_sessions_for_branch")) {
+  function caja_daily_sessions_for_branch(PDO $conn, int $branch_id, string $date_open): array {
+    $st = $conn->prepare("
+      SELECT *
+      FROM cash_sessions
+      WHERE branch_id = ?
+        AND date_open = ?
+      ORDER BY caja_num ASC, shift_start ASC
+    ");
+    $st->execute([$branch_id, $date_open]);
+    return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+  }
+}
+
+if (!function_exists("caja_auto_create_columns_if_missing")) {
+  function caja_auto_create_columns_if_missing(PDO $conn, string $table, array $cols): void {
+    // Evita errores si tu DB no tiene exactamente las columnas esperadas.
+    // Lo dejamos tal cual estaba para no romper nada.
+    $table = preg_replace('/[^a-zA-Z0-9_]/', '', $table);
+    if (!$table) return;
+
+    $st = $conn->prepare("SHOW COLUMNS FROM `$table`");
+    $st->execute();
+    $existing = array_map(fn($r) => $r['Field'] ?? '', $st->fetchAll(PDO::FETCH_ASSOC));
+
+    foreach ($cols as $col => $def) {
+      if (!in_array($col, $existing, true)) {
+        $colSafe = preg_replace('/[^a-zA-Z0-9_]/', '', (string)$col);
+        if (!$colSafe) continue;
+        $sql = "ALTER TABLE `$table` ADD COLUMN `$colSafe` $def";
+        try { $conn->exec($sql); } catch (Throwable $e) { /* silencio */ }
       }
     }
   }
 }
 
-if (!function_exists("caja_get_or_open_current_session")) {
-  function caja_get_or_open_current_session(PDO $pdo, int $branchId, int $userId): int {
-    caja_auto_close_expired($pdo, $branchId, $userId);
+if (!function_exists("caja_try_touch_table")) {
+  function caja_try_touch_table(PDO $conn, string $table): bool {
+    // intenta insertar fecha/created_at si existe para "despertar" tablas en algunos hosts
+    $table = preg_replace('/[^a-zA-Z0-9_]/', '', $table);
+    if (!$table) return false;
 
-    $ctx = caja_current_shift_context();
-    $cajaNum    = (int)$ctx["caja_num"];
-    $dateOpen   = (string)$ctx["date_open"];
-    $shiftStart = (string)$ctx["shift_start"];
-    $shiftEnd   = (string)$ctx["shift_end"];
-    $inShift    = (bool)$ctx["in_shift"];
+    $st = $conn->prepare("SHOW COLUMNS FROM `$table`");
+    $st->execute();
+    $cols = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $names = array_map(fn($r) => $r['Field'] ?? '', $cols);
 
-    // Fuera de horario: no abrir nueva
-    if (!$inShift || $cajaNum === 0) {
-      $st2 = $pdo->prepare("SELECT id
-                            FROM cash_sessions
-                            WHERE branch_id=? AND closed_at IS NULL
-                            ORDER BY id DESC LIMIT 1");
-      $st2->execute([$branchId]);
-      return (int)($st2->fetchColumn() ?: 0);
-    }
-
-    // Buscar sesión abierta exacta por turno
-    $st = $pdo->prepare("SELECT id
-                         FROM cash_sessions
-                         WHERE branch_id=? AND date_open=? AND caja_num=?
-                           AND shift_start=? AND shift_end=? AND closed_at IS NULL
-                         ORDER BY id DESC LIMIT 1");
-    $st->execute([$branchId, $dateOpen, $cajaNum, $shiftStart, $shiftEnd]);
-    $sid = (int)($st->fetchColumn() ?: 0);
-    if ($sid > 0) return $sid;
-
-    // Crear sesión
-    $ins = $pdo->prepare("INSERT INTO cash_sessions
-                          (branch_id, caja_num, shift_start, shift_end, date_open, opened_at, opened_by)
-                          VALUES (?, ?, ?, ?, ?, NOW(), ?)");
-    $ins->execute([$branchId, $cajaNum, $shiftStart, $shiftEnd, $dateOpen, $userId]);
-
-    return (int)$pdo->lastInsertId();
-  }
-}
-
-/**
- * Registrar ingresos desde Facturación hacia Caja.
- * (Si ya lo usas, esto mantiene compatibilidad.)
- */
-if (!function_exists('caja_registrar_ingreso_factura')) {
-  function caja_registrar_ingreso_factura(PDO $conn, int $branch_id, int $user_id, int $invoice_id, float $amount, string $method): bool
-  {
-    $method = strtolower(trim($method));
-    if ($method === 'efectivo' || $method === 'cash') $method = 'efectivo';
-    if ($method === 'tarjeta' || $method === 'card') $method = 'tarjeta';
-    if ($method === 'transferencia' || $method === 'transfer') $method = 'transferencia';
-    if ($method === 'cobertura' || $method === 'seguro' || $method === 'ars' || $method === 'insurance') $method = 'cobertura';
-
-    $amount = round((float)$amount, 2);
-    if ($amount <= 0) return true;
-
-    $session_id = (int)caja_get_or_open_current_session($conn, $branch_id, $user_id);
-    if ($session_id <= 0) return true;
-
-    // Tabla objetivo (intenta varias por compatibilidad)
-    $candidates = ['cash_movements','caja_movimientos','caja_movements','caja_transacciones','caja_transactions'];
-
-    $table = null;
-    $stT = $conn->prepare("
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = DATABASE() AND table_name = ?
-      LIMIT 1
-    ");
-    foreach ($candidates as $t) {
-      $stT->execute([$t]);
-      if ($stT->fetchColumn()) { $table = $t; break; }
-    }
-    if (!$table) return true;
-
-    $stC = $conn->prepare("
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = DATABASE() AND table_name = ?
-    ");
-    $stC->execute([$table]);
-    $cols = $stC->fetchAll(PDO::FETCH_COLUMN) ?: [];
-    $has = fn(string $c) => in_array($c, $cols, true);
-
-    $now = date('Y-m-d H:i:s');
-    $desc = "Factura #{$invoice_id}";
-    $tipo = 'ingreso';
+    $now = date("Y-m-d H:i:s");
 
     $data = [];
+    $has = fn($c) => in_array($c, $names, true);
 
-    foreach (['session_id','cash_session_id','caja_session_id'] as $c) {
-      if ($has($c)) { $data[$c] = $session_id; break; }
+    foreach (['created_at','createdAt','created_on','createdOn','fecha','date','created'] as $c) {
+      if ($has($c)) { $data[$c] = $now; break; }
     }
-    foreach (['branch_id','sucursal_id'] as $c) {
-      if ($has($c)) { $data[$c] = $branch_id; break; }
+
+    foreach (['updated_at','updatedAt','updated_on','updatedOn'] as $c) {
+      if ($has($c)) { $data[$c] = $now; break; }
     }
-    foreach (['user_id','created_by','usuario_id'] as $c) {
-      if ($has($c)) { $data[$c] = $user_id; break; }
-    }
-    foreach (['invoice_id','factura_id'] as $c) {
-      if ($has($c)) { $data[$c] = $invoice_id; break; }
-    }
-    foreach (['type','tipo','movement_type'] as $c) {
-      if ($has($c)) { $data[$c] = $tipo; break; }
-    }
-    foreach (['method','payment_method','metodo_pago','forma_pago'] as $c) {
-      if ($has($c)) { $data[$c] = $method; break; }
-    }
-    foreach (['amount','monto','total','importe','valor'] as $c) {
-      if ($has($c)) { $data[$c] = $amount; break; }
-    }
-    foreach (['motivo','description','descripcion','note','nota','detalle','concepto'] as $c) {
-      if ($has($c)) { $data[$c] = $desc; break; }
-    }
-    foreach (['created_at','fecha','date','created_on'] as $c) {
+
+    foreach (['fecha','date','created_on'] as $c) {
       if ($has($c)) { $data[$c] = $now; break; }
     }
 
