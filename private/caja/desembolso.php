@@ -5,107 +5,184 @@ declare(strict_types=1);
 date_default_timezone_set('America/Santo_Domingo');
 
 require_once __DIR__ . '/../_guard.php';
+require_once __DIR__ . '/caja_helpers.php'; // ✅ tu helper nuevo
 
-// Alias $db -> $pdo si aplica
-if (isset($db) && !isset($pdo) && $db instanceof PDO) { $pdo = $db; }
-if (!isset($pdo) || !($pdo instanceof PDO)) {
-  http_response_code(500);
-  die("Error: no hay conexión PDO disponible (\$pdo).");
+// --- Detectar conexión (mysqli o PDO) ---
+$mysqli = null;
+$pdo = null;
+
+// si en _guard.php tienes $conn (mysqli)
+if (isset($conn) && $conn instanceof mysqli) {
+  $mysqli = $conn;
+}
+
+// si en _guard.php tienes $pdo o $db (PDO)
+if (isset($pdo) && $pdo instanceof PDO) {
+  // ok
+} elseif (isset($db) && $db instanceof PDO) {
+  $pdo = $db;
 }
 
 $hoy = date('Y-m-d');
-$horaActual = date('H:i');
+$horaActual24 = date('H:i');     // para input type="time"
+$horaActual12 = date('g:i A');   // por si lo quieres mostrar
 
 $mensaje = '';
 $tipo_mensaje = 'info';
 
-function get_int_cash_session_id(PDO $pdo): int {
-  // Prioridad: IDs numéricos guardados en sesión (los más comunes en sistemas de caja)
-  $candidates = [
-    'cash_session_id', 'caja_session_id', 'caja_id', 'cash_id',
-    'session_id', 'session_cash_id', 'current_cash_session_id'
-  ];
+// Branch ID y User ID
+try {
+  $branch_id = caja_require_branch_id();
+} catch (Throwable $e) {
+  $branch_id = 0;
+  $mensaje = "⚠️ " . $e->getMessage();
+  $tipo_mensaje = "warning";
+}
 
-  foreach ($candidates as $k) {
-    if (isset($_SESSION[$k])) {
-      $v = $_SESSION[$k];
-      // Si ya es número o string numérico
-      if (is_int($v)) return $v;
-      if (is_string($v) && ctype_digit($v)) return (int)$v;
-      if (is_numeric($v)) return (int)$v;
-    }
+$created_by = (int)($_SESSION['user']['id'] ?? ($_SESSION['user_id'] ?? 0));
+
+// --- Obtener/crear caja_sesion_id (soporta mysqli; si solo hay PDO, lo resolvemos aquí mismo) ---
+function caja_get_or_create_session_id_pdo(PDO $pdo, int $branch_id): int {
+  if ($branch_id <= 0) return 0;
+
+  date_default_timezone_set('America/Santo_Domingo');
+  $fecha = date('Y-m-d');
+  $hora  = date('H:i:s');
+
+  if ($hora >= '07:00:00' && $hora <= '12:59:59') {
+    $caja_num = 1;
+    $inicio = '07:00:00';
+    $fin    = '12:59:59';
+  } else {
+    $caja_num = 2;
+    $inicio = '13:00:00';
+    $fin    = '23:59:59';
   }
 
-  // Fallback: usar el último session_id registrado en cash_movements
+  // Buscar sesión abierta
+  $sql = "SELECT id FROM caja_sesiones
+          WHERE branch_id = :branch_id
+            AND caja_num  = :caja_num
+            AND fecha     = :fecha
+            AND estado    = 'abierta'
+          LIMIT 1";
+  $st = $pdo->prepare($sql);
+  $st->execute([
+    ':branch_id' => $branch_id,
+    ':caja_num'  => $caja_num,
+    ':fecha'     => $fecha,
+  ]);
+  $id = $st->fetchColumn();
+  if ($id !== false) return (int)$id;
+
+  // Crear sesión (si ya existe por carrera, el UNIQUE lo bloquea; entonces volvemos a buscar)
   try {
-    $stmt = $pdo->query("SELECT session_id FROM cash_movements ORDER BY id DESC LIMIT 1");
-    $sid = $stmt->fetchColumn();
-    if ($sid !== false && is_numeric($sid)) return (int)$sid;
+    $ins = "INSERT INTO caja_sesiones (branch_id, caja_num, fecha, hora_inicio, hora_fin, estado)
+            VALUES (:branch_id, :caja_num, :fecha, :inicio, :fin, 'abierta')";
+    $st2 = $pdo->prepare($ins);
+    $st2->execute([
+      ':branch_id' => $branch_id,
+      ':caja_num'  => $caja_num,
+      ':fecha'     => $fecha,
+      ':inicio'    => $inicio,
+      ':fin'       => $fin,
+    ]);
+    return (int)$pdo->lastInsertId();
+  } catch (Throwable $e) {
+    // buscar otra vez
+    $st->execute([
+      ':branch_id' => $branch_id,
+      ':caja_num'  => $caja_num,
+      ':fecha'     => $fecha,
+    ]);
+    $id2 = $st->fetchColumn();
+    return $id2 !== false ? (int)$id2 : 0;
+  }
+}
+
+function get_caja_sesion_id($mysqli, $pdo, int $branch_id): int {
+  try {
+    if ($mysqli instanceof mysqli && function_exists('caja_get_or_create_session_id')) {
+      return caja_get_or_create_session_id($mysqli, $branch_id); // ✅ usa tu helper
+    }
+  } catch (Throwable $e) {}
+
+  try {
+    if ($pdo instanceof PDO) {
+      return caja_get_or_create_session_id_pdo($pdo, $branch_id);
+    }
   } catch (Throwable $e) {}
 
   return 0;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $fecha    = $_POST['fecha'] ?? $hoy;
-    $hora     = $_POST['hora'] ?? $horaActual;
-    $monto_in = (float)($_POST['monto'] ?? 0);
-    $motivo   = trim((string)($_POST['motivo'] ?? ''));
-    $hechoPor = trim((string)($_POST['hecho_por'] ?? ''));
+  $monto_in = (float)($_POST['monto'] ?? 0);
+  $motivo   = trim((string)($_POST['motivo'] ?? ''));
+  $hechoPor = trim((string)($_POST['hecho_por'] ?? ''));
 
-    // created_by ES INT (usuario logueado)
-    $created_by = (int)($_SESSION['user']['id'] ?? ($_SESSION['user_id'] ?? 0));
+  if ($branch_id <= 0) {
+    $mensaje = "⚠️ No se encontró la sucursal (branch_id).";
+    $tipo_mensaje = "warning";
+  } else {
+    $caja_sesion_id = get_caja_sesion_id($mysqli, $pdo, $branch_id);
 
-    // session_id ES INT (sesión de caja). NO es el session_id() de PHP.
-    $session_id = get_int_cash_session_id($pdo);
-
-    if ($session_id <= 0) {
-      $mensaje = "⚠️ No se encontró una sesión de caja válida (session_id). Abre la caja o verifica la sesión.";
+    if ($caja_sesion_id <= 0) {
+      $mensaje = "⚠️ No se encontró/creó una sesión de caja válida (caja_sesion_id).";
       $tipo_mensaje = "warning";
-    } elseif ($monto_in > 0 && $motivo !== '') {
-        try {
-            $created_at = "{$fecha} {$hora}:00";
-
-            // En BD, los desembolsos van NEGATIVOS (como se ve en tu tabla)
-            $amount = -abs($monto_in);
-
-            // Guardamos el texto "Hecho por" dentro de motivo para que se vea en historial/acuse sin tocar BD
-            $motivo_db = $hechoPor !== '' ? ("Hecho por: {$hechoPor} | {$motivo}") : $motivo;
-
-            // metodo_pago (en tu tabla existe). Ponemos "efectivo" por defecto.
-            $stmt = $pdo->prepare("
-              INSERT INTO cash_movements (session_id, type, motivo, metodo_pago, amount, created_at, created_by)
-              VALUES (:session_id, :type, :motivo, :metodo_pago, :amount, :created_at, :created_by)
-            ");
-            $stmt->execute([
-              ':session_id' => $session_id,
-              ':type' => 'desembolso',
-              ':motivo' => $motivo_db,
-              ':metodo_pago' => 'efectivo',
-              ':amount' => $amount,
-              ':created_at' => $created_at,
-              ':created_by' => $created_by,
-            ]);
-
-            $id = (int)$pdo->lastInsertId();
-
-            header("Location: /private/caja/desembolso.php?ok=1&print_id={$id}");
-            exit;
-        } catch (Throwable $e) {
-            $mensaje = "❌ Error al guardar el desembolso: " . $e->getMessage();
-            $tipo_mensaje = "error";
-        }
+    } elseif (!($monto_in > 0) || $motivo === '') {
+      $mensaje = "⚠️ Completa Motivo y Monto (mayor a 0).";
+      $tipo_mensaje = "warning";
     } else {
-        $mensaje = "⚠️ Completa Motivo y Monto (mayor a 0).";
-        $tipo_mensaje = "warning";
+      try {
+        // En BD: desembolso NEGATIVO
+        $amount = -abs($monto_in);
+
+        // Guardar "Hecho por" dentro del motivo (como tú querías)
+        $motivo_db = $hechoPor !== '' ? ("Hecho por: {$hechoPor} | {$motivo}") : $motivo;
+
+        if ($mysqli instanceof mysqli) {
+          $sql = "INSERT INTO cash_movements
+                    (branch_id, caja_sesion_id, type, motivo, metodo_pago, amount, created_by)
+                  VALUES
+                    (?, ?, 'desembolso', ?, 'efectivo', ?, ?)";
+          $st = $mysqli->prepare($sql);
+          $st->bind_param("iisdi", $branch_id, $caja_sesion_id, $motivo_db, $amount, $created_by);
+          $st->execute();
+          $id = (int)$mysqli->insert_id;
+        } elseif ($pdo instanceof PDO) {
+          $sql = "INSERT INTO cash_movements
+                    (branch_id, caja_sesion_id, type, motivo, metodo_pago, amount, created_by)
+                  VALUES
+                    (:branch_id, :caja_sesion_id, 'desembolso', :motivo, 'efectivo', :amount, :created_by)";
+          $st = $pdo->prepare($sql);
+          $st->execute([
+            ':branch_id' => $branch_id,
+            ':caja_sesion_id' => $caja_sesion_id,
+            ':motivo' => $motivo_db,
+            ':amount' => $amount,
+            ':created_by' => $created_by,
+          ]);
+          $id = (int)$pdo->lastInsertId();
+        } else {
+          throw new Exception("No hay conexión a BD disponible (mysqli/PDO).");
+        }
+
+        header("Location: /private/caja/desembolso.php?ok=1&print_id={$id}");
+        exit;
+      } catch (Throwable $e) {
+        $mensaje = "❌ Error al guardar el desembolso: " . $e->getMessage();
+        $tipo_mensaje = "error";
+      }
     }
+  }
 }
 
 $print_id = isset($_GET['print_id']) ? (int)$_GET['print_id'] : 0;
 $ok = isset($_GET['ok']) ? (int)$_GET['ok'] : 0;
 if ($ok === 1 && $print_id > 0) {
-    $mensaje = "✅ Desembolso registrado. Abriendo acuse para imprimir…";
-    $tipo_mensaje = "success";
+  $mensaje = "✅ Desembolso registrado. Abriendo acuse para imprimir…";
+  $tipo_mensaje = "success";
 }
 ?>
 <!DOCTYPE html>
@@ -209,7 +286,8 @@ if ($ok === 1 && $print_id > 0) {
             </div>
             <div>
               <label>Hora (GMT-4)</label>
-              <input type="time" name="hora" value="<?= htmlspecialchars($horaActual) ?>" readonly>
+              <!-- input time muestra 24h, pero tu sistema trabaja seguro así; si quieres AM/PM lo cambio a text -->
+              <input type="time" name="hora" value="<?= htmlspecialchars($horaActual24) ?>" readonly>
             </div>
           </div>
 
