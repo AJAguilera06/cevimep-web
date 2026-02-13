@@ -13,10 +13,8 @@ $user = $_SESSION["user"];
 $year = date("Y");
 
 $isAdmin  = (($user["role"] ?? "") === "admin");
-$branchId = (int)($user["branch_id"] ?? 0);
+$branchIdSession = (int)($user["branch_id"] ?? 0);
 $userId   = (int)($user["id"] ?? 0);
-
-if (!$isAdmin && $branchId <= 0) { header("Location: /logout.php"); exit; }
 
 date_default_timezone_set("America/Santo_Domingo");
 
@@ -31,13 +29,41 @@ if (!isset($pdo) || !($pdo instanceof PDO)) {
 
 require_once __DIR__ . "/caja_lib.php";
 
-// Mantengo tu comportamiento (no lo quito)
+/**
+ * ✅ Branch efectivo:
+ * - Normal: usar branch_id de la sesión
+ * - Admin: permitir ?branch_id= (para ver caja por sucursal)
+ * - Admin con branch_id=0: tomar el primer branch como default
+ */
+$branchId = $branchIdSession;
+
+// Admin puede escoger sucursal por URL
+if ($isAdmin && isset($_GET["branch_id"])) {
+  $tmp = (int)$_GET["branch_id"];
+  if ($tmp > 0) $branchId = $tmp;
+}
+
+// Si es admin y no tiene branch_id válido, usar el primero
+if ($isAdmin && $branchId <= 0) {
+  try {
+    $st = $pdo->query("SELECT id FROM branches ORDER BY id ASC LIMIT 1");
+    $branchId = (int)($st->fetchColumn() ?: 0);
+  } catch (Throwable $e) {
+    $branchId = 0;
+  }
+}
+
+// Si no es admin y no tiene sucursal, fuera
+if (!$isAdmin && $branchId <= 0) { header("Location: /logout.php"); exit; }
+// Si es admin y aun así no hay sucursales, cortar
+if ($isAdmin && $branchId <= 0) { die("No hay sucursales configuradas."); }
+
+// Mantengo tu comportamiento (no lo quito), pero con branchId efectivo
 try { caja_get_or_open_current_session($pdo, $branchId, $userId); } catch (Throwable $e) {}
 
 /**
- * ✅ NUEVO: obtener TODAS las sesiones del día por:
- * branch_id + date_open + caja_num
- * (sin shift_start/end)
+ * ✅ obtener TODAS las sesiones del día por:
+ * branch_id + date_open + caja_num (sin shift_start/end)
  */
 function getSessionIds(PDO $pdo, int $branchId, string $date, int $cajaNum): array {
   try {
@@ -63,7 +89,8 @@ function getSessionIds(PDO $pdo, int $branchId, string $date, int $cajaNum): arr
 }
 
 /**
- * ✅ NUEVO: sumar movimientos de TODAS las sesiones encontradas
+ * ✅ sumar movimientos de TODAS las sesiones encontradas
+ * (tu tabla usa type = ingreso/desembolso, metodo_pago, amount)
  */
 function getTotalsBySessionIds(PDO $pdo, array $sessionIds): array {
   $base = ["efectivo"=>0,"tarjeta"=>0,"transferencia"=>0,"cobertura"=>0,"desembolso"=>0];
@@ -80,7 +107,7 @@ function getTotalsBySessionIds(PDO $pdo, array $sessionIds): array {
         COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='efectivo' THEN amount END),0) AS efectivo,
         COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='tarjeta' THEN amount END),0) AS tarjeta,
         COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='transferencia' THEN amount END),0) AS transferencia,
-        COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago IN ('cobertura','seguro','ars') THEN amount END),0) AS cobertura,
+        COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='cobertura' THEN amount END),0) AS cobertura,
         COALESCE(SUM(CASE WHEN type='desembolso' THEN amount END),0) AS desembolso
       FROM cash_movements
       WHERE session_id IN ($ph)
@@ -91,7 +118,7 @@ function getTotalsBySessionIds(PDO $pdo, array $sessionIds): array {
     $r = $base;
   }
 
-  // ✅ aquí incluyo cobertura dentro de ingresos (porque es ingreso)
+  // ingresos = efectivo + tarjeta + transferencia + cobertura
   $ing = (float)$r["efectivo"] + (float)$r["tarjeta"] + (float)$r["transferencia"] + (float)$r["cobertura"];
   $net = $ing - (float)$r["desembolso"];
 
@@ -108,6 +135,14 @@ $sum = [
   1 => ["r"=>$r1, "ing"=>$ing1, "net"=>$net1],
   2 => ["r"=>$r2, "ing"=>$ing2, "net"=>$net2],
 ];
+
+// (Opcional) nombre de sucursal (no cambia estilo, solo por si quieres mostrarlo)
+$branchName = "";
+try {
+  $st = $pdo->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
+  $st->execute([$branchId]);
+  $branchName = (string)($st->fetchColumn() ?: "");
+} catch (Throwable $e) {}
 ?>
 <!doctype html>
 <html lang="es">
@@ -205,11 +240,6 @@ $sum = [
     thead th{ font-weight: 900; }
     tbody tr:last-child td{ border-bottom:none; }
     .t-strong{ font-weight: 900; }
-
-    @media (max-height: 900px){
-      .header-card h1{ font-size: 30px; }
-      .actions .btn-pill{ padding: 9px 14px; }
-    }
   </style>
 </head>
 
@@ -246,6 +276,13 @@ $sum = [
 
       <div class="card-soft header-card">
         <h1>Caja</h1>
+
+        <?php if ($branchName !== ""): ?>
+          <div style="font-weight:800; opacity:.75; margin-top:-6px;">
+            Sucursal: <?= h($branchName) ?>
+          </div>
+        <?php endif; ?>
+
         <div class="actions">
           <a class="btn-pill" href="/private/caja/desembolso.php">Desembolso</a>
           <a class="btn-pill" href="/private/caja/reporte_diario.php">Reporte diario</a>
@@ -265,7 +302,7 @@ $sum = [
               <tr><td>Efectivo</td><td>RD$ <?= fmtMoney($sum[1]["r"]["efectivo"]) ?></td></tr>
               <tr><td>Tarjeta</td><td>RD$ <?= fmtMoney($sum[1]["r"]["tarjeta"]) ?></td></tr>
               <tr><td>Transferencia</td><td>RD$ <?= fmtMoney($sum[1]["r"]["transferencia"]) ?></td></tr>
-              <tr><td>Cobertura</td><td>RD$ <?= fmtMoney($sum[1]["r"]["cobertura"] ?? 0) ?></td></tr>
+              <tr><td>Cobertura</td><td>RD$ <?= fmtMoney($sum[1]["r"]["cobertura"]) ?></td></tr>
               <tr><td>Desembolsos</td><td>- RD$ <?= fmtMoney($sum[1]["r"]["desembolso"]) ?></td></tr>
               <tr><td class="t-strong">Total ingresos</td><td class="t-strong">RD$ <?= fmtMoney($sum[1]["ing"]) ?></td></tr>
               <tr><td class="t-strong">Neto</td><td class="t-strong">RD$ <?= fmtMoney($sum[1]["net"]) ?></td></tr>
@@ -283,7 +320,7 @@ $sum = [
               <tr><td>Efectivo</td><td>RD$ <?= fmtMoney($sum[2]["r"]["efectivo"]) ?></td></tr>
               <tr><td>Tarjeta</td><td>RD$ <?= fmtMoney($sum[2]["r"]["tarjeta"]) ?></td></tr>
               <tr><td>Transferencia</td><td>RD$ <?= fmtMoney($sum[2]["r"]["transferencia"]) ?></td></tr>
-              <tr><td>Cobertura</td><td>RD$ <?= fmtMoney($sum[2]["r"]["cobertura"] ?? 0) ?></td></tr>
+              <tr><td>Cobertura</td><td>RD$ <?= fmtMoney($sum[2]["r"]["cobertura"]) ?></td></tr>
               <tr><td>Desembolsos</td><td>- RD$ <?= fmtMoney($sum[2]["r"]["desembolso"]) ?></td></tr>
               <tr><td class="t-strong">Total ingresos</td><td class="t-strong">RD$ <?= fmtMoney($sum[2]["ing"]) ?></td></tr>
               <tr><td class="t-strong">Neto</td><td class="t-strong">RD$ <?= fmtMoney($sum[2]["net"]) ?></td></tr>
