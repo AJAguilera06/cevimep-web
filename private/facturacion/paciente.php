@@ -21,36 +21,24 @@ if ($patient_id <= 0) {
   exit;
 }
 
-/* Nombre sucursal */
-$branch_name = "";
-try {
-  $stB = $conn->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
-  $stB->execute([$branch_id]);
-  $branch_name = (string)($stB->fetchColumn() ?: "");
-} catch (Throwable $e) {}
-if ($branch_name === "") $branch_name = "Sede #".$branch_id;
-
-/* Paciente (solo de la sucursal) */
+/* Datos del paciente (en esta sucursal) */
 $stP = $conn->prepare("
-  SELECT p.id, p.branch_id, TRIM(CONCAT(p.first_name,' ',p.last_name)) AS full_name
-  FROM patients p
-  WHERE p.id=? AND p.branch_id=?
+  SELECT id, full_name
+  FROM patients
+  WHERE branch_id = ? AND id = ?
   LIMIT 1
 ");
-$stP->execute([$patient_id, $branch_id]);
+$stP->execute([$branch_id, $patient_id]);
 $patient = $stP->fetch(PDO::FETCH_ASSOC);
 
 if (!$patient) {
-  http_response_code(404);
-  die("Paciente no encontrado en esta sucursal.");
+  $_SESSION["flash_error"] = "Paciente no encontrado en esta sucursal.";
+  header("Location: /private/facturacion/index.php");
+  exit;
 }
 
-/* =========================
-   PAGINACIÓN + RESUMEN
-   ========================= */
-$per_page = 20;
-$page = max(1, (int)($_GET["page"] ?? 1));
-$offset = ($page - 1) * $per_page;
+/* Nombre sucursal */
+$branch_name = (string)($user["branch_name"] ?? "Sucursal");
 
 /* Total facturas + monto total (global) */
 $stSum = $conn->prepare("
@@ -64,16 +52,12 @@ $sumRow = $stSum->fetch(PDO::FETCH_ASSOC);
 $total_invoices = (int)($sumRow["c"] ?? 0);
 $total_amount   = (float)($sumRow["s"] ?? 0);
 
-$total_pages = max(1, (int)ceil($total_invoices / $per_page));
-if ($page > $total_pages) $page = $total_pages;
-
-/* Facturas (página actual) */
+/* Facturas (todas) */
 $stI = $conn->prepare("
   SELECT id, invoice_date, payment_method, total, created_at
   FROM invoices
   WHERE branch_id = ? AND patient_id = ?
   ORDER BY id DESC
-  LIMIT $per_page OFFSET $offset
 ");
 $stI->execute([$branch_id, $patient_id]);
 $invoices = $stI->fetchAll(PDO::FETCH_ASSOC);
@@ -91,9 +75,8 @@ unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
   <title>CEVIMEP | Facturación - Paciente</title>
 
   <!-- Dashboard base -->
-  <link rel="stylesheet" href="/assets/css/styles.css?v=60">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=<?= time() ?>">
 
-  <!-- Estilos finos SOLO para esta pantalla -->
   <style>
     /* Layout general de esta pantalla */
     .fact-page{
@@ -145,85 +128,102 @@ unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
       white-space: nowrap;
     }
     .btn-ui:hover{ filter: brightness(.98); transform: translateY(-1px); box-shadow: 0 10px 22px rgba(0,0,0,.08); }
-    .btn-ui:active{ transform: translateY(0); box-shadow: none; }
+    .btn-ui:active{ transform: translateY(0); box-shadow:none; }
 
-    .btn-primary-ui{ background:#0b4d87; color:#fff; }
-    .btn-secondary-ui{ background:#eef2f6; color:#2b3b4a; }
+    .btn-primary-ui{
+      background: #0b4d87;
+      color:#fff;
+    }
+    .btn-ghost-ui{
+      background:#fff;
+      color:#0b4d87;
+      border:1px solid rgba(2,21,44,.12);
+    }
 
-    /* fila info paciente */
+    .flash-ok, .flash-err{
+      margin: 10px 0 14px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      font-weight: 900;
+      font-size: 13px;
+    }
+    .flash-ok{ background:#e8fff1; color:#0a7a3a; border:1px solid rgba(10,122,58,.15); }
+    .flash-err{ background:#fff0f0; color:#b42318; border:1px solid rgba(180,35,24,.16); }
+
     .fact-meta{
       display:flex;
-      align-items:center;
+      align-items:flex-start;
       justify-content:space-between;
       gap: 12px;
       flex-wrap:wrap;
-      margin-bottom: 14px;
-    }
-
-    .fact-patient{
-      display:flex;
-      flex-direction:column;
-      gap:4px;
-      min-width: 260px;
+      margin-bottom: 12px;
     }
     .fact-patient .name{
+      font-size: 18px;
       font-weight: 950;
-      font-size: 16px;
-      letter-spacing: -.2px;
+      margin-bottom: 4px;
     }
     .fact-patient .branch{
-      opacity: .8;
-      font-weight: 850;
       font-size: 13px;
+      opacity:.75;
+      font-weight: 900;
     }
 
     .chips{
       display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      align-items:center;
-    }
-    .chip{
-      background:#f3f6fb;
-      border:1px solid rgba(2,21,44,.10);
-      padding: 8px 10px;
-      border-radius: 999px;
-      font-weight: 900;
-      font-size: 12px;
-      white-space: nowrap;
-    }
-    .chip strong{ font-weight: 950; }
-
-    /* Card tabla */
-    .table-card{
-      background:#fff;
-      border-radius:18px;
-      box-shadow:0 12px 30px rgba(0,0,0,.08);
-      padding:14px;
-    }
-    .table-card .card-head{
-      display:flex;
-      justify-content:space-between;
-      align-items:flex-end;
       gap: 10px;
       flex-wrap:wrap;
-      margin-bottom: 10px;
+      align-items:center;
+      justify-content:flex-end;
     }
-    .table-card h3{
-      margin:0;
+    .chip{
+      background:#fff;
+      border:1px solid rgba(2,21,44,.10);
+      border-radius: 999px;
+      padding: 8px 12px;
       font-weight: 950;
+      font-size: 13px;
+      box-shadow: 0 6px 18px rgba(0,0,0,.04);
+      white-space: nowrap;
     }
 
-    /* Wrapper tabla: NO se rompe con muchas facturas */
+    .table-card{
+      background:#fff;
+      border-radius: 18px;
+      border:1px solid rgba(2,21,44,.10);
+      box-shadow: 0 10px 30px rgba(0,0,0,.06);
+      overflow:hidden;
+    }
+    .card-head{
+      padding: 14px 16px;
+      border-bottom:1px solid rgba(2,21,44,.08);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .card-head h3{
+      margin:0;
+      font-weight: 950;
+      font-size: 16px;
+    }
+
+    /* ✅ AQUÍ el fix: solo ~5 filas visibles, luego scroll */
     .table-wrap{
       width:100%;
       overflow-x:auto;
       overflow-y:auto;
-      max-height: 520px;
+      max-height: 330px; /* ~5 filas aprox */
       border-radius: 14px;
       border:1px solid rgba(2,21,44,.06);
       -webkit-overflow-scrolling: touch;
     }
+
+    /* Scroll bonito */
+    .table-wrap::-webkit-scrollbar{ width: 8px; height: 8px; }
+    .table-wrap::-webkit-scrollbar-track{ background: #f1f5f9; border-radius: 999px; }
+    .table-wrap::-webkit-scrollbar-thumb{ background: rgba(11,77,135,.55); border-radius: 999px; }
+    .table-wrap::-webkit-scrollbar-thumb:hover{ background: rgba(11,77,135,.8); }
 
     table{ width:100%; border-collapse:separate; border-spacing:0; min-width: 820px; }
     th, td{ padding:12px 10px; border-bottom:1px solid #eef2f6; font-size:13px; }
@@ -247,80 +247,28 @@ unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
       color:#0b4d87;
       border:1px solid rgba(2,21,44,.12);
       text-decoration:none;
+      transition: transform .12s ease, filter .15s ease;
       white-space: nowrap;
     }
+    .pill:hover{ filter: brightness(.98); transform: translateY(-1px); }
+    .muted{ color: rgba(2,21,44,.60); font-weight: 800; text-align:center; padding: 18px 10px; }
 
-    /* Paginación */
-    .pagination{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      flex-wrap:wrap;
-      margin-top:12px;
-    }
-    .pg-btn{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      padding:9px 12px;
-      border-radius:12px;
-      font-weight:900;
-      text-decoration:none;
-      border:1px solid rgba(2,21,44,.12);
-      background:#eef6ff;
-      color:#0b4d87;
-      transition: filter .15s ease, transform .12s ease;
-    }
-    .pg-btn:hover{ filter: brightness(.98); transform: translateY(-1px); }
-    .pg-btn:active{ transform: translateY(0); }
-    .pg-btn.disabled{ pointer-events:none; opacity:.5; transform:none; }
-    .pg-info{ font-weight:900; opacity:.85; }
-
-    /* Flash */
-    .flash-ok{ background:#e9fff1; border:1px solid #a7f0bf; color:#0a7a33; border-radius:12px; padding:10px 12px; font-size:13px; margin:12px 0 0; font-weight:800; }
-    .flash-err{ background:#ffecec; border:1px solid #ffb6b6; color:#a40000; border-radius:12px; padding:10px 12px; font-size:13px; margin:12px 0 0; font-weight:800; }
-
-    /* Responsive */
-    @media (max-width: 980px){
+    @media (max-width: 560px){
       .fact-title h1{ font-size: 28px; }
-      table{ min-width: 740px; }
+      .table-wrap{ max-height: 320px; }
+      table{ min-width: 720px; }
     }
   </style>
 </head>
 
 <body>
 
-<!-- NAVBAR (igual al dashboard) -->
-<div class="navbar">
-  <div class="inner">
-    <div class="brand">
-      <span class="dot"></span>
-      <strong>CEVIMEP</strong>
-    </div>
-    <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
-    </div>
-  </div>
-</div>
+<div class="app">
+  <?php include __DIR__ . "/../_sidebar.php"; ?>
 
-<div class="layout">
+  <main class="main">
+    <?php include __DIR__ . "/../_topbar.php"; ?>
 
-  <!-- SIDEBAR (igual al dashboard) -->
-  <aside class="sidebar">
-    <h3 class="menu-title">Menú</h3>
-    <nav class="menu">
-      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a href="/private/patients/index.php"><span class="ico">👤</span> Pacientes</a>
-      <a href="/private/citas/index.php"><span class="ico">📅</span> Citas</a>
-      <a class="active" href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
-      <a href="/private/caja/index.php"><span class="ico">💳</span> Caja</a>
-      <a href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="/private/estadisticas/index.php"><span class="ico">📊</span> Estadísticas</a>
-    </nav>
-  </aside>
-
-  <main class="content">
     <div class="fact-page">
 
       <div class="fact-header">
@@ -330,7 +278,7 @@ unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
         </div>
 
         <div class="fact-actions">
-          <a class="btn-ui btn-secondary-ui" href="/private/facturacion/index.php">← Volver</a>
+          <a class="btn-ui btn-ghost-ui" href="/private/facturacion/index.php">← Volver</a>
           <a class="btn-ui btn-primary-ui" href="/private/facturacion/nueva.php?patient_id=<?= (int)$patient_id ?>">➕ Nueva factura</a>
         </div>
       </div>
@@ -386,20 +334,6 @@ unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
             </tbody>
           </table>
         </div>
-
-        <?php if ($total_pages > 1): ?>
-          <?php
-            $base = "/private/facturacion/paciente.php?patient_id=".(int)$patient_id;
-            $prev = max(1, $page - 1);
-            $next = min($total_pages, $page + 1);
-          ?>
-          <div class="pagination">
-            <a class="pg-btn <?= $page <= 1 ? "disabled" : "" ?>" href="<?= $base ?>&page=<?= (int)$prev ?>">← Anterior</a>
-            <div class="pg-info">Página <strong><?= (int)$page ?></strong> de <strong><?= (int)$total_pages ?></strong></div>
-            <a class="pg-btn <?= $page >= $total_pages ? "disabled" : "" ?>" href="<?= $base ?>&page=<?= (int)$next ?>">Siguiente →</a>
-          </div>
-        <?php endif; ?>
-
       </div>
 
     </div>
