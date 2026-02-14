@@ -1,334 +1,169 @@
 <?php
 declare(strict_types=1);
 
-// Zona horaria RD (GMT-4)
+// Zona horaria RD
 date_default_timezone_set('America/Santo_Domingo');
 
 require_once __DIR__ . '/../_guard.php';
-require_once __DIR__ . '/caja_helpers.php'; // ✅ tu helper nuevo
-
-// --- Detectar conexión (mysqli o PDO) ---
-$mysqli = null;
-$pdo = null;
-
-// si en _guard.php tienes $conn (mysqli)
-if (isset($conn) && $conn instanceof mysqli) {
-  $mysqli = $conn;
-}
-
-// si en _guard.php tienes $pdo o $db (PDO)
-if (isset($pdo) && $pdo instanceof PDO) {
-  // ok
-} elseif (isset($db) && $db instanceof PDO) {
-  $pdo = $db;
-}
+require_once __DIR__ . '/caja_helpers.php';
 
 $hoy = date('Y-m-d');
-$horaActual24 = date('H:i');     // para input type="time"
-$horaActual12 = date('g:i A');   // por si lo quieres mostrar
+$horaActual24 = date('H:i');
 
 $mensaje = '';
 $tipo_mensaje = 'info';
 
-// Branch ID y User ID
-try {
-  $branch_id = caja_require_branch_id();
-} catch (Throwable $e) {
-  $branch_id = 0;
-  $mensaje = "⚠️ " . $e->getMessage();
-  $tipo_mensaje = "warning";
-}
-
-$created_by = (int)($_SESSION['user']['id'] ?? ($_SESSION['user_id'] ?? 0));
-
-// --- Obtener/crear caja_sesion_id (soporta mysqli; si solo hay PDO, lo resolvemos aquí mismo) ---
-function caja_get_or_create_session_id_pdo(PDO $pdo, int $branch_id): int {
-  if ($branch_id <= 0) return 0;
-
-  date_default_timezone_set('America/Santo_Domingo');
-  $fecha = date('Y-m-d');
-  $hora  = date('H:i:s');
-
-  if ($hora >= '07:00:00' && $hora <= '12:59:59') {
-    $caja_num = 1;
-    $inicio = '07:00:00';
-    $fin    = '12:59:59';
-  } else {
-    $caja_num = 2;
-    $inicio = '13:00:00';
-    $fin    = '23:59:59';
-  }
-
-  // Buscar sesión abierta
-  $sql = "SELECT id FROM caja_sesiones
-          WHERE branch_id = :branch_id
-            AND caja_num  = :caja_num
-            AND fecha     = :fecha
-            AND estado    = 'abierta'
-          LIMIT 1";
-  $st = $pdo->prepare($sql);
-  $st->execute([
-    ':branch_id' => $branch_id,
-    ':caja_num'  => $caja_num,
-    ':fecha'     => $fecha,
-  ]);
-  $id = $st->fetchColumn();
-  if ($id !== false) return (int)$id;
-
-  // Crear sesión (si ya existe por carrera, el UNIQUE lo bloquea; entonces volvemos a buscar)
-  try {
-    $ins = "INSERT INTO caja_sesiones (branch_id, caja_num, fecha, hora_inicio, hora_fin, estado)
-            VALUES (:branch_id, :caja_num, :fecha, :inicio, :fin, 'abierta')";
-    $st2 = $pdo->prepare($ins);
-    $st2->execute([
-      ':branch_id' => $branch_id,
-      ':caja_num'  => $caja_num,
-      ':fecha'     => $fecha,
-      ':inicio'    => $inicio,
-      ':fin'       => $fin,
-    ]);
-    return (int)$pdo->lastInsertId();
-  } catch (Throwable $e) {
-    // buscar otra vez
-    $st->execute([
-      ':branch_id' => $branch_id,
-      ':caja_num'  => $caja_num,
-      ':fecha'     => $fecha,
-    ]);
-    $id2 = $st->fetchColumn();
-    return $id2 !== false ? (int)$id2 : 0;
-  }
-}
-
-function get_caja_sesion_id($mysqli, $pdo, int $branch_id): int {
-  try {
-    if ($mysqli instanceof mysqli && function_exists('caja_get_or_create_session_id')) {
-      return caja_get_or_create_session_id($mysqli, $branch_id); // ✅ usa tu helper
-    }
-  } catch (Throwable $e) {}
-
-  try {
-    if ($pdo instanceof PDO) {
-      return caja_get_or_create_session_id_pdo($pdo, $branch_id);
-    }
-  } catch (Throwable $e) {}
-
-  return 0;
-}
+// Obtener branch_id
+$branch_id = caja_require_branch_id();
+$created_by = (int)($_SESSION['user']['id'] ?? 0);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-  $monto_in = (float)($_POST['monto'] ?? 0);
-  $motivo   = trim((string)($_POST['motivo'] ?? ''));
-  $hechoPor = trim((string)($_POST['hecho_por'] ?? ''));
 
-  if ($branch_id <= 0) {
-    $mensaje = "⚠️ No se encontró la sucursal (branch_id).";
-    $tipo_mensaje = "warning";
-  } else {
-    $caja_sesion_id = get_caja_sesion_id($mysqli, $pdo, $branch_id);
+    $monto_in = (float)($_POST['monto'] ?? 0);
+    $motivo   = trim((string)($_POST['motivo'] ?? ''));
+    $hechoPor = trim((string)($_POST['hecho_por'] ?? ''));
 
-    if ($caja_sesion_id <= 0) {
-      $mensaje = "⚠️ No se encontró/creó una sesión de caja válida (caja_sesion_id).";
-      $tipo_mensaje = "warning";
+    if ($branch_id <= 0) {
+        $mensaje = "⚠️ No se encontró la sucursal (branch_id).";
+        $tipo_mensaje = "warning";
+
     } elseif (!($monto_in > 0) || $motivo === '') {
-      $mensaje = "⚠️ Completa Motivo y Monto (mayor a 0).";
-      $tipo_mensaje = "warning";
+        $mensaje = "⚠️ Completa Motivo y Monto (mayor a 0).";
+        $tipo_mensaje = "warning";
+
     } else {
-      try {
-        // En BD: desembolso NEGATIVO
-        $amount = -abs($monto_in);
 
-        // Guardar "Hecho por" dentro del motivo (como tú querías)
-        $motivo_db = $hechoPor !== '' ? ("Hecho por: {$hechoPor} | {$motivo}") : $motivo;
+        // 🔥 Crear / obtener sesión automática
+        $caja_sesion_id = caja_get_or_create_session_id($pdo, $branch_id);
 
-        if ($mysqli instanceof mysqli) {
-          $sql = "INSERT INTO cash_movements
-                    (branch_id, caja_sesion_id, type, motivo, metodo_pago, amount, created_by)
-                  VALUES
-                    (?, ?, 'desembolso', ?, 'efectivo', ?, ?)";
-          $st = $mysqli->prepare($sql);
-          $st->bind_param("iisdi", $branch_id, $caja_sesion_id, $motivo_db, $amount, $created_by);
-          $st->execute();
-          $id = (int)$mysqli->insert_id;
-        } elseif ($pdo instanceof PDO) {
-          $sql = "INSERT INTO cash_movements
-                    (branch_id, caja_sesion_id, type, motivo, metodo_pago, amount, created_by)
-                  VALUES
-                    (:branch_id, :caja_sesion_id, 'desembolso', :motivo, 'efectivo', :amount, :created_by)";
-          $st = $pdo->prepare($sql);
-          $st->execute([
-            ':branch_id' => $branch_id,
-            ':caja_sesion_id' => $caja_sesion_id,
-            ':motivo' => $motivo_db,
-            ':amount' => $amount,
-            ':created_by' => $created_by,
-          ]);
-          $id = (int)$pdo->lastInsertId();
+        if ($caja_sesion_id <= 0) {
+            $mensaje = "⚠️ No se encontró/creó una sesión de caja válida (caja_sesion_id).";
+            $tipo_mensaje = "warning";
         } else {
-          throw new Exception("No hay conexión a BD disponible (mysqli/PDO).");
-        }
 
-        header("Location: /private/caja/desembolso.php?ok=1&print_id={$id}");
-        exit;
-      } catch (Throwable $e) {
-        $mensaje = "❌ Error al guardar el desembolso: " . $e->getMessage();
-        $tipo_mensaje = "error";
-      }
+            try {
+
+                $amount = -abs($monto_in); // desembolso negativo
+
+                $motivo_db = $hechoPor !== ''
+                    ? "Hecho por: {$hechoPor} | {$motivo}"
+                    : $motivo;
+
+                $sql = "INSERT INTO cash_movements
+                        (branch_id, caja_sesion_id, type, motivo, metodo_pago, amount, created_by)
+                        VALUES
+                        (:branch_id, :caja_sesion_id, 'desembolso', :motivo, 'efectivo', :amount, :created_by)";
+
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([
+                    ':branch_id' => $branch_id,
+                    ':caja_sesion_id' => $caja_sesion_id,
+                    ':motivo' => $motivo_db,
+                    ':amount' => $amount,
+                    ':created_by' => $created_by,
+                ]);
+
+                $id = (int)$pdo->lastInsertId();
+
+                header("Location: /private/caja/desembolso.php?ok=1&print_id={$id}");
+                exit;
+
+            } catch (Throwable $e) {
+                $mensaje = "❌ Error al guardar el desembolso: " . $e->getMessage();
+                $tipo_mensaje = "error";
+            }
+        }
     }
-  }
 }
 
 $print_id = isset($_GET['print_id']) ? (int)$_GET['print_id'] : 0;
 $ok = isset($_GET['ok']) ? (int)$_GET['ok'] : 0;
+
 if ($ok === 1 && $print_id > 0) {
-  $mensaje = "✅ Desembolso registrado. Abriendo acuse para imprimir…";
-  $tipo_mensaje = "success";
+    $mensaje = "✅ Desembolso registrado. Abriendo acuse para imprimir…";
+    $tipo_mensaje = "success";
 }
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Caja | Registrar Desembolso</title>
-  <link rel="stylesheet" href="/assets/css/styles.css?v=100">
-  <style>
-    .page-wrap{max-width: 980px; margin: 0 auto;}
-    .page-head{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom: 10px;}
-    .page-head h1{margin:0; font-size: 40px; line-height: 1.1;}
-    .subhead{margin:6px 0 0 0; opacity:.85}
-    .card-soft{background:#fff; border-radius: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.08); padding: 18px;}
-    .grid-2{display:grid; grid-template-columns: 1fr 1fr; gap:14px;}
-    .grid-1{display:grid; grid-template-columns: 1fr; gap:14px;}
-    label{display:block; font-weight:700; margin-bottom:6px;}
-    input, textarea{width:100%; padding: 12px 12px; border:1px solid #d9d9d9; border-radius: 12px; outline:none;}
-    input[readonly]{background:#f7f7f7;}
-    textarea{resize: vertical;}
-    .btn-row{display:flex; justify-content:flex-end; gap:10px; margin-top: 6px;}
-
-    .btn-strong{
-      display:inline-flex; align-items:center; gap:8px;
-      padding: 10px 14px; border-radius: 999px;
-      background: #0b5ed7; color:#fff !important;
-      border: 1px solid rgba(0,0,0,.12);
-      font-weight: 800; text-decoration:none;
-      box-shadow: 0 8px 18px rgba(11,94,215,.18);
-    }
-    .btn-strong:hover{filter: brightness(0.96);}
-    .btn-ghost{
-      display:inline-flex; align-items:center; gap:8px;
-      padding: 10px 14px; border-radius: 999px;
-      background:#fff; color:#0b5ed7 !important;
-      border: 2px solid rgba(11,94,215,.35);
-      font-weight: 800; text-decoration:none;
-    }
-    .btn-ghost:hover{background: rgba(11,94,215,.06);}
-
-    .hint{font-size:12px; opacity:.75; margin-top:6px;}
-    .alertbox{border-radius:14px; padding:12px 14px; margin: 12px 0; white-space:pre-wrap;}
-    .alertbox.success{background:#eaf8ef; border:1px solid #bfe7c9;}
-    .alertbox.warning{background:#fff6df; border:1px solid #f0d08a;}
-    .alertbox.error{background:#ffe9e9; border:1px solid #f3b2b2;}
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Caja | Registrar Desembolso</title>
+<link rel="stylesheet" href="/assets/css/styles.css?v=100">
+<style>
+.page-wrap{max-width:980px;margin:0 auto;}
+.card-soft{background:#fff;border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.08);padding:18px;}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.grid-1{display:grid;grid-template-columns:1fr;gap:14px;}
+label{font-weight:700;margin-bottom:6px;display:block;}
+input,textarea{width:100%;padding:12px;border:1px solid #d9d9d9;border-radius:12px;}
+textarea{resize:vertical;}
+.btn-row{display:flex;justify-content:flex-end;margin-top:10px;}
+.btn-strong{padding:10px 18px;border-radius:999px;background:#0b5ed7;color:#fff;font-weight:800;border:none;}
+.alertbox{border-radius:14px;padding:12px;margin:12px 0;}
+.alertbox.success{background:#eaf8ef;}
+.alertbox.warning{background:#fff6df;}
+.alertbox.error{background:#ffe9e9;}
+</style>
 </head>
 <body>
 
-<header class="navbar">
-  <div class="inner">
-    <div class="brand">
-      <span class="dot"></span>
-      <span>CEVIMEP</span>
-    </div>
-    <div class="nav-right">
-      <a href="/logout.php" class="btn-pill">Salir</a>
-    </div>
-  </div>
-</header>
+<div class="page-wrap">
 
-<div class="layout">
-  <aside class="sidebar">
-    <div class="menu-title">Menú</div>
-    <nav class="menu">
-      <a href="/private/dashboard.php">🏠 Panel</a>
-      <a href="/private/patients/index.php">👤 Pacientes</a>
-      <a href="/private/citas/index.php">📅 Citas</a>
-      <a href="/private/facturacion/index.php">🧾 Facturación</a>
-      <a class="active" href="/private/caja/index.php">💳 Caja</a>
-      <a href="/private/inventario/index.php">📦 Inventario</a>
-      <a href="/private/estadistica/index.php">📊 Estadísticas</a>
-    </nav>
-  </aside>
+<h1>💸 Registrar Desembolso</h1>
 
-  <main class="content">
-    <div class="page-wrap">
+<?php if ($mensaje): ?>
+<div class="alertbox <?= htmlspecialchars($tipo_mensaje) ?>">
+<?= htmlspecialchars($mensaje) ?>
+</div>
+<?php endif; ?>
 
-      <div class="page-head">
-        <div>
-          <h1>💸 Registrar Desembolso</h1>
-          <p class="subhead">Registra un desembolso y genera el acuse para imprimir.</p>
-        </div>
-        <a href="/private/caja/historial_desembolso.php" class="btn-ghost">📄 Ver historial</a>
-      </div>
+<div class="card-soft">
+<form method="POST" class="grid-1">
 
-      <?php if ($mensaje): ?>
-        <div class="alertbox <?= htmlspecialchars($tipo_mensaje) ?>">
-          <?= htmlspecialchars($mensaje) ?>
-        </div>
-      <?php endif; ?>
-
-      <div class="card-soft">
-        <form method="POST" class="grid-1">
-
-          <div class="grid-2">
-            <div>
-              <label>Fecha</label>
-              <input type="date" name="fecha" value="<?= htmlspecialchars($hoy) ?>" readonly>
-            </div>
-            <div>
-              <label>Hora (GMT-4)</label>
-              <!-- input time muestra 24h, pero tu sistema trabaja seguro así; si quieres AM/PM lo cambio a text -->
-              <input type="time" name="hora" value="<?= htmlspecialchars($horaActual24) ?>" readonly>
-            </div>
-          </div>
-
-          <div class="grid-2">
-            <div>
-              <label>Monto (RD$)</label>
-              <input type="number" name="monto" step="0.01" min="0" required placeholder="Ej: 1500.00">
-            </div>
-            <div>
-              <label>Hecho por</label>
-              <input type="text" name="hecho_por" placeholder="Ej: Claudia Peña / Caja Santiago">
-              <div class="hint">Este texto se imprime en el acuse (se guarda dentro del motivo).</div>
-            </div>
-          </div>
-
-          <div>
-            <label>Motivo</label>
-            <textarea name="motivo" rows="3" required placeholder="Ej: Pago suplidor, combustible, mensajería..."></textarea>
-          </div>
-
-          <div class="btn-row">
-            <button type="submit" class="btn-strong">🖨️ Guardar e Imprimir</button>
-          </div>
-
-        </form>
-      </div>
-
-    </div>
-  </main>
+<div class="grid-2">
+<div>
+<label>Fecha</label>
+<input type="date" value="<?= htmlspecialchars($hoy) ?>" readonly>
+</div>
+<div>
+<label>Hora (GMT-4)</label>
+<input type="time" value="<?= htmlspecialchars($horaActual24) ?>" readonly>
+</div>
 </div>
 
-<footer class="footer">
-  © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
-</footer>
+<div class="grid-2">
+<div>
+<label>Monto (RD$)</label>
+<input type="number" name="monto" step="0.01" min="0" required>
+</div>
+<div>
+<label>Hecho por</label>
+<input type="text" name="hecho_por">
+</div>
+</div>
+
+<div>
+<label>Motivo</label>
+<textarea name="motivo" rows="3" required></textarea>
+</div>
+
+<div class="btn-row">
+<button type="submit" class="btn-strong">🖨️ Guardar e Imprimir</button>
+</div>
+
+</form>
+</div>
+
+</div>
 
 <?php if ($print_id > 0): ?>
 <script>
-  window.open("/private/caja/acuse_desembolso.php?id=<?= (int)$print_id ?>", "_blank");
-  if (window.history && window.history.replaceState) {
-    window.history.replaceState({}, document.title, "/private/caja/desembolso.php");
-  }
+window.open("/private/caja/acuse_desembolso.php?id=<?= (int)$print_id ?>","_blank");
+if (window.history && window.history.replaceState) {
+window.history.replaceState({}, document.title, "/private/caja/desembolso.php");
+}
 </script>
 <?php endif; ?>
 
