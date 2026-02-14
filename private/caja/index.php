@@ -15,7 +15,8 @@ function fmtMoney($n){ return number_format((float)$n, 2, ".", ","); }
 
 // Fecha (preferible MySQL)
 try {
-  $today = (string)$pdo->query("SELECT CURDATE()")->fetchColumn();
+  date_default_timezone_set("America/Santo_Domingo");
+$today = date("Y-m-d");
   if ($today === "") $today = date("Y-m-d");
 } catch (Throwable $e) {
   $today = date("Y-m-d");
