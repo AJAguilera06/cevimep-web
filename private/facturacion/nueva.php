@@ -9,16 +9,6 @@ if (file_exists($maybeCajaLib)) {
   require_once $maybeCajaLib;
 }
 
-if (session_status() !== PHP_SESSION_ACTIVE) {
-  session_start();
-}
-
-// Evitar cache del navegador/proxy y minimizar que PHP sirva una versión vieja
-header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-header('Pragma: no-cache');
-header('Expires: 0');
-if (function_exists('opcache_invalidate')) { @opcache_invalidate(__FILE__, true); }
-
 $conn = $pdo;
 
 function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8"); }
@@ -34,10 +24,26 @@ function columnExists(PDO $pdo, string $table, string $column): bool {
 }
 
 function tableExists(PDO $pdo, string $table): bool {
+  // En algunos hostings (Railway / MySQL administrado) SHOW TABLES puede estar limitado.
+  // Usamos INFORMATION_SCHEMA (más confiable) y dejamos SHOW TABLES como fallback.
   try {
-    $st = $pdo->prepare("SHOW TABLES LIKE ?");
+    $st = $pdo->prepare("
+      SELECT 1
+      FROM information_schema.tables
+      WHERE table_schema = DATABASE()
+        AND table_name = ?
+      LIMIT 1
+    ");
     $st->execute([$table]);
-    return (bool)$st->fetchColumn();
+    if ($st->fetchColumn()) return true;
+  } catch (Throwable $e) {
+    // seguimos al fallback
+  }
+
+  try {
+    $st2 = $pdo->prepare("SHOW TABLES LIKE ?");
+    $st2->execute([$table]);
+    return (bool)$st2->fetchColumn();
   } catch (Throwable $e) {
     return false;
   }
@@ -63,24 +69,29 @@ function number0($v): float {
   return (float)$s;
 }
 
-/* ===============================
+/* =========================
    Sesión / contexto
-   =============================== */
+   ========================= */
+if (session_status() !== PHP_SESSION_ACTIVE) {
+  session_start();
+}
+
 $user = $_SESSION["user"] ?? [];
 $branch_id = (int)($user["branch_id"] ?? 0);
 
 $patient_id = isset($_GET["patient_id"]) ? (int)$_GET["patient_id"] : 0;
 $patient_name = "";
+
 $today = date("Y-m-d");
-$year = date("Y");
+$year  = date("Y");
 
 $err = "";
-$ok = "";
+$ok  = "";
 $last_invoice_id = null;
 
-/* ===============================
-   Paciente
-   =============================== */
+/* =========================
+   Cargar paciente
+   ========================= */
 try {
   if ($patient_id > 0 && tableExists($conn, "patients")) {
     $stP = $conn->prepare("SELECT name FROM patients WHERE id=? LIMIT 1");
@@ -89,10 +100,11 @@ try {
   }
 } catch (Throwable $e) {}
 
-/* ===============================
-   Detectar columnas de inventory_items para listado
-   =============================== */
+/* =========================
+   Cargar items para el select
+   ========================= */
 $items_all = [];
+$cats = [];
 $stockTable = null;
 $stockItemCol = null;
 $stockBranchCol = null;
@@ -115,7 +127,7 @@ try {
     if (in_array("is_active", $itemCols, true)) $colActive = "is_active";
     if (in_array("branch_id", $itemCols, true)) $colBranchItems = "branch_id";
 
-    // stock candidates
+    // Detectar tabla de stock si existe
     $stockCandidates = ["inventory_stock", "inventory_branch_stock", "inventario_stock", "stock"];
     foreach ($stockCandidates as $t) {
       if (tableExists($conn, $t)) {
@@ -130,10 +142,11 @@ try {
       }
     }
 
-    // cargar items para el select (solo activos y de la sucursal si aplica)
+    // cargar items (solo activos y de la sucursal si aplica)
     $sql = "SELECT $colItemId AS id, $colName AS name, $colCat AS category_id, $colPrice AS sale_price FROM inventory_items";
     $where = [];
     $params = [];
+
     if ($colActive !== null) { $where[] = "$colActive=1"; }
     if ($colBranchItems !== null) { $where[] = "$colBranchItems=?"; $params[] = $branch_id; }
     if ($where) $sql .= " WHERE " . implode(" AND ", $where);
@@ -143,11 +156,16 @@ try {
     $st->execute($params);
     $items_all = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
   }
+
+  if (tableExists($conn, "inventory_categories")) {
+    $stC = $conn->query("SELECT id, name FROM inventory_categories ORDER BY name ASC");
+    $cats = $stC ? $stC->fetchAll(PDO::FETCH_ASSOC) : [];
+  }
 } catch (Throwable $e) {}
 
-/* ===============================
+/* =========================
    POST: guardar factura
-   =============================== */
+   ========================= */
 if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_invoice") {
   try {
     if ($patient_id <= 0) throw new Exception("Paciente inválido.");
@@ -231,13 +249,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     $conn->beginTransaction();
 
     /* INSERT CABECERA invoices */
-    $motivo = isset($_POST["motivo"]) ? trim((string)$_POST["motivo"]) : "";
     $notes  = isset($_POST["notes"]) ? trim((string)$_POST["notes"]) : null;
     if ($notes === "") $notes = null;
 
     $invCols2 = tableColumns($conn, "invoices");
     $hasBranch  = in_array("branch_id", $invCols2, true);
-    $hasMotivo  = in_array("motivo", $invCols2, true);
     $hasRep     = in_array("representative", $invCols2, true);
     $hasCov     = in_array("coverage_amount", $invCols2, true);
     $hasCash    = in_array("cash_received", $invCols2, true);
@@ -265,7 +281,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     if ($hasNotes)  { $fields[]="notes"; $vals[]=$notes; }
     if ($hasCreated){ $fields[]="created_by"; $vals[]=(int)($user["id"] ?? 0); }
     if ($hasRep)    { $fields[]="representative"; $vals[]=$representative; }
-    if ($hasMotivo) { $fields[]="motivo"; $vals[]=$motivo; }
 
     $place = implode(",", array_fill(0, count($fields), "?"));
     $sqlInv = "INSERT INTO invoices (" . implode(",", $fields) . ") VALUES ($place)";
@@ -305,108 +320,67 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     }
 
     /* ===============================
-       DESCONTAR INVENTARIO (POR SUCURSAL)
-       - Actualiza inventory_stock (tabla real)
-       - (Opcional) actualiza branch_items si existe (pantallas antiguas)
-       - Registra salida en inventory_movements (si existe)
+       INVENTARIO: descuento (si existe tabla)
        =============================== */
+    $hasInvStock = tableExists($conn, "inventory_stock");
+    $hasInvMov   = tableExists($conn, "inventory_movements");
+    $hasBranchItems = tableExists($conn, "branch_items");
 
-    $stHasStockRow = $conn->prepare("
-      SELECT quantity
-      FROM inventory_stock
-      WHERE branch_id = ?
-        AND item_id = ?
-      LIMIT 1
-    ");
-
-    $stUpdStock = $conn->prepare("
-      UPDATE inventory_stock
-      SET quantity = quantity - ?
-      WHERE branch_id = ?
-        AND item_id = ?
-        AND quantity >= ?
-    ");
-
-    $stInvMov = null;
-    if (tableExists($conn, "inventory_movements")) {
-      $stInvMov = $conn->prepare("
-        INSERT INTO inventory_movements
-          (item_id, branch_id, movement_type, qty, note, created_by)
-        VALUES
-          (?, ?, 'OUT', ?, ?, ?)
+    if ($hasInvStock) {
+      $stUpdStock = $conn->prepare("
+        UPDATE inventory_stock
+        SET quantity = quantity - ?
+        WHERE branch_id = ?
+          AND item_id = ?
+          AND quantity >= ?
       ");
-    }
 
-    $stUpdBranchItems = null;
-    if (tableExists($conn, "branch_items")) {
-      $branchCols = tableColumns($conn, "branch_items");
-      if (in_array("quantity", $branchCols, true)) {
-        $stUpdBranchItems = $conn->prepare("
-          UPDATE branch_items
-          SET quantity = quantity - ?
-          WHERE branch_id = ?
-            AND item_id = ?
-            AND quantity >= ?
+      $stInvMov = null;
+      if ($hasInvMov) {
+        $stInvMov = $conn->prepare("
+          INSERT INTO inventory_movements
+            (item_id, branch_id, movement_type, qty, note, created_by)
+          VALUES
+            (?, ?, 'OUT', ?, ?, ?)
         ");
       }
-    }
 
-    foreach ($cleanLines as $iid => $q) {
-      $iid = (int)$iid;
-      $qty = (int)$q;
-      if ($iid <= 0 || $qty <= 0) continue;
-
-      if (!isset($map[$iid])) {
-        throw new RuntimeException("Producto inválido o no disponible (ID #{$iid}).");
-      }
-
-      $stHasStockRow->execute([$branch_id, $iid]);
-      $curQty = $stHasStockRow->fetchColumn();
-      if ($curQty === false) {
-        throw new RuntimeException("El producto ID #{$iid} no tiene stock registrado en esta sucursal.");
-      }
-
-      $stUpdStock->execute([$qty, $branch_id, $iid, $qty]);
-      if ($stUpdStock->rowCount() <= 0) {
-        throw new RuntimeException("Stock insuficiente para el producto ID #{$iid} en esta sucursal.");
-      }
-
-      if ($stInvMov) {
-        $note = "Salida por factura #{$invoice_id}";
-        $stInvMov->execute([$iid, $branch_id, $qty, $note, (int)($user["id"] ?? 0)]);
-      }
-
-      if ($stUpdBranchItems) {
-        $stUpdBranchItems->execute([$qty, $branch_id, $iid, $qty]);
-      }
-    }
-
-/* ===============================
-       ✅ CAJA: registrar ingresos
-       =============================== */
-    $uid = (int)($user["id"] ?? 0);
-    $pm  = strtolower(trim((string)$payment_method));
-    if ($pm === "cash") $pm = "efectivo";
-    if ($pm === "card") $pm = "tarjeta";
-    if ($pm === "transfer") $pm = "transferencia";
-
-    // 1) si existe función oficial, úsala
-    if (function_exists("caja_registrar_ingreso_factura")) {
-      try {
-        caja_registrar_ingreso_factura($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$total, (string)$pm);
-
-        if ((float)$coverage_amount > 0) {
-          caja_registrar_ingreso_factura($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$coverage_amount, "cobertura");
+      $stUpdBranchItems = null;
+      if ($hasBranchItems) {
+        $branchCols = tableColumns($conn, "branch_items");
+        if (in_array("quantity", $branchCols, true)) {
+          $stUpdBranchItems = $conn->prepare("
+            UPDATE branch_items
+            SET quantity = quantity - ?
+            WHERE branch_id = ?
+              AND item_id = ?
+              AND quantity >= ?
+          ");
         }
-      } catch (Throwable $e) {
-        // no detenemos facturación si caja falla
       }
-    } else {
-      // 2) fallback genérico: si tienes tabla caja_movimientos o similares, aquí podrías integrarlo
+
+      foreach ($cleanLines as $iid => $q) {
+        $qty = (int)$q;
+        $iid = (int)$iid;
+        if ($iid <= 0 || $qty <= 0) continue;
+
+        $stUpdStock->execute([$qty, $branch_id, $iid, $qty]);
+        if ($stUpdStock->rowCount() <= 0) {
+          throw new RuntimeException("Stock insuficiente para el producto ID #{$iid} en esta sucursal.");
+        }
+
+        if ($stInvMov) {
+          $note = "Salida por factura #{$invoice_id}";
+          $stInvMov->execute([$iid, $branch_id, $qty, $note, (int)($user["id"] ?? 0)]);
+        }
+
+        if ($stUpdBranchItems) {
+          $stUpdBranchItems->execute([$qty, $branch_id, $iid, $qty]);
+        }
+      }
     }
 
     $conn->commit();
-
     $ok = "Factura creada correctamente.";
     $last_invoice_id = $invoice_id;
 
@@ -415,17 +389,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     $err = $e->getMessage();
   }
 }
-
-/* ===============================
-   Categorías (para filtro del select)
-   =============================== */
-$cats = [];
-try {
-  if (tableExists($conn, "inventory_categories")) {
-    $stC = $conn->query("SELECT id, name FROM inventory_categories ORDER BY name ASC");
-    $cats = $stC ? $stC->fetchAll(PDO::FETCH_ASSOC) : [];
-  }
-} catch (Throwable $e) {}
 ?>
 <!doctype html>
 <html lang="es">
@@ -442,14 +405,12 @@ try {
     .title{font-size:34px;font-weight:900;text-align:center;margin:10px 0 8px}
     .subtitle{font-size:14px;color:#334155;text-align:center;margin-bottom:10px;font-weight:600}
     .page-footer{text-align:center;margin-top:14px;font-weight:850;color:#6b7a88}
-
     .alert{padding:10px 12px;border-radius:12px;margin:10px auto;max-width:1100px}
     .alert.err{background:#fee2e2;border:1px solid #fecaca;color:#991b1b}
     .alert.ok{background:#dcfce7;border:1px solid #bbf7d0;color:#166534}
-
-    .section{margin-top:14px}
-    .section h3{font-size:15px;margin:0 0 10px;font-weight:900;color:#0f172a}
-    .grid{display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:14px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+    .grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
     label{display:block;font-size:12px;font-weight:800;color:#334155;margin-bottom:6px}
     input, select{width:100%;height:42px;border:1px solid #e2e8f0;border-radius:12px;padding:0 12px;font-weight:700}
     .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
@@ -465,9 +426,8 @@ try {
     .totals .line{display:flex;justify-content:space-between;margin:6px 0;font-weight:900}
     .muted{color:#64748b;font-weight:800}
     .hide{display:none}
-
     @media (max-width: 980px){
-      .grid{grid-template-columns:1fr}
+      .grid,.grid3,.grid4{grid-template-columns:1fr}
     }
   </style>
 </head>
@@ -515,116 +475,103 @@ try {
           <div class="alert ok"><?php echo h($ok); ?></div>
         <?php endif; ?>
 
-        <?php if ($ok && !empty($last_invoice_id)): ?>
-          <script>
-          (function(){
-            var url = "print.php?id=<?php echo (int)$last_invoice_id; ?>";
-            window.open(url, "_blank");
-          })();
-          </script>
-        <?php endif; ?>
-
         <form method="post" id="invoiceForm" autocomplete="off">
           <input type="hidden" name="action" value="save_invoice">
 
-          <div class="section">
-            <h3>Datos de la factura</h3>
-            <div class="grid">
-              <div>
-                <label>Fecha</label>
-                <input type="date" name="invoice_date" value="<?php echo h($today); ?>">
-              </div>
+          <div class="grid">
+            <div>
+              <label>Fecha</label>
+              <input type="date" name="invoice_date" value="<?php echo h($today); ?>">
+            </div>
 
-              <div>
-                <label>Método de pago</label>
-                <select name="payment_method" id="payment_method">
-                  <option value="EFECTIVO">EFECTIVO</option>
-                  <option value="TARJETA">TARJETA</option>
-                  <option value="TRANSFERENCIA">TRANSFERENCIA</option>
-                </select>
-              </div>
+            <div>
+              <label>Método de pago</label>
+              <select name="payment_method" id="payment_method">
+                <option value="EFECTIVO">EFECTIVO</option>
+                <option value="TARJETA">TARJETA</option>
+                <option value="TRANSFERENCIA">TRANSFERENCIA</option>
+              </select>
+            </div>
 
-              <div id="cash_box">
-                <label>Efectivo recibido (solo efectivo)</label>
-                <input type="text" name="cash_received" id="cash_received" value="">
-              </div>
+            <div id="cash_box">
+              <label>Efectivo recibido (solo efectivo)</label>
+              <input type="text" name="cash_received" id="cash_received" value="">
+            </div>
 
-              <div>
-                <label>Cobertura (RD$)</label>
-                <input type="text" name="coverage_amount" id="coverage_amount" value="0.00">
-              </div>
+            <div>
+              <label>Cobertura (RD$)</label>
+              <input type="text" name="coverage_amount" id="coverage_amount" value="0.00">
+            </div>
 
-              <div style="grid-column:1 / -1">
-                <label>Representante</label>
-                <input type="text" name="representative" placeholder="Nombre del representante / tutor">
-              </div>
+            <div style="grid-column:1 / -1">
+              <label>Representante</label>
+              <input type="text" name="representative" placeholder="Nombre del representante / tutor">
             </div>
           </div>
 
-          <div class="section">
-            <h3>Agregar productos</h3>
-            <div class="row">
-              <div style="max-width:260px">
-                <label>Categoría (filtro)</label>
-                <select id="cat_filter">
-                  <option value="0">Todas</option>
-                  <?php foreach ($cats as $c): ?>
-                    <option value="<?php echo (int)$c["id"]; ?>"><?php echo h($c["name"]); ?></option>
-                  <?php endforeach; ?>
-                </select>
-              </div>
+          <hr style="border:0;border-top:1px solid #eef2f6;margin:14px 0">
 
-              <div>
-                <label>Producto</label>
-                <select id="item_select">
-                  <option value="0">-- Seleccionar --</option>
-                  <?php foreach ($items_all as $it): ?>
-                    <option
-                      value="<?php echo (int)$it["id"]; ?>"
-                      data-price="<?php echo h($it["sale_price"]); ?>"
-                      data-cat="<?php echo (int)($it["category_id"] ?? 0); ?>"
-                    >
-                      <?php echo h($it["name"]); ?>
-                    </option>
-                  <?php endforeach; ?>
-                </select>
-              </div>
-
-              <div style="max-width:160px">
-                <label>Cantidad</label>
-                <input type="number" id="qty_input" min="1" value="1">
-              </div>
-
-              <div style="max-width:160px">
-                <button type="button" class="btn btn-primary" id="btn_add">Añadir</button>
-              </div>
+          <div class="row">
+            <div style="max-width:260px">
+              <label>Categoría (filtro)</label>
+              <select id="cat_filter">
+                <option value="0">Todas</option>
+                <?php foreach ($cats as $c): ?>
+                  <option value="<?php echo (int)$c["id"]; ?>"><?php echo h($c["name"]); ?></option>
+                <?php endforeach; ?>
+              </select>
             </div>
 
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Producto</th>
-                  <th class="right">Cantidad</th>
-                  <th class="right">Precio</th>
-                  <th class="right">Total</th>
-                </tr>
-              </thead>
-              <tbody id="lines_tbody"></tbody>
-            </table>
-
-            <div class="totals">
-              <div class="line"><span class="muted">Subtotal</span><span id="subTotal">RD$ 0.00</span></div>
-              <div class="line"><span class="muted">Cobertura</span><span id="covTotal">RD$ 0.00</span></div>
-              <div class="line"><span>Total</span><span id="grandTotal">RD$ 0.00</span></div>
-              <div class="line"><span class="muted">Cambio</span><span id="changeDue">RD$ 0.00</span></div>
+            <div>
+              <label>Producto</label>
+              <select id="item_select">
+                <option value="0">-- Seleccionar --</option>
+                <?php foreach ($items_all as $it): ?>
+                  <option
+                    value="<?php echo (int)$it["id"]; ?>"
+                    data-price="<?php echo h($it["sale_price"]); ?>"
+                    data-cat="<?php echo (int)($it["category_id"] ?? 0); ?>"
+                  >
+                    <?php echo h($it["name"]); ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
             </div>
 
-            <div id="hidden_lines"></div>
-
-            <div style="margin-top:14px; display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
-              <a href="/private/facturacion/index.php" class="btn btn-muted" style="text-decoration:none;display:inline-flex;align-items:center;">Volver</a>
-              <button type="submit" class="btn btn-primary">Guardar e imprimir</button>
+            <div style="max-width:160px">
+              <label>Cantidad</label>
+              <input type="number" id="qty_input" min="1" value="1">
             </div>
+
+            <div style="max-width:160px">
+              <button type="button" class="btn btn-primary" id="btn_add">Añadir</button>
+            </div>
+          </div>
+
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th class="right">Cantidad</th>
+                <th class="right">Precio</th>
+                <th class="right">Total</th>
+              </tr>
+            </thead>
+            <tbody id="lines_tbody"></tbody>
+          </table>
+
+          <div class="totals">
+            <div class="line"><span class="muted">Subtotal</span><span id="subTotal">RD$ 0.00</span></div>
+            <div class="line"><span class="muted">Cobertura</span><span id="covTotal">RD$ 0.00</span></div>
+            <div class="line"><span>Total</span><span id="grandTotal">RD$ 0.00</span></div>
+            <div class="line"><span class="muted">Cambio</span><span id="changeDue">RD$ 0.00</span></div>
+          </div>
+
+          <div id="hiddenLines"></div>
+
+          <div style="margin-top:14px; display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+            <a href="/private/facturacion/index.php" class="btn btn-muted" style="text-decoration:none;display:inline-flex;align-items:center;">Volver</a>
+            <button type="submit" class="btn btn-primary">Guardar e imprimir</button>
           </div>
         </form>
       </div>
@@ -652,7 +599,7 @@ try {
   const btnAdd  = document.getElementById("btn_add");
 
   const tbody   = document.getElementById("lines_tbody");
-  const hidden  = document.getElementById("hidden_lines");
+  const hidden  = document.getElementById("hiddenLines");
 
   const subEl   = document.getElementById("subTotal");
   const covEl   = document.getElementById("covTotal");
