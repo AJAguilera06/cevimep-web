@@ -540,7 +540,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
 
     /* ===============================
        ✅ CAJA: registrar ingresos
-       =============================== */ registrar ingresos
        =============================== */
     $uid = (int)($user["id"] ?? 0);
     $pm  = strtolower(trim((string)$payment_method));
