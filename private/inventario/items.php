@@ -57,26 +57,30 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "delet
 /* ===== LISTADO POR SUCURSAL ===== */
 $items = [];
 try {
+  // ✅ AJUSTE: Stock SIEMPRE desde inventory_stock (COALESCE para que si no existe fila, sea 0)
+  // ✅ AJUSTE: Filtramos por i.branch_id = ? para respetar la sucursal logueada
   $sql = "
     SELECT
       i.id,
       i.name,
       i.category_id,
       c.name AS category_name,
-      s.quantity AS stock,
+      COALESCE(s.quantity, 0) AS stock,
       i.purchase_price,
       i.sale_price
     FROM inventory_items i
-    INNER JOIN inventory_stock s
+    LEFT JOIN inventory_stock s
       ON s.item_id = i.id AND s.branch_id = ?
     LEFT JOIN inventory_categories c
       ON c.id = i.category_id
+    WHERE i.branch_id = ?
+      AND i.is_active = 1
   ";
 
-  $params = [$branch_id];
+  $params = [$branch_id, $branch_id];
 
   if ($filter_category_id > 0) {
-    $sql .= " WHERE i.category_id = ? ";
+    $sql .= " AND i.category_id = ? ";
     $params[] = $filter_category_id;
   }
 
@@ -294,36 +298,43 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       <a href="/private/patients/index.php"><span class="ico">👤</span> Pacientes</a>
       <a href="/private/citas/index.php"><span class="ico">📅</span> Citas</a>
       <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
-      <a href="/private/caja/index.php"><span class="ico">💳</span> Caja</a>
-      <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="/private/estadisticas/index.php"><span class="ico">📊</span> Estadísticas</a>
+      <a class="active" href="/private/inventario/items.php"><span class="ico">📦</span> Inventario</a>
+      <a href="/private/caja/index.php"><span class="ico">💵</span> Caja</a>
     </nav>
   </aside>
 
   <main class="content">
     <div class="page-wrap">
 
-      <h1 class="inv-title">Inventario</h1>
+      <div class="inv-title">Inventario</div>
 
-      <?php if ($flash_ok): ?><div class="flash-ok"><?= h($flash_ok) ?></div><?php endif; ?>
-      <?php if ($flash_err): ?><div class="flash-err"><?= h($flash_err) ?></div><?php endif; ?>
+      <?php if ($flash_ok): ?>
+        <div class="flash-ok"><?= h($flash_ok) ?></div>
+      <?php endif; ?>
+      <?php if ($flash_err): ?>
+        <div class="flash-err"><?= h($flash_err) ?></div>
+      <?php endif; ?>
 
       <div class="inv-controls">
+        <div></div>
+
         <div class="inv-controls__center">
-          <a class="btn-main" href="<?= h($new_product_url) ?>">➕ Registrar nuevo producto</a>
+          <a class="btn-main" href="<?= h($new_product_url) ?>">➕ Nuevo Producto</a>
         </div>
 
-        <form class="inv-controls__right" method="get" action="/private/inventario/items.php">
-          <select class="select-ui" name="category_id">
-            <option value="0">Producto</option>
-            <?php foreach ($categories as $c): ?>
-              <option value="<?= (int)$c["id"] ?>" <?= ((int)$c["id"] === $filter_category_id) ? "selected" : "" ?>>
-                <?= h($c["name"]) ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
-          <button class="btn-filter" type="submit">Filtrar</button>
-        </form>
+        <div class="inv-controls__right">
+          <form method="get" action="/private/inventario/items.php" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <select class="select-ui" name="category_id">
+              <option value="0">Todas las categorías</option>
+              <?php foreach ($categories as $c): ?>
+                <option value="<?= (int)$c["id"] ?>" <?= ($filter_category_id === (int)$c["id"]) ? "selected" : "" ?>>
+                  <?= h($c["name"]) ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+            <button class="btn-filter" type="submit">Filtrar</button>
+          </form>
+        </div>
       </div>
 
       <div class="card">
@@ -343,7 +354,9 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
             <tbody>
               <?php if (!$items): ?>
                 <tr>
-                  <td colspan="6" style="opacity:.75;font-weight:800;">No hay productos registrados en esta sucursal.</td>
+                  <td colspan="6" style="padding:18px; text-align:center; font-weight:900; color:#6b7a88;">
+                    No hay productos registrados para esta sucursal.
+                  </td>
                 </tr>
               <?php else: ?>
                 <?php foreach ($items as $it): ?>
@@ -356,19 +369,21 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
                   <tr>
                     <td style="font-weight:950;"><?= h($it["name"] ?? "") ?></td>
                     <td><?= h($it["category_name"] ?? "—") ?></td>
-                    <td class="right money">RD$ <?= number_format((float)($it["purchase_price"] ?? 0), 2) ?></td>
-                    <td class="right money">RD$ <?= number_format((float)($it["sale_price"] ?? 0), 2) ?></td>
+                    <td class="right money"><?= number_format((float)($it["purchase_price"] ?? 0), 2) ?></td>
+                    <td class="right money"><?= number_format((float)($it["sale_price"] ?? 0), 2) ?></td>
                     <td class="right">
-                      <span class="pill <?= $pillClass ?>"><?= h($pillText) ?></span>
+                      <span class="pill <?= h($pillClass) ?>"><?= h($pillText) ?></span>
                     </td>
                     <td class="right">
                       <div class="actions">
                         <a class="btn-sm" href="<?= h($edit_url_base . (int)$it["id"]) ?>">✏️ Editar</a>
 
-                        <form method="post" style="display:inline;" onsubmit="return confirm('¿Eliminar este producto de esta sucursal?');">
+                        <form method="post" action="/private/inventario/items.php<?= $filter_category_id > 0 ? ("?category_id=" . $filter_category_id) : "" ?>"
+                              onsubmit="return confirm('¿Seguro que deseas remover este producto de esta sucursal?');"
+                              style="margin:0;">
                           <input type="hidden" name="action" value="delete_from_branch">
                           <input type="hidden" name="item_id" value="<?= (int)$it["id"] ?>">
-                          <button class="btn-sm btn-danger" type="submit">🗑️ Eliminar</button>
+                          <button class="btn-sm btn-danger" type="submit">🗑️ Remover</button>
                         </form>
                       </div>
                     </td>
@@ -376,17 +391,17 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
                 <?php endforeach; ?>
               <?php endif; ?>
             </tbody>
-
           </table>
         </div>
       </div>
 
+      <div style="text-align:center; margin-top: 14px; font-weight: 850; color:#6b7a88;">
+        © <?= h($year) ?> CEVIMEP
+      </div>
+
     </div>
   </main>
-</div>
 
-<div class="footer">
-  <div class="inner">© <?= h($year) ?> CEVIMEP. Todos los derechos reservados.</div>
 </div>
 
 </body>
