@@ -452,93 +452,80 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     }
 
     /* ===============================
-       ✅ DESCONTAR INVENTARIO (POR SUCURSAL)
-       - Actualiza inventory_stock (si existe)
-       - También actualiza branch_items (si existe) para mantener pantallas antiguas
-       - Registra salida en inventory_movements (si existe)
+       DESCONTAR INVENTARIO (POR SUCURSAL)
+       - Actualiza inventory_stock (tabla real)
+       - (Opcional) actualiza branch_items si existe (pantallas antiguas)
+       - Registra salida en inventory_movements (tabla real)
        =============================== */
-    // Detectar (una sola vez) tablas/columnas para inventario
-    $movTable = tableExists($conn, "inventory_movements") ? "inventory_movements" : null;
-    $movCols = $movTable ? tableColumns($conn, $movTable) : [];
+    // Tablas reales (según tu DB):
+    // inventory_stock: (id, item_id, branch_id, quantity)
+    // inventory_movements: (id, item_id, branch_id, movement_type('IN','OUT'), qty, note, created_by, created_at)
 
-    $movBranchCol = $movTable && in_array("branch_id", $movCols, true) ? "branch_id" : null;
-    $movItemCol   = $movTable && in_array("item_id", $movCols, true) ? "item_id" : null;
-    $movTypeCol   = $movTable && in_array("type", $movCols, true) ? "type" : ( ($movTable && in_array("tipo", $movCols, true)) ? "tipo" : null );
-    $movQtyCol    = $movTable && in_array("quantity", $movCols, true) ? "quantity" : ( ($movTable && in_array("qty", $movCols, true)) ? "qty" : ( ($movTable && in_array("cantidad", $movCols, true)) ? "cantidad" : null ) );
-    $movMotivoCol = $movTable && in_array("motivo", $movCols, true) ? "motivo" : ( ($movTable && in_array("reason", $movCols, true)) ? "reason" : ( ($movTable && in_array("description", $movCols, true)) ? "description" : null ) );
-    $movRefCol    = $movTable && in_array("invoice_id", $movCols, true) ? "invoice_id" : ( ($movTable && in_array("reference_id", $movCols, true)) ? "reference_id" : ( ($movTable && in_array("ref_id", $movCols, true)) ? "ref_id" : null ) );
-    $movCreatedByCol = $movTable && in_array("created_by", $movCols, true) ? "created_by" : ( ($movTable && in_array("user_id", $movCols, true)) ? "user_id" : null );
+    $hasInvStock = tableExists($conn, "inventory_stock");
+    $hasInvMov   = tableExists($conn, "inventory_movements");
+    $hasBranchItems = tableExists($conn, "branch_items");
 
-    // Tabla legacy (por si tu módulo de inventario todavía lee de aquí)
-    $branchItemsTable = tableExists($conn, "branch_items") ? "branch_items" : null;
-    $branchItemsCols  = $branchItemsTable ? tableColumns($conn, $branchItemsTable) : [];
-    $biBranchCol = $branchItemsTable && in_array("branch_id", $branchItemsCols, true) ? "branch_id" : null;
-    $biItemCol   = $branchItemsTable && in_array("item_id", $branchItemsCols, true) ? "item_id" : ( ($branchItemsTable && in_array("inventory_item_id", $branchItemsCols, true)) ? "inventory_item_id" : null );
-    $biQtyCol    = $branchItemsTable && in_array("quantity", $branchItemsCols, true) ? "quantity" : ( ($branchItemsTable && in_array("qty", $branchItemsCols, true)) ? "qty" : ( ($branchItemsTable && in_array("stock", $branchItemsCols, true)) ? "stock" : ( ($branchItemsTable && in_array("existencia", $branchItemsCols, true)) ? "existencia" : null ) ) );
+    if ($hasInvStock) {
+      // UPDATE seguro: no permite stock negativo
+      $stUpdStock = $conn->prepare("
+        UPDATE inventory_stock
+        SET quantity = quantity - ?
+        WHERE branch_id = ?
+          AND item_id = ?
+          AND quantity >= ?
+      ");
 
-    // Preparar statements
-    $stUpdStock = null;
-    if ($stockTable !== null && $stockQtyCol !== null && $stockBranchCol !== null && $stockItemCol !== null) {
-      $sqlUpdStock = "UPDATE $stockTable
-                      SET $stockQtyCol = $stockQtyCol - ?
-                      WHERE $stockBranchCol = ?
-                        AND $stockItemCol = ?
-                        AND COALESCE($stockQtyCol,0) >= ?";
-      $stUpdStock = $conn->prepare($sqlUpdStock);
-    }
+      // Registrar movimiento OUT
+      $stInvMov = null;
+      if ($hasInvMov) {
+        $stInvMov = $conn->prepare("
+          INSERT INTO inventory_movements
+            (item_id, branch_id, movement_type, qty, note, created_by)
+          VALUES
+            (?, ?, 'OUT', ?, ?, ?)
+        ");
+      }
 
-    $stUpdBI = null;
-    if ($branchItemsTable && $biQtyCol && $biBranchCol && $biItemCol) {
-      $sqlUpdBI = "UPDATE $branchItemsTable
-                   SET $biQtyCol = $biQtyCol - ?
-                   WHERE $biBranchCol = ?
-                     AND $biItemCol = ?
-                     AND COALESCE($biQtyCol,0) >= ?";
-      $stUpdBI = $conn->prepare($sqlUpdBI);
-    }
-
-    $stMov = null;
-    if ($movTable && $movBranchCol && $movItemCol && $movTypeCol && $movQtyCol) {
-      $cols = [$movBranchCol, $movItemCol, $movTypeCol, $movQtyCol];
-      $phs  = ["?","?","?","?"];
-      if ($movMotivoCol) { $cols[] = $movMotivoCol; $phs[] = "?"; }
-      if ($movRefCol)    { $cols[] = $movRefCol;    $phs[] = "?"; }
-      if ($movCreatedByCol) { $cols[] = $movCreatedByCol; $phs[] = "?"; }
-
-      $sqlMov = "INSERT INTO $movTable (" . implode(",", $cols) . ") VALUES (" . implode(",", $phs) . ")";
-      $stMov = $conn->prepare($sqlMov);
-    }
-
-    // Ejecutar por cada línea
-    foreach ($cleanLines as $iid => $q) {
-      $qty = (int)$q;
-      $itemId = (int)$iid;
-
-      // 1) Stock principal (inventory_stock)
-      if ($stUpdStock) {
-        $stUpdStock->execute([$qty, $branch_id, $itemId, $qty]);
-        if ($stUpdStock->rowCount() <= 0) {
-          throw new RuntimeException("Stock insuficiente para el producto ID #{$itemId} en esta sucursal.");
+      // (Opcional) mantener branch_items actualizado si tu UI lo usa
+      $stUpdBranchItems = null;
+      if ($hasBranchItems) {
+        $branchCols = tableColumns($conn, "branch_items");
+        if (in_array("quantity", $branchCols, true)) {
+          $stUpdBranchItems = $conn->prepare("
+            UPDATE branch_items
+            SET quantity = quantity - ?
+            WHERE branch_id = ?
+              AND item_id = ?
+              AND quantity >= ?
+          ");
         }
       }
 
-      // 2) Stock legacy (branch_items) - no detiene si no existe fila
-      if ($stUpdBI) {
-        $stUpdBI->execute([$qty, $branch_id, $itemId, $qty]);
-        // si no existe la fila en branch_items, no rompemos (puede que no uses esa tabla ya)
-      }
+      foreach ($cleanLines as $iid => $q) {
+        $qty = (int)$q;
+        $iid = (int)$iid;
+        if ($iid <= 0 || $qty <= 0) continue;
 
-      // 3) Movimiento (inventory_movements)
-      if ($stMov) {
-        $vals = [(int)$branch_id, $itemId, "salida", $qty];
-        if ($movMotivoCol) $vals[] = "Salida por factura #{$invoice_id}";
-        if ($movRefCol)    $vals[] = (int)$invoice_id;
-        if ($movCreatedByCol) $vals[] = (int)($user["id"] ?? 0);
-        $stMov->execute($vals);
+        // 1) Descontar stock en inventory_stock
+        $stUpdStock->execute([$qty, $branch_id, $iid, $qty]);
+        if ($stUpdStock->rowCount() <= 0) {
+          throw new RuntimeException("Stock insuficiente para el producto ID #{$iid} en esta sucursal.");
+        }
+
+        // 2) Registrar movimiento OUT (si existe)
+        if ($stInvMov) {
+          $note = "Salida por factura #{$invoice_id}";
+          $stInvMov->execute([$iid, $branch_id, $qty, $note, (int)($user["id"] ?? 0)]);
+        }
+
+        // 3) (Opcional) actualizar branch_items si existe y tiene quantity
+        if ($stUpdBranchItems) {
+          $stUpdBranchItems->execute([$qty, $branch_id, $iid, $qty]);
+          // si no afecta filas, no detenemos: puede ser que branch_items no tenga ese item
+        }
       }
     }
-
-    /* ===============================
+/* ===============================
        ✅ CAJA: registrar ingresos
        =============================== */
     $uid = (int)($user["id"] ?? 0);
