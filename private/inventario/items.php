@@ -7,6 +7,15 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
   session_start();
 }
 
+// Evitar cache del navegador/proxy y asegurar que Railway/PHP no sirva una versión vieja
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
+if (function_exists('opcache_invalidate')) { @opcache_invalidate(__FILE__, true); }
+if (function_exists('opcache_reset')) { /* opcional: no lo llamamos para no afectar todo el sitio */ }
+
+$__BUILD_MARK = 'items.php@2026-02-14-railway-01';
+
 $conn = $pdo;
 $user = $_SESSION["user"] ?? [];
 $year = date("Y");
@@ -57,8 +66,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "delet
 /* ===== LISTADO POR SUCURSAL ===== */
 $items = [];
 try {
-  // ✅ AJUSTE: Stock SIEMPRE desde inventory_stock (COALESCE para que si no existe fila, sea 0)
-  // ✅ AJUSTE: Filtramos por i.branch_id = ? para respetar la sucursal logueada
+  // Stock SIEMPRE desde inventory_stock por sucursal logueada
   $sql = "
     SELECT
       i.id,
@@ -108,11 +116,10 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
   <link rel="stylesheet" href="/assets/css/styles.css?v=120">
 
   <style>
-    /* ✅ Clave para que se vea EXACTO como tu captura: contenido centrado */
     .page-wrap{
       width: 100%;
-      max-width: 1040px;      /* ancho similar al de tu screenshot */
-      margin: 0 auto;         /* centra */
+      max-width: 1040px;
+      margin: 0 auto;
       padding: 24px 18px 18px;
     }
 
@@ -124,7 +131,6 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       margin: 6px 0 10px;
     }
 
-    /* fila: botón centrado + filtro a la derecha */
     .inv-controls{
       display:grid;
       grid-template-columns: 1fr auto 1fr;
@@ -190,7 +196,6 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
     .flash-ok{background:#e9fff1;border:1px solid #a7f0bf;color:#0a7a33;border-radius:12px;padding:10px 12px;font-size:13px;margin:0 0 12px;font-weight:850;}
     .flash-err{background:#ffecec;border:1px solid #ffb6b6;color:#a40000;border-radius:12px;padding:10px 12px;font-size:13px;margin:0 0 12px;font-weight:850;}
 
-    /* card + tabla */
     .card{
       background:#fff;
       border-radius:16px;
@@ -200,7 +205,7 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
     .table-wrap{
       width:100%;
       overflow:auto;
-      max-height: 460px;   /* como tu captura */
+      max-height: 460px;
       border-radius:14px;
       border:1px solid rgba(2,21,44,.06);
       -webkit-overflow-scrolling: touch;
@@ -276,6 +281,8 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
 </head>
 
 <body>
+
+<!-- BUILD: <?= h($__BUILD_MARK) ?> | branch_id=<?= (int)$branch_id ?> | ts=<?= date('Y-m-d H:i:s') ?> -->
 
 <div class="navbar">
   <div class="inner">
