@@ -220,6 +220,12 @@ if (in_array("price", $invCols, true)) $colPrice = "price";
 if (in_array("unit_price", $invCols, true)) $colPrice = "unit_price";
 if (in_array("precio", $invCols, true)) $colPrice = "precio";
 
+// quantity (fallback si no existe tabla de stock por sucursal)
+$invQtyCol = null;
+foreach (["quantity","qty","existencia","stock","balance","cantidad","cant"] as $qcol) {
+  if (in_array($qcol, $invCols, true)) { $invQtyCol = $qcol; break; }
+}
+
 // active/status
 $colActive = null;
 if (in_array("active", $invCols, true)) $colActive = "active";
@@ -253,6 +259,8 @@ if ($stockTable !== null) {
   elseif (in_array("existencia", $stockCols, true)) $stockQtyCol = "existencia";
   elseif (in_array("stock", $stockCols, true)) $stockQtyCol = "stock";
   elseif (in_array("balance", $stockCols, true)) $stockQtyCol = "balance";
+  elseif (in_array("cantidad", $stockCols, true)) $stockQtyCol = "cantidad";
+  elseif (in_array("cant", $stockCols, true)) $stockQtyCol = "cant";
 
   if ($stockItemCol === null || $stockBranchCol === null) {
     $stockTable = null; // inutilizable
@@ -470,11 +478,28 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
           throw new RuntimeException("Stock insuficiente para el producto ID #{$iid} en esta sucursal.");
         }
       }
-    } elseif ($stockTable !== null) {
-      // hay tabla stock pero no detectó columna cantidad -> intentamos igual sin validación
-      // (no debería pasar en tu caso porque inventory_stock tiene quantity)
-      $sqlUpd = "UPDATE $stockTable SET {$stockQtyCol}={$stockQtyCol} WHERE 1=1";
-      // no hacemos nada si no hay qty col
+    } else {
+      // fallback: si tu esquema maneja stock directo en inventory_items (sin tabla de stock por sucursal)
+      if ($invQtyCol !== null) {
+        $where = ["$colItemId = ?", "COALESCE($invQtyCol,0) >= ?"]; // no negativo
+        $paramsBase = [];
+        if ($colBranchItems !== null) { $where[] = "$colBranchItems = ?"; $paramsBase[] = $branch_id; }
+
+        $sqlUpdItem = "UPDATE inventory_items
+                       SET $invQtyCol = $invQtyCol - ?
+                       WHERE " . implode(" AND ", $where);
+        $stUpdItem = $conn->prepare($sqlUpdItem);
+
+        foreach ($cleanLines as $iid => $q) {
+          $qty = (int)$q;
+          // params: qty, id, qty, (branch?)
+          $params = array_merge([$qty, (int)$iid, $qty], $paramsBase);
+          $stUpdItem->execute($params);
+          if ($stUpdItem->rowCount() <= 0) {
+            throw new RuntimeException("Stock insuficiente para el producto ID #{$iid} en esta sucursal.");
+          }
+        }
+      }
     }
 
     /* ===============================
@@ -864,6 +889,22 @@ $today = date("Y-m-d");
   syncPaymentUI();
 })();
 </script>
+
+<style>
+  /* Footer estilo dashboard (sin tocar lo demás) */
+  body{min-height:100vh;display:flex;flex-direction:column;}
+  .layout{flex:1;}
+  .footer{background:#0b4d87;color:#fff;padding:14px 0;margin-top:auto;}
+  .footer .inner{max-width:1400px;margin:0 auto;padding:0 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .footer .muted{opacity:.9;font-weight:700;font-size:12px;}
+</style>
+
+<footer class="footer">
+  <div class="inner">
+    <div class="muted">© <?php echo date('Y'); ?> CEVIMEP</div>
+    <div class="muted">Centro de Vacunación Especializado</div>
+  </div>
+</footer>
 
 </body>
 </html>
