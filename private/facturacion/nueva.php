@@ -14,33 +14,61 @@ $conn = $pdo;
 function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8"); }
 
 function columnExists(PDO $pdo, string $table, string $column): bool {
+  // MySQL/MariaDB
   try {
     $st = $pdo->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
     $st->execute([$column]);
     return (bool)$st->fetch(PDO::FETCH_ASSOC);
   } catch (Throwable $e) {
-    return false;
+    // PostgreSQL / others
+    try {
+      $st = $pdo->prepare("SELECT 1 FROM information_schema.columns WHERE table_name = ? AND column_name = ? LIMIT 1");
+      $st->execute([$table, $column]);
+      return (bool)$st->fetchColumn();
+    } catch (Throwable $e2) {
+      return false;
+    }
   }
 }
 
 function tableColumns(PDO $pdo, string $table): array {
+  // MySQL/MariaDB
   try {
     $rows = $pdo->query("SHOW COLUMNS FROM `$table`")->fetchAll(PDO::FETCH_ASSOC) ?: [];
     $cols = [];
     foreach ($rows as $r) $cols[] = $r["Field"];
     return $cols;
   } catch (Throwable $e) {
-    return [];
+    // PostgreSQL / others
+    try {
+      $st = $pdo->prepare("SELECT column_name FROM information_schema.columns WHERE table_name = ? ORDER BY ordinal_position");
+      $st->execute([$table]);
+      $cols = [];
+      while ($r = $st->fetch(PDO::FETCH_ASSOC)) {
+        $cols[] = $r["column_name"];
+      }
+      return $cols;
+    } catch (Throwable $e2) {
+      return [];
+    }
   }
 }
 
 function tableExists(PDO $pdo, string $table): bool {
+  // MySQL/MariaDB
   try {
     $st = $pdo->prepare("SHOW TABLES LIKE ?");
     $st->execute([$table]);
     return (bool)$st->fetchColumn();
   } catch (Throwable $e) {
-    return false;
+    // PostgreSQL / others (information_schema)
+    try {
+      $st = $pdo->prepare("SELECT 1 FROM information_schema.tables WHERE table_name = ? LIMIT 1");
+      $st->execute([$table]);
+      return (bool)$st->fetchColumn();
+    } catch (Throwable $e2) {
+      return false;
+    }
   }
 }
 
