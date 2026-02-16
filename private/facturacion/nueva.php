@@ -901,6 +901,9 @@ $today = date("Y-m-d");
   syncPaymentUI();
 })();
 </script>
-
+<!-- FOOTER (igual dashboard.php) -->
+<footer class="footer">
+    © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
+</footer>
 </body>
 </html>
