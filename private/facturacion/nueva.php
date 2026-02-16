@@ -23,131 +23,273 @@ function columnExists(PDO $pdo, string $table, string $column): bool {
   }
 }
 
-function tableExists(PDO $pdo, string $table): bool {
-  // En algunos hostings (Railway / MySQL administrado) SHOW TABLES puede estar limitado.
-  // Usamos INFORMATION_SCHEMA (más confiable) y dejamos SHOW TABLES como fallback.
-  try {
-    $st = $pdo->prepare("
-      SELECT 1
-      FROM information_schema.tables
-      WHERE table_schema = DATABASE()
-        AND table_name = ?
-      LIMIT 1
-    ");
-    $st->execute([$table]);
-    if ($st->fetchColumn()) return true;
-  } catch (Throwable $e) {
-    // seguimos al fallback
-  }
-
-  try {
-    $st2 = $pdo->prepare("SHOW TABLES LIKE ?");
-    $st2->execute([$table]);
-    return (bool)$st2->fetchColumn();
-  } catch (Throwable $e) {
-    return false;
-  }
-}
-
 function tableColumns(PDO $pdo, string $table): array {
   try {
-    $st = $pdo->query("DESCRIBE `$table`");
-    $rows = $st ? $st->fetchAll(PDO::FETCH_ASSOC) : [];
+    $rows = $pdo->query("SHOW COLUMNS FROM `$table`")->fetchAll(PDO::FETCH_ASSOC) ?: [];
     $cols = [];
-    foreach ($rows as $r) $cols[] = (string)($r["Field"] ?? "");
-    return array_values(array_filter($cols));
+    foreach ($rows as $r) $cols[] = $r["Field"];
+    return $cols;
   } catch (Throwable $e) {
     return [];
   }
 }
 
+function tableExists(PDO $pdo, string $table): bool {
+  try {
+    $st = $pdo->prepare("SHOW TABLES LIKE ?");
+    $st->execute([$table]);
+    return (bool)$st->fetchColumn();
+  } catch (Throwable $e) {
+    return false;
+  }
+}
+
 function number0($v): float {
   if ($v === null) return 0.0;
-  $s = trim((string)$v);
-  if ($s === "") return 0.0;
-  $s = str_replace(["RD$", ",", " "], ["", "", ""], $s);
-  return (float)$s;
+  if (is_string($v)) $v = str_replace([",", " "], ["", ""], $v);
+  return (float)$v;
 }
 
-/* =========================
-   Sesión / contexto
-   ========================= */
-if (session_status() !== PHP_SESSION_ACTIVE) {
-  session_start();
+/**
+ * Devuelve expresiones SQL seguras para nombre/documento/teléfono/nac
+ * sin asumir el esquema exacto de `patients`.
+ */
+function patientExprs(PDO $pdo): array {
+  $cols = tableColumns($pdo, "patients");
+
+  $first = in_array("first_name", $cols, true) ? "first_name" : (in_array("nombres", $cols, true) ? "nombres" : null);
+  $last  = in_array("last_name",  $cols, true) ? "last_name"  : (in_array("apellidos", $cols, true) ? "apellidos" : null);
+  $full  = in_array("full_name",  $cols, true) ? "full_name"  : (in_array("nombre", $cols, true) ? "nombre" : null);
+
+  $doc   = in_array("document",   $cols, true) ? "document"   : (in_array("cedula", $cols, true) ? "cedula" : (in_array("pasaporte", $cols, true) ? "pasaporte" : null));
+  $tel   = in_array("phone",      $cols, true) ? "phone"      : (in_array("telefono", $cols, true) ? "telefono" : (in_array("tel", $cols, true) ? "tel" : null));
+  $nac   = in_array("nationality",$cols, true) ? "nationality": (in_array("nacionalidad", $cols, true) ? "nacionalidad" : null);
+
+  if ($full) {
+    $nameExpr = "COALESCE(NULLIF(TRIM($full),''),'')";
+  } elseif ($first || $last) {
+    $parts = [];
+    if ($first) $parts[] = "COALESCE(NULLIF(TRIM($first),''),'')";
+    if ($last)  $parts[] = "COALESCE(NULLIF(TRIM($last),''),'')";
+    $nameExpr = "TRIM(CONCAT(" . implode(",' ',", $parts) . "))";
+  } else {
+    $nameExpr = "''";
+  }
+
+  $docExpr = $doc ? "COALESCE(NULLIF(TRIM($doc),''),'')" : "''";
+  $telExpr = $tel ? "COALESCE(NULLIF(TRIM($tel),''),'')" : "''";
+  $nacExpr = $nac ? "COALESCE(NULLIF(TRIM($nac),''),'')" : "''";
+
+  return [$nameExpr, $docExpr, $telExpr, $nacExpr];
 }
 
+/* ===============================
+   FALLBACK CAJA (si no hay función)
+   =============================== */
+function cajaFallbackInsert(PDO $conn, int $branchId, int $userId, int $invoiceId, float $amount, string $method, string $desc): void {
+  $candidates = ["caja_movimientos", "caja_transacciones", "cash_movements", "cash_transactions", "movimientos_caja"];
+  $table = null;
+  foreach ($candidates as $t) {
+    if (tableExists($conn, $t)) { $table = $t; break; }
+  }
+  if ($table === null) return;
+
+  $cols = tableColumns($conn, $table);
+
+  // columnas típicas (intentamos adaptarnos)
+  $map = [
+    "branch_id"   => ["branch_id","sucursal_id","branch","sucursal"],
+    "user_id"     => ["user_id","created_by","usuario_id","user","uid"],
+    "type"        => ["type","tipo","movement_type","movimiento","categoria"],
+    "amount"      => ["amount","monto","total","importe","valor"],
+    "method"      => ["method","metodo","payment_method","forma_pago"],
+    "reference"   => ["reference","ref","invoice_id","factura_id","referencia"],
+    "description" => ["description","descripcion","concepto","detalle","nota","notes"],
+    "created_at"  => ["created_at","fecha","created_on","created"],
+  ];
+
+  $pick = function(array $opts) use ($cols) {
+    foreach ($opts as $o) if (in_array($o, $cols, true)) return $o;
+    return null;
+  };
+
+  $cBranch = $pick($map["branch_id"]);
+  $cUser   = $pick($map["user_id"]);
+  $cType   = $pick($map["type"]);
+  $cAmount = $pick($map["amount"]);
+  $cMethod = $pick($map["method"]);
+  $cRef    = $pick($map["reference"]);
+  $cDesc   = $pick($map["description"]);
+  $cAt     = $pick($map["created_at"]);
+
+  if ($cAmount === null) return;
+
+  $fields = [];
+  $vals   = [];
+
+  if ($cBranch) { $fields[] = $cBranch; $vals[] = $branchId; }
+  if ($cUser)   { $fields[] = $cUser;   $vals[] = $userId; }
+  if ($cType)   { $fields[] = $cType;   $vals[] = "ingreso"; }
+  $fields[] = $cAmount; $vals[] = $amount;
+
+  if ($cMethod) { $fields[] = $cMethod; $vals[] = $method; }
+  if ($cRef)    { $fields[] = $cRef;    $vals[] = $invoiceId; }
+  if ($cDesc)   { $fields[] = $cDesc;   $vals[] = $desc; }
+  if ($cAt)     { $fields[] = $cAt;     $vals[] = date("Y-m-d H:i:s"); }
+
+  $place = implode(",", array_fill(0, count($fields), "?"));
+  $sql = "INSERT INTO `$table` (" . implode(",", $fields) . ") VALUES ($place)";
+  $st = $conn->prepare($sql);
+  $st->execute($vals);
+}
+
+/* ===============================
+   CONTEXTO
+   =============================== */
 $user = $_SESSION["user"] ?? [];
+$patient_id = (int)($_GET["patient_id"] ?? 0);
+
+// branch_id de sesión (obligatorio)
 $branch_id = (int)($user["branch_id"] ?? 0);
 
-$patient_id = isset($_GET["patient_id"]) ? (int)$_GET["patient_id"] : 0;
-$patient_name = "";
-
-$today = date("Y-m-d");
-$year  = date("Y");
+// fallback si no viene
+if ($branch_id <= 0 && isset($user["id"])) {
+  try {
+    $stB = $conn->prepare("SELECT branch_id FROM users WHERE id=? LIMIT 1");
+    $stB->execute([(int)$user["id"]]);
+    $branch_id = (int)($stB->fetchColumn() ?: 0);
+  } catch (Throwable $e) {}
+}
 
 $err = "";
 $ok  = "";
-$last_invoice_id = null;
 
-/* =========================
-   Cargar paciente
-   ========================= */
+/* ===== cargar paciente ===== */
+$patient = null;
+$patient_name = "";
 try {
-  if ($patient_id > 0 && tableExists($conn, "patients")) {
-    $stP = $conn->prepare("SELECT name FROM patients WHERE id=? LIMIT 1");
-    $stP->execute([$patient_id]);
-    $patient_name = (string)($stP->fetchColumn() ?: "");
+  if ($patient_id > 0) {
+    [$nameExpr, $docExpr, $telExpr, $nacExpr] = patientExprs($conn);
+    $st = $conn->prepare("
+      SELECT
+        id,
+        $nameExpr AS _name,
+        $docExpr  AS _doc,
+        $telExpr  AS _phone,
+        $nacExpr  AS _nat
+      FROM patients
+      WHERE id=?
+      LIMIT 1
+    ");
+    $st->execute([$patient_id]);
+    $patient = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+    $patient_name = (string)($patient["_name"] ?? "");
   }
+} catch (Throwable $e) {
+  $err = "Error cargando paciente: " . $e->getMessage();
+}
+
+if (!$patient && !$err) {
+  $err = "Paciente no encontrado.";
+}
+
+/* ===== categorías e items ===== */
+$cats = [];
+try {
+  $cats = $conn->query("SELECT id, name FROM inventory_categories ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Throwable $e) {}
 
-/* =========================
-   Cargar items para el select
-   ========================= */
-$items_all = [];
-$cats = [];
+/* ===== detectar columnas inventory_items ===== */
+$invCols = tableColumns($conn, "inventory_items");
+
+$colItemId = "id";
+
+// category
+$colCat = "category_id";
+if (in_array("cat_id", $invCols, true)) $colCat = "cat_id";
+if (in_array("category", $invCols, true)) $colCat = "category";
+
+// name
+$colName = "name";
+if (in_array("item_name", $invCols, true)) $colName = "item_name";
+if (in_array("descripcion", $invCols, true)) $colName = "descripcion";
+
+// price
+$colPrice = "sale_price";
+if (in_array("price", $invCols, true)) $colPrice = "price";
+if (in_array("unit_price", $invCols, true)) $colPrice = "unit_price";
+if (in_array("precio", $invCols, true)) $colPrice = "precio";
+
+// active/status
+$colActive = null;
+if (in_array("active", $invCols, true)) $colActive = "active";
+elseif (in_array("is_active", $invCols, true)) $colActive = "is_active";
+elseif (in_array("status", $invCols, true)) $colActive = "status";
+
+/* ===== detectar tabla de stock ===== */
 $stockTable = null;
+$stockCandidates = ["inventory_stock","inventory_branch_stock","inventario_stock","inventory_sucursal_stock","stock"];
+foreach ($stockCandidates as $t) {
+  if (tableExists($conn, $t)) { $stockTable = $t; break; }
+}
+
 $stockItemCol = null;
 $stockBranchCol = null;
 $stockQtyCol = null;
 
-$colItemId = "id";
-$colName   = "name";
-$colCat    = "category_id";
-$colPrice  = "sale_price";
-$colActive = null;
+if ($stockTable !== null) {
+  $stockCols = tableColumns($conn, $stockTable);
+
+  if (in_array("item_id", $stockCols, true)) $stockItemCol = "item_id";
+  elseif (in_array("product_id", $stockCols, true)) $stockItemCol = "product_id";
+  elseif (in_array("inventory_item_id", $stockCols, true)) $stockItemCol = "inventory_item_id";
+
+  if (in_array("branch_id", $stockCols, true)) $stockBranchCol = "branch_id";
+  elseif (in_array("sucursal_id", $stockCols, true)) $stockBranchCol = "sucursal_id";
+  elseif (in_array("branch", $stockCols, true)) $stockBranchCol = "branch";
+
+  if (in_array("quantity", $stockCols, true)) $stockQtyCol = "quantity";
+  elseif (in_array("qty", $stockCols, true)) $stockQtyCol = "qty";
+  elseif (in_array("existencia", $stockCols, true)) $stockQtyCol = "existencia";
+  elseif (in_array("stock", $stockCols, true)) $stockQtyCol = "stock";
+  elseif (in_array("balance", $stockCols, true)) $stockQtyCol = "balance";
+
+  if ($stockItemCol === null || $stockBranchCol === null) {
+    $stockTable = null; // inutilizable
+  }
+}
+
+/* fallback: branch_id dentro de inventory_items */
 $colBranchItems = null;
+if (in_array("branch_id", $invCols, true)) $colBranchItems = "branch_id";
+elseif (in_array("sucursal_id", $invCols, true)) $colBranchItems = "sucursal_id";
+elseif (in_array("branch", $invCols, true)) $colBranchItems = "branch";
 
+/* ===== cargar items por sucursal ===== */
+$items_all = [];
 try {
-  if (tableExists($conn, "inventory_items")) {
-    $itemCols = tableColumns($conn, "inventory_items");
-    if (in_array("id", $itemCols, true)) $colItemId = "id";
-    if (in_array("name", $itemCols, true)) $colName = "name";
-    if (in_array("category_id", $itemCols, true)) $colCat = "category_id";
-    if (in_array("sale_price", $itemCols, true)) $colPrice = "sale_price";
-    if (in_array("is_active", $itemCols, true)) $colActive = "is_active";
-    if (in_array("branch_id", $itemCols, true)) $colBranchItems = "branch_id";
+  if ($branch_id <= 0) throw new RuntimeException("No se pudo determinar la sucursal del usuario.");
 
-    // Detectar tabla de stock si existe
-    $stockCandidates = ["inventory_stock", "inventory_branch_stock", "inventario_stock", "stock"];
-    foreach ($stockCandidates as $t) {
-      if (tableExists($conn, $t)) {
-        $stockTable = $t;
-        $cols = tableColumns($conn, $t);
-        $stockItemCol = in_array("item_id", $cols, true) ? "item_id" : (in_array("inventory_item_id", $cols, true) ? "inventory_item_id" : null);
-        $stockBranchCol = in_array("branch_id", $cols, true) ? "branch_id" : null;
-        $stockQtyCol = in_array("quantity", $cols, true) ? "quantity" : (in_array("qty", $cols, true) ? "qty" : null);
+  if ($stockTable !== null) {
+    $sql = "SELECT i.$colItemId AS id, i.$colCat AS category_id, i.$colName AS name, i.$colPrice AS sale_price
+            FROM inventory_items i
+            INNER JOIN $stockTable s ON s.$stockItemCol = i.$colItemId
+            WHERE s.$stockBranchCol = ?";
+    $params = [$branch_id];
 
-        if ($stockItemCol && $stockBranchCol) break;
-        $stockTable = null;
-      }
-    }
+    if ($stockQtyCol !== null) $sql .= " AND COALESCE(s.$stockQtyCol,0) > 0";
+    if ($colActive !== null) $sql .= " AND i.$colActive=1";
+    $sql .= " ORDER BY i.$colName ASC";
 
-    // cargar items (solo activos y de la sucursal si aplica)
-    $sql = "SELECT $colItemId AS id, $colName AS name, $colCat AS category_id, $colPrice AS sale_price FROM inventory_items";
+    $st = $conn->prepare($sql);
+    $st->execute($params);
+    $items_all = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+  } else {
+    $sql = "SELECT $colItemId AS id, $colCat AS category_id, $colName AS name, $colPrice AS sale_price
+            FROM inventory_items";
     $where = [];
     $params = [];
-
-    if ($colActive !== null) { $where[] = "$colActive=1"; }
+    if ($colActive !== null) $where[] = "$colActive=1";
     if ($colBranchItems !== null) { $where[] = "$colBranchItems=?"; $params[] = $branch_id; }
     if ($where) $sql .= " WHERE " . implode(" AND ", $where);
     $sql .= " ORDER BY $colName ASC";
@@ -156,16 +298,11 @@ try {
     $st->execute($params);
     $items_all = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
   }
-
-  if (tableExists($conn, "inventory_categories")) {
-    $stC = $conn->query("SELECT id, name FROM inventory_categories ORDER BY name ASC");
-    $cats = $stC ? $stC->fetchAll(PDO::FETCH_ASSOC) : [];
-  }
 } catch (Throwable $e) {}
 
-/* =========================
+/* ===============================
    POST: guardar factura
-   ========================= */
+   =============================== */
 if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_invoice") {
   try {
     if ($patient_id <= 0) throw new Exception("Paciente inválido.");
@@ -195,13 +332,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     $in  = implode(",", array_fill(0, count($ids), "?"));
 
     /* Mapa items válidos por sucursal */
-    if ($stockTable !== null && $stockItemCol && $stockBranchCol) {
+    if ($stockTable !== null) {
       $sqlMap = "SELECT i.$colItemId AS id, i.$colCat AS category_id, i.$colName AS name, i.$colPrice AS sale_price
                  FROM inventory_items i
                  INNER JOIN $stockTable s ON s.$stockItemCol = i.$colItemId
                  WHERE i.$colItemId IN ($in)
                    AND s.$stockBranchCol = ?";
       $paramsMap = array_merge($ids, [$branch_id]);
+      if ($stockQtyCol !== null) $sqlMap .= " AND COALESCE(s.$stockQtyCol,0) > 0";
       if ($colActive !== null) $sqlMap .= " AND i.$colActive=1";
       $stMap = $conn->prepare($sqlMap);
       $stMap->execute($paramsMap);
@@ -211,7 +349,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
                  WHERE $colItemId IN ($in)";
       $paramsMap = $ids;
       if ($colBranchItems !== null) { $sqlMap .= " AND $colBranchItems=?"; $paramsMap[] = $branch_id; }
-      if ($colActive !== null) $sqlMap .= " AND $colActive=1";
       $stMap = $conn->prepare($sqlMap);
       $stMap->execute($paramsMap);
     }
@@ -220,18 +357,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     $map = [];
     foreach ($mapRows as $r) $map[(int)$r["id"]] = $r;
 
-    // Validar que TODOS los productos enviados existan/estén disponibles para esta sucursal
-    $missing = [];
-    foreach ($cleanLines as $iid => $q) {
-      $iid = (int)$iid;
-      if (!isset($map[$iid])) $missing[] = $iid;
-    }
-    if ($missing) {
-      throw new RuntimeException("Hay productos inválidos o no disponibles en esta sucursal: " . implode(", ", $missing));
-    }
-
     $subtotal = 0.0;
     foreach ($cleanLines as $iid => $q) {
+      if (!isset($map[(int)$iid])) continue;
       $price = (float)$map[(int)$iid]["sale_price"];
       $subtotal += ($price * (int)$q);
     }
@@ -249,11 +377,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     $conn->beginTransaction();
 
     /* INSERT CABECERA invoices */
+    $motivo = isset($_POST["motivo"]) ? trim((string)$_POST["motivo"]) : "";
     $notes  = isset($_POST["notes"]) ? trim((string)$_POST["notes"]) : null;
     if ($notes === "") $notes = null;
 
     $invCols2 = tableColumns($conn, "invoices");
     $hasBranch  = in_array("branch_id", $invCols2, true);
+    $hasMotivo  = in_array("motivo", $invCols2, true);
     $hasRep     = in_array("representative", $invCols2, true);
     $hasCov     = in_array("coverage_amount", $invCols2, true);
     $hasCash    = in_array("cash_received", $invCols2, true);
@@ -272,15 +402,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     }
 
     $fields = ["patient_id","invoice_date","payment_method","subtotal","total"];
-    $vals   = [$patient_id, $invoice_date, $payment_method, $subtotal, $total];
+    $vals   = [$patient_id,$invoice_date,$payment_method,$subtotal,$total];
 
     if ($hasBranch) { $fields[]="branch_id"; $vals[]=$branch_id; }
+    if ($hasNotes)  { $fields[]="notes"; $vals[]=($notes ?? null); }
+    if ($hasCreated){ $fields[]="created_by"; $vals[]=(int)($user["id"] ?? 0); }
     if ($hasCov)    { $fields[]="coverage_amount"; $vals[]=$coverage_amount; }
     if ($hasCash)   { $fields[]="cash_received"; $vals[]=$cash_received; }
     if ($hasChange) { $fields[]="change_due"; $vals[]=$change_due; }
-    if ($hasNotes)  { $fields[]="notes"; $vals[]=$notes; }
-    if ($hasCreated){ $fields[]="created_by"; $vals[]=(int)($user["id"] ?? 0); }
     if ($hasRep)    { $fields[]="representative"; $vals[]=$representative; }
+    if ($hasMotivo) { $fields[]="motivo"; $vals[]=$motivo; }
 
     $place = implode(",", array_fill(0, count($fields), "?"));
     $sqlInv = "INSERT INTO invoices (" . implode(",", $fields) . ") VALUES ($place)";
@@ -309,6 +440,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     $stLine = $conn->prepare($sqlLine);
 
     foreach ($cleanLines as $iid => $q) {
+      if (!isset($map[(int)$iid])) continue;
       $unit = (float)$map[(int)$iid]["sale_price"];
       $lt   = $unit * (int)$q;
 
@@ -320,118 +452,117 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     }
 
     /* ===============================
-       INVENTARIO: descuento (si existe tabla)
+       ✅ DESCONTAR INVENTARIO (POR SUCURSAL)
        =============================== */
-    $hasInvStock = tableExists($conn, "inventory_stock");
-    $hasInvMov   = tableExists($conn, "inventory_movements");
-    $hasBranchItems = tableExists($conn, "branch_items");
-
-    if ($hasInvStock) {
-      $stUpdStock = $conn->prepare("
-        UPDATE inventory_stock
-        SET quantity = quantity - ?
-        WHERE branch_id = ?
-          AND item_id = ?
-          AND quantity >= ?
-      ");
-
-      $stInvMov = null;
-      if ($hasInvMov) {
-        $stInvMov = $conn->prepare("
-          INSERT INTO inventory_movements
-            (item_id, branch_id, movement_type, qty, note, created_by)
-          VALUES
-            (?, ?, 'OUT', ?, ?, ?)
-        ");
-      }
-
-      $stUpdBranchItems = null;
-      if ($hasBranchItems) {
-        $branchCols = tableColumns($conn, "branch_items");
-        if (in_array("quantity", $branchCols, true)) {
-          $stUpdBranchItems = $conn->prepare("
-            UPDATE branch_items
-            SET quantity = quantity - ?
-            WHERE branch_id = ?
-              AND item_id = ?
-              AND quantity >= ?
-          ");
-        }
-      }
+    if ($stockTable !== null && $stockQtyCol !== null) {
+      // update seguro: no permite stock negativo
+      $sqlUpd = "UPDATE $stockTable
+                 SET $stockQtyCol = $stockQtyCol - ?
+                 WHERE $stockBranchCol = ?
+                   AND $stockItemCol = ?
+                   AND COALESCE($stockQtyCol,0) >= ?";
+      $stUpd = $conn->prepare($sqlUpd);
 
       foreach ($cleanLines as $iid => $q) {
         $qty = (int)$q;
-        $iid = (int)$iid;
-        if ($iid <= 0 || $qty <= 0) continue;
-
-        $stUpdStock->execute([$qty, $branch_id, $iid, $qty]);
-        if ($stUpdStock->rowCount() <= 0) {
+        $stUpd->execute([$qty, $branch_id, (int)$iid, $qty]);
+        if ($stUpd->rowCount() <= 0) {
           throw new RuntimeException("Stock insuficiente para el producto ID #{$iid} en esta sucursal.");
         }
+      }
+    } elseif ($stockTable !== null) {
+      // hay tabla stock pero no detectó columna cantidad -> intentamos igual sin validación
+      // (no debería pasar en tu caso porque inventory_stock tiene quantity)
+      $sqlUpd = "UPDATE $stockTable SET {$stockQtyCol}={$stockQtyCol} WHERE 1=1";
+      // no hacemos nada si no hay qty col
+    }
 
-        if ($stInvMov) {
-          $note = "Salida por factura #{$invoice_id}";
-          $stInvMov->execute([$iid, $branch_id, $qty, $note, (int)($user["id"] ?? 0)]);
-        }
+    /* ===============================
+       ✅ CAJA: registrar ingresos
+       =============================== */
+    $uid = (int)($user["id"] ?? 0);
+    $pm  = strtolower(trim((string)$payment_method));
+    if ($pm === "cash") $pm = "efectivo";
+    if ($pm === "card") $pm = "tarjeta";
+    if ($pm === "transfer") $pm = "transferencia";
 
-        if ($stUpdBranchItems) {
-          $stUpdBranchItems->execute([$qty, $branch_id, $iid, $qty]);
+    // 1) si existe función oficial, úsala
+    if (function_exists("caja_registrar_ingreso_factura")) {
+      try {
+        caja_registrar_ingreso_factura($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$total, (string)$pm);
+
+        if ((float)$coverage_amount > 0) {
+          caja_registrar_ingreso_factura($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$coverage_amount, "cobertura");
         }
+      } catch (Throwable $e) {
+        // 2) fallback si falla
+        cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$total, (string)$pm, "Ingreso por factura #{$invoice_id}");
+        if ((float)$coverage_amount > 0) {
+          cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$coverage_amount, "cobertura", "Cobertura factura #{$invoice_id}");
+        }
+      }
+    } else {
+      // 2) fallback directo
+      cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$total, (string)$pm, "Ingreso por factura #{$invoice_id}");
+      if ((float)$coverage_amount > 0) {
+        cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$coverage_amount, "cobertura", "Cobertura factura #{$invoice_id}");
       }
     }
 
     $conn->commit();
-    $ok = "Factura creada correctamente.";
-    $last_invoice_id = $invoice_id;
 
+    $last_invoice_id = $invoice_id;
+    $ok = "Factura creada (#{$invoice_id}).";
   } catch (Throwable $e) {
     if ($conn->inTransaction()) $conn->rollBack();
     $err = $e->getMessage();
   }
 }
+
+$today = date("Y-m-d");
 ?>
 <!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CEVIMEP | Nueva factura</title>
-
-  <link rel="stylesheet" href="/assets/css/styles.css?v=120">
+  <title>Nueva factura - CEVIMEP</title>
+  <link rel="stylesheet" href="/assets/css/styles.css?v=<?php echo time(); ?>">
+  <link rel="stylesheet" href="/assets/css/facturacion.css?v=<?php echo time(); ?>">
 
   <style>
     .page-wrap{max-width:1400px !important; width:100% !important;margin:0 auto;padding:18px}
     .card{background:#fff;border-radius:18px;box-shadow:0 10px 25px rgba(0,0,0,.08);padding:18px;width:100%}
     .title{font-size:34px;font-weight:900;text-align:center;margin:10px 0 8px}
     .subtitle{font-size:14px;color:#334155;text-align:center;margin-bottom:10px;font-weight:600}
-    .page-footer{text-align:center;margin-top:14px;font-weight:850;color:#6b7a88}
     .alert{padding:10px 12px;border-radius:12px;margin:10px auto;max-width:1100px}
     .alert.err{background:#fee2e2;border:1px solid #fecaca;color:#991b1b}
     .alert.ok{background:#dcfce7;border:1px solid #bbf7d0;color:#166534}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
     .grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
-    label{display:block;font-size:12px;font-weight:800;color:#334155;margin-bottom:6px}
-    input, select{width:100%;height:42px;border:1px solid #e2e8f0;border-radius:12px;padding:0 12px;font-weight:700}
-    .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
-    .row > *{flex:1}
-    .btn{height:42px;border-radius:12px;border:0;font-weight:900;cursor:pointer;padding:0 16px}
-    .btn-primary{background:#0b4d87;color:#fff}
-    .btn-muted{background:#eef2f6;color:#0f172a}
-    .table{width:100%;border-collapse:separate;border-spacing:0;margin-top:10px}
-    .table th,.table td{padding:10px;border-bottom:1px solid #eef2f6;font-size:13px}
-    .table th{font-size:12px;color:#0b4d87;text-align:left;font-weight:950}
-    .right{text-align:right}
-    .totals{max-width:380px;margin-left:auto;margin-top:12px;border:1px solid #eef2f6;border-radius:14px;padding:12px}
-    .totals .line{display:flex;justify-content:space-between;margin:6px 0;font-weight:900}
-    .muted{color:#64748b;font-weight:800}
-    .hide{display:none}
-    @media (max-width: 980px){
-      .grid,.grid3,.grid4{grid-template-columns:1fr}
-    }
+    @media(max-width:900px){.grid,.grid3,.grid4{grid-template-columns:1fr}}
+    label{font-weight:800;font-size:12px;color:#0f172a;display:block;margin-bottom:6px}
+    input,select{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #e2e8f0;outline:none}
+    input:focus,select:focus{border-color:#2563eb;box-shadow:0 0 0 4px rgba(37,99,235,.12)}
+    .section{margin-top:14px}
+    .section h3{margin:0 0 10px;font-size:15px;font-weight:900;color:#0f172a}
+    .btnrow{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
+    .btn{height:40px;border-radius:12px;border:1px solid transparent;padding:0 14px;font-weight:900;cursor:pointer}
+    .btn.primary{background:#0b4d87;color:#fff}
+    .btn.light{background:#eef2ff;color:#1e3a8a;border-color:#dbeafe;text-decoration:none;display:inline-flex;align-items:center}
+    .lines{width:100%;border-collapse:separate;border-spacing:0;margin-top:10px}
+    .lines th,.lines td{padding:10px 10px;border-bottom:1px solid #eef2f6;font-size:13px}
+    .lines th{color:#0b4d87;text-align:left;font-weight:900;font-size:12px}
+    .lines tr:last-child td{border-bottom:none}
+    .money{white-space:nowrap;font-weight:900}
+    .totals{max-width:260px;margin-left:auto;background:#f8fafc;border:1px solid rgba(2,21,44,.08);border-radius:14px;padding:12px}
+    .totals .row{display:flex;justify-content:space-between;gap:10px;margin:6px 0;font-weight:900}
+    .mini{font-size:12px;opacity:.75;font-weight:700}
+
+    .content{align-items:flex-start;justify-content:center;text-align:left;overflow:auto;padding:24px 0;}
   </style>
 </head>
-
 <body>
 
 <header class="navbar">
@@ -475,108 +606,124 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
           <div class="alert ok"><?php echo h($ok); ?></div>
         <?php endif; ?>
 
+        <?php if ($ok && !empty($last_invoice_id)): ?>
+          <script>
+          (function(){
+            var url = "print.php?id=<?php echo (int)$last_invoice_id; ?>";
+            window.open(url, "_blank");
+          })();
+          </script>
+        <?php endif; ?>
+
         <form method="post" id="invoiceForm" autocomplete="off">
           <input type="hidden" name="action" value="save_invoice">
 
-          <div class="grid">
-            <div>
-              <label>Fecha</label>
-              <input type="date" name="invoice_date" value="<?php echo h($today); ?>">
-            </div>
+          <div class="section">
+            <h3>Datos de la factura</h3>
+            <div class="grid">
+              <div>
+                <label>Fecha</label>
+                <input type="date" name="invoice_date" value="<?php echo h($today); ?>">
+              </div>
 
-            <div>
-              <label>Método de pago</label>
-              <select name="payment_method" id="payment_method">
-                <option value="EFECTIVO">EFECTIVO</option>
-                <option value="TARJETA">TARJETA</option>
-                <option value="TRANSFERENCIA">TRANSFERENCIA</option>
-              </select>
-            </div>
+              <div>
+                <label>Método de pago</label>
+                <select name="payment_method" id="payment_method">
+                  <option value="EFECTIVO">EFECTIVO</option>
+                  <option value="TARJETA">TARJETA</option>
+                  <option value="TRANSFERENCIA">TRANSFERENCIA</option>
+                </select>
+              </div>
 
-            <div id="cash_box">
-              <label>Efectivo recibido (solo efectivo)</label>
-              <input type="text" name="cash_received" id="cash_received" value="">
-            </div>
+              <div id="cash_box">
+                <label>Efectivo recibido (solo efectivo)</label>
+                <input type="number" step="0.01" name="cash_received" id="cash_received" value="0.00">
+              </div>
 
-            <div>
-              <label>Cobertura (RD$)</label>
-              <input type="text" name="coverage_amount" id="coverage_amount" value="0.00">
-            </div>
+              <div>
+                <label>Cobertura (RD$)</label>
+                <input type="number" step="0.01" name="coverage_amount" id="coverage_amount" value="0.00">
+              </div>
 
-            <div style="grid-column:1 / -1">
-              <label>Representante</label>
-              <input type="text" name="representative" placeholder="Nombre del representante / tutor">
-            </div>
-          </div>
+              <div style="grid-column:1 / -1;">
+                <label>Representante</label>
+                <input type="text" name="representative" placeholder="Nombre del representante / tutor">
+              </div>
 
-          <hr style="border:0;border-top:1px solid #eef2f6;margin:14px 0">
-
-          <div class="row">
-            <div style="max-width:260px">
-              <label>Categoría (filtro)</label>
-              <select id="cat_filter">
-                <option value="0">Todas</option>
-                <?php foreach ($cats as $c): ?>
-                  <option value="<?php echo (int)$c["id"]; ?>"><?php echo h($c["name"]); ?></option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-
-            <div>
-              <label>Producto</label>
-              <select id="item_select">
-                <option value="0">-- Seleccionar --</option>
-                <?php foreach ($items_all as $it): ?>
-                  <option
-                    value="<?php echo (int)$it["id"]; ?>"
-                    data-price="<?php echo h($it["sale_price"]); ?>"
-                    data-cat="<?php echo (int)($it["category_id"] ?? 0); ?>"
-                  >
-                    <?php echo h($it["name"]); ?>
-                  </option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-
-            <div style="max-width:160px">
-              <label>Cantidad</label>
-              <input type="number" id="qty_input" min="1" value="1">
-            </div>
-
-            <div style="max-width:160px">
-              <button type="button" class="btn btn-primary" id="btn_add">Añadir</button>
+              <?php if (columnExists($conn, "invoices", "motivo")): ?>
+                <div style="grid-column:1 / -1;">
+                  <label>Motivo (opcional)</label>
+                  <input type="text" name="motivo" placeholder="Ej: Vacuna / Consulta / Procedimiento...">
+                </div>
+              <?php endif; ?>
             </div>
           </div>
 
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Producto</th>
-                <th class="right">Cantidad</th>
-                <th class="right">Precio</th>
-                <th class="right">Total</th>
-              </tr>
-            </thead>
-            <tbody id="lines_tbody"></tbody>
-          </table>
+          <div class="section">
+            <h3>Agregar productos</h3>
 
-          <div class="totals">
-            <div class="line"><span class="muted">Subtotal</span><span id="subTotal">RD$ 0.00</span></div>
-            <div class="line"><span class="muted">Cobertura</span><span id="covTotal">RD$ 0.00</span></div>
-            <div class="line"><span>Total</span><span id="grandTotal">RD$ 0.00</span></div>
-            <div class="line"><span class="muted">Cambio</span><span id="changeDue">RD$ 0.00</span></div>
+            <div class="grid4">
+              <div>
+                <label>Categoría (filtro)</label>
+                <select id="cat_filter">
+                  <option value="0">Todas</option>
+                  <?php foreach ($cats as $c): ?>
+                    <option value="<?php echo (int)$c["id"]; ?>"><?php echo h($c["name"]); ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+
+              <div>
+                <label>Producto</label>
+                <select id="item_select">
+                  <option value="0">-- Seleccionar --</option>
+                  <?php foreach ($items_all as $it): ?>
+                    <option value="<?php echo (int)$it["id"]; ?>" data-cat="<?php echo (int)$it["category_id"]; ?>" data-price="<?php echo h($it["sale_price"]); ?>">
+                      <?php echo h($it["name"]); ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+
+              <div>
+                <label>Cantidad</label>
+                <input type="number" id="qty" value="1" min="1">
+              </div>
+
+              <div style="display:flex;align-items:flex-end;">
+                <button type="button" class="btn primary" id="btnAdd" style="width:100%;">Añadir</button>
+              </div>
+            </div>
+
+            <table class="lines" id="linesTable">
+              <thead>
+                <tr>
+                  <th style="width:55%;">Producto</th>
+                  <th style="width:15%;">Cantidad</th>
+                  <th style="width:15%;">Precio</th>
+                  <th style="width:15%;">Total</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+
+            <div class="totals" style="margin-top:12px;">
+              <div class="row"><span>Subtotal</span><span class="money" id="t_sub">RD$ 0.00</span></div>
+              <div class="row"><span>Cobertura</span><span class="money" id="t_cov">RD$ 0.00</span></div>
+              <div class="row"><span>Total a pagar</span><span class="money" id="t_total">RD$ 0.00</span></div>
+              <div class="row"><span>Cambio</span><span class="money" id="t_change">RD$ 0.00</span></div>
+              <div class="mini">* El cambio solo aplica en EFECTIVO.</div>
+            </div>
+
+            <div class="btnrow">
+              <a class="btn light" href="/private/facturacion/index.php">Cancelar</a>
+              <button type="submit" class="btn primary" id="btnSave">Guardar y imprimir</button>
+            </div>
           </div>
 
           <div id="hiddenLines"></div>
-
-          <div style="margin-top:14px; display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
-            <a href="/private/facturacion/index.php" class="btn btn-muted" style="text-decoration:none;display:inline-flex;align-items:center;">Volver</a>
-            <button type="submit" class="btn btn-primary">Guardar e imprimir</button>
-          </div>
         </form>
       </div>
-
-      <div class="page-footer">© <?php echo h($year); ?> CEVIMEP</div>
     </div>
   </main>
 </div>
@@ -594,86 +741,82 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
   const covInp  = document.getElementById("coverage_amount");
 
   const catFilter = document.getElementById("cat_filter");
-  const itemSel = document.getElementById("item_select");
-  const qtyInp  = document.getElementById("qty_input");
-  const btnAdd  = document.getElementById("btn_add");
+  const itemSel   = document.getElementById("item_select");
+  const qtyInp    = document.getElementById("qty");
+  const btnAdd    = document.getElementById("btnAdd");
 
-  const tbody   = document.getElementById("lines_tbody");
-  const hidden  = document.getElementById("hiddenLines");
+  const tbody     = document.querySelector("#linesTable tbody");
+  const hidden    = document.getElementById("hiddenLines");
 
-  const subEl   = document.getElementById("subTotal");
-  const covEl   = document.getElementById("covTotal");
-  const totEl   = document.getElementById("grandTotal");
-  const chgEl   = document.getElementById("changeDue");
+  const tSub    = document.getElementById("t_sub");
+  const tCov    = document.getElementById("t_cov");
+  const tTotal  = document.getElementById("t_total");
+  const tChange = document.getElementById("t_change");
 
-  const lines = {};
+  let lines = {}; // {id: {name, price, qty, cat}}
 
   function syncPaymentUI(){
-    const pm = (payment.value||"").toUpperCase();
-    if (pm === "EFECTIVO") {
-      cashBox.classList.remove("hide");
-    } else {
-      cashBox.classList.add("hide");
-      cashInp.value = "";
-    }
+    const m = (payment.value || "").toUpperCase();
+    const isCash = (m === "EFECTIVO");
+    cashBox.style.display = isCash ? "block" : "none";
+    if (!isCash) cashInp.value = "";
     recalc();
   }
 
   function filterItems(){
-    const cat = Number(catFilter.value||0);
+    const c = Number(catFilter.value||0);
     [...itemSel.options].forEach((opt, idx)=>{
-      if (idx===0) return;
+      if (idx === 0) return;
       const oc = Number(opt.getAttribute("data-cat")||0);
-      opt.hidden = (cat && oc !== cat);
+      opt.style.display = (c===0 || c===oc) ? "" : "none";
     });
     itemSel.value = "0";
   }
 
   function recalc(){
-    let subtotal = 0;
-    Object.keys(lines).forEach(id=>{
+    let sub = 0;
+    Object.keys(lines).forEach((id)=>{
       const ln = lines[id];
-      subtotal += (Number(ln.price) * Number(ln.qty));
+      sub += (Number(ln.price||0) * Number(ln.qty||0));
     });
 
     const cov = Number(covInp.value||0);
-    const total = Math.max(0, subtotal - cov);
+    const total = Math.max(0, sub - cov);
 
+    const method = (payment.value||"").toUpperCase();
     let change = 0;
-    const pm = (payment.value||"").toUpperCase();
-    if (pm === "EFECTIVO") {
+    if (method === "EFECTIVO") {
       const cash = Number(cashInp.value||0);
       change = cash - total;
+    } else {
+      change = 0;
     }
 
-    subEl.textContent = money(subtotal);
-    covEl.textContent = money(cov);
-    totEl.textContent = money(total);
-    chgEl.textContent = money(change);
+    tSub.textContent = money(sub);
+    tCov.textContent = money(cov);
+    tTotal.textContent = money(total);
+    tChange.textContent = money(change);
   }
 
   function render(){
     tbody.innerHTML = "";
     hidden.innerHTML = "";
 
-    Object.keys(lines).forEach(id=>{
+    Object.keys(lines).forEach((id)=>{
       const ln = lines[id];
 
       const tr = document.createElement("tr");
-      const tdName = document.createElement("td");
-      const tdQty = document.createElement("td");
-      const tdPrice = document.createElement("td");
-      const tdTotal = document.createElement("td");
 
+      const tdName = document.createElement("td");
       tdName.textContent = ln.name;
 
-      tdQty.className = "right";
+      const tdQty = document.createElement("td");
       tdQty.textContent = ln.qty;
 
-      tdPrice.className = "right";
+      const tdPrice = document.createElement("td");
       tdPrice.textContent = money(ln.price);
 
-      tdTotal.className = "right";
+      const tdTotal = document.createElement("td");
       tdTotal.textContent = money(Number(ln.price) * Number(ln.qty));
 
       tr.appendChild(tdName);
@@ -682,6 +825,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
       tr.appendChild(tdTotal);
       tbody.appendChild(tr);
 
+      // hidden inputs para el POST
       const inp = document.createElement("input");
       inp.type = "hidden";
       inp.name = "lines[" + id + "]";
