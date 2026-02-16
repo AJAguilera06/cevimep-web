@@ -410,6 +410,9 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
   </main>
 
 </div>
-
+<!-- FOOTER (igual dashboard.php) -->
+<footer class="footer">
+    © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
+</footer>
 </body>
 </html>
