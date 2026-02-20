@@ -1,299 +1,314 @@
 <?php
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+if (!isset($_SESSION['user'])) {
+    header("Location: /login.php");
+    exit;
+}
+
+$user = $_SESSION['user'];
+$nombreSucursal = $user['full_name'] ?? 'CEVIMEP';
+$rol = $user['role'] ?? '';
+$sucursalId = $user['branch_id'] ?? '';
+
 /**
- * esquema.php
- * Página para registrar y visualizar el esquema de vacunas.
- *
- * Requisitos sugeridos (BD):
- *  Tabla: patient_vaccines
- *   - id INT AI PK
- *   - patient_id INT NULL
- *   - vacuna VARCHAR(150) NOT NULL
- *   - fecha_vacuna DATE NOT NULL
- *   - comentario TEXT NULL
- *   - created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
- *
- * Esta página intenta reutilizar una conexión existente ($conn mysqli o $pdo PDO) si tu proyecto ya la define
- * mediante includes. Si no existe, igual renderiza el UI.
+ * Intentar cargar conexión a BD si existe en el proyecto
+ * - Si ya tienes $conn (mysqli) o $pdo (PDO) definidos en otro include, esto no estorba.
  */
+@require_once __DIR__ . '/../config/db.php';
+@require_once __DIR__ . '/../config/database.php';
+@require_once __DIR__ . '/../db.php';
 
-if (session_status() === PHP_SESSION_NONE) {
-  session_start();
-}
-
-/* Intenta cargar inicializadores comunes (ajusta según tu proyecto) */
-$possible_includes = [
-  __DIR__ . '/../../config/db.php',
-  __DIR__ . '/../config/db.php',
-  __DIR__ . '/../../includes/db.php',
-  __DIR__ . '/../includes/db.php',
-  __DIR__ . '/../../includes/init.php',
-  __DIR__ . '/../includes/init.php',
-];
-foreach ($possible_includes as $inc) {
-  if (file_exists($inc)) {
-    @require_once $inc;
-  }
-}
-
-/* Helpers */
-function h($v) { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
-
-$patient_id = isset($_GET['patient_id']) ? (int)$_GET['patient_id'] : null;
+$patientId = isset($_GET['patient_id']) ? (int)$_GET['patient_id'] : (isset($_POST['patient_id']) ? (int)$_POST['patient_id'] : 0);
 
 $errors = [];
-$flash_success = null;
+$success = null;
 
-/* Detecta tipo de conexión disponible */
-$has_mysqli = isset($conn) && ($conn instanceof mysqli);
-$has_pdo    = isset($pdo)  && ($pdo instanceof PDO);
-
-/* Inserción */
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_vaccine') {
-  $vacuna       = trim($_POST['vacuna'] ?? '');
-  $fecha_vacuna = trim($_POST['fecha_vacuna'] ?? '');
-  $comentario   = trim($_POST['comentario'] ?? '');
-
-  if ($vacuna === '') $errors[] = 'La vacuna es obligatoria.';
-  if ($fecha_vacuna === '') $errors[] = 'La fecha de vacuna es obligatoria.';
-
-  // Normaliza fecha (YYYY-MM-DD)
-  if ($fecha_vacuna !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha_vacuna)) {
-    $errors[] = 'La fecha de vacuna debe tener formato YYYY-MM-DD.';
-  }
-
-  if (!$errors && ($has_mysqli || $has_pdo)) {
-    try {
-      if ($has_mysqli) {
-        $stmt = $conn->prepare("INSERT INTO patient_vaccines (patient_id, vacuna, fecha_vacuna, comentario) VALUES (?,?,?,?)");
-        $pid = $patient_id ?: null;
-        $stmt->bind_param("isss", $pid, $vacuna, $fecha_vacuna, $comentario);
-        $stmt->execute();
-        $stmt->close();
-      } else { // PDO
-        $stmt = $pdo->prepare("INSERT INTO patient_vaccines (patient_id, vacuna, fecha_vacuna, comentario) VALUES (:patient_id,:vacuna,:fecha,:comentario)");
-        $stmt->execute([
-          ':patient_id' => $patient_id ?: null,
-          ':vacuna' => $vacuna,
-          ':fecha' => $fecha_vacuna,
-          ':comentario' => $comentario,
-        ]);
-      }
-
-      $flash_success = 'Vacuna registrada correctamente.';
-      // Limpia POST para no re-enviar datos al refrescar
-      $_POST = [];
-    } catch (Throwable $e) {
-      $errors[] = 'No se pudo registrar la vacuna. Revisa la tabla/BD. Detalle: ' . $e->getMessage();
-    }
-  } elseif (!$errors) {
-    // Sin BD: aún mostramos éxito "solo UI" para no bloquear al usuario
-    $flash_success = 'Vacuna registrada (modo UI). Conecta la BD para guardar permanentemente.';
-    $_POST = [];
-  }
+/**
+ * Crear tabla automáticamente si no existe (evita el error en Railway).
+ * Ajusta nombres de campos si ya tienes una tabla creada.
+ */
+function ensure_table_exists_mysqli(mysqli $conn): void {
+    $sql = "
+        CREATE TABLE IF NOT EXISTS patient_vaccines (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            patient_id INT NOT NULL,
+            vaccine_name VARCHAR(255) NOT NULL,
+            vaccine_date DATE NOT NULL,
+            comment TEXT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    ";
+    @$conn->query($sql);
 }
 
-/* Consulta para listado */
-$rows = [];
-if ($has_mysqli || $has_pdo) {
-  try {
-    if ($has_mysqli) {
-      if ($patient_id) {
-        $stmt = $conn->prepare("SELECT id, vacuna, fecha_vacuna, comentario FROM patient_vaccines WHERE patient_id = ? ORDER BY fecha_vacuna DESC, id DESC");
-        $stmt->bind_param("i", $patient_id);
-        $stmt->execute();
-        $res = $stmt->get_result();
-      } else {
-        $res = $conn->query("SELECT id, vacuna, fecha_vacuna, comentario FROM patient_vaccines ORDER BY fecha_vacuna DESC, id DESC LIMIT 50");
-      }
-      if ($res) {
-        while ($r = $res->fetch_assoc()) $rows[] = $r;
-      }
-      if (isset($stmt) && $stmt) $stmt->close();
-    } else {
-      if ($patient_id) {
-        $stmt = $pdo->prepare("SELECT id, vacuna, fecha_vacuna, comentario FROM patient_vaccines WHERE patient_id = :pid ORDER BY fecha_vacuna DESC, id DESC");
-        $stmt->execute([':pid' => $patient_id]);
-      } else {
-        $stmt = $pdo->query("SELECT id, vacuna, fecha_vacuna, comentario FROM patient_vaccines ORDER BY fecha_vacuna DESC, id DESC LIMIT 50");
-      }
-      $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+function ensure_table_exists_pdo(PDO $pdo): void {
+    $sql = "
+        CREATE TABLE IF NOT EXISTS patient_vaccines (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            patient_id INT NOT NULL,
+            vaccine_name VARCHAR(255) NOT NULL,
+            vaccine_date DATE NOT NULL,
+            comment TEXT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    ";
+    try { $pdo->exec($sql); } catch (Throwable $e) { /* si no hay permisos, ignorar */ }
+}
+
+$hasMysqli = isset($conn) && $conn instanceof mysqli;
+$hasPdo = isset($pdo) && $pdo instanceof PDO;
+
+if ($hasMysqli) ensure_table_exists_mysqli($conn);
+if ($hasPdo) ensure_table_exists_pdo($pdo);
+
+/** Guardar registro */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_vaccine') {
+    $vaccine = trim($_POST['vaccine'] ?? '');
+    $vaccineDate = trim($_POST['vaccine_date'] ?? '');
+    $comment = trim($_POST['comment'] ?? '');
+
+    if ($patientId <= 0) $errors[] = "Falta el paciente (patient_id).";
+    if ($vaccine === '') $errors[] = "La vacuna es obligatoria.";
+    if ($vaccineDate === '') $errors[] = "La fecha de vacuna es obligatoria.";
+
+    if (!$errors) {
+        try {
+            if ($hasMysqli) {
+                $stmt = $conn->prepare("INSERT INTO patient_vaccines (patient_id, vaccine_name, vaccine_date, comment) VALUES (?, ?, ?, ?)");
+                $stmt->bind_param("isss", $patientId, $vaccine, $vaccineDate, $comment);
+                $stmt->execute();
+                $stmt->close();
+                $success = "Vacuna registrada correctamente.";
+            } elseif ($hasPdo) {
+                $stmt = $pdo->prepare("INSERT INTO patient_vaccines (patient_id, vaccine_name, vaccine_date, comment) VALUES (:pid, :v, :d, :c)");
+                $stmt->execute([':pid'=>$patientId, ':v'=>$vaccine, ':d'=>$vaccineDate, ':c'=>$comment]);
+                $success = "Vacuna registrada correctamente.";
+            } else {
+                $errors[] = "No se encontró conexión a base de datos (\$conn o \$pdo).";
+            }
+        } catch (Throwable $e) {
+            $errors[] = "No se pudo guardar: " . $e->getMessage();
+        }
     }
-  } catch (Throwable $e) {
-    // Si falla el select, solo no mostramos lista.
-    $errors[] = 'No se pudo cargar el listado de vacunas. Detalle: ' . $e->getMessage();
-  }
+}
+
+/** Listado */
+$vaccines = [];
+if ($patientId > 0) {
+    try {
+        if ($hasMysqli) {
+            $stmt = $conn->prepare("SELECT id, vaccine_name, vaccine_date, comment, created_at FROM patient_vaccines WHERE patient_id = ? ORDER BY vaccine_date DESC, id DESC");
+            $stmt->bind_param("i", $patientId);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            while ($row = $res->fetch_assoc()) $vaccines[] = $row;
+            $stmt->close();
+        } elseif ($hasPdo) {
+            $stmt = $pdo->prepare("SELECT id, vaccine_name, vaccine_date, comment, created_at FROM patient_vaccines WHERE patient_id = :pid ORDER BY vaccine_date DESC, id DESC");
+            $stmt->execute([':pid'=>$patientId]);
+            $vaccines = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } catch (Throwable $e) {
+        $errors[] = "No se pudo cargar el listado de vacunas. Detalle: " . $e->getMessage();
+    }
 }
 ?>
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Esquema de Vacuna</title>
-  <style>
-    :root{
-      --bg:#0b1220;
-      --card:#0f1a2f;
-      --muted:#94a3b8;
-      --text:#e5e7eb;
-      --border:rgba(148,163,184,.18);
-      --btn:#2563eb;
-      --btn2:#0ea5e9;
-      --danger:#ef4444;
-      --ok:#22c55e;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:linear-gradient(180deg,#070b14,var(--bg));color:var(--text)}
-    .wrap{max-width:980px;margin:0 auto;padding:22px}
-    .top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-    h1{margin:0;font-size:20px;letter-spacing:.2px}
-    .btn{appearance:none;border:0;border-radius:10px;padding:10px 14px;color:white;background:var(--btn);cursor:pointer;font-weight:600}
-    .btn:hover{filter:brightness(1.05)}
-    .btn.secondary{background:transparent;border:1px solid var(--border);color:var(--text)}
-    .card{margin-top:14px;background:rgba(15,26,47,.85);border:1px solid var(--border);border-radius:14px;padding:14px}
-    .grid{display:grid;grid-template-columns:1fr 220px;gap:12px}
-    @media (max-width:720px){.grid{grid-template-columns:1fr}}
-    label{display:block;font-size:13px;color:var(--muted);margin:0 0 6px}
-    input, textarea{
-      width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);
-      background:rgba(2,6,23,.55);color:var(--text);outline:none
-    }
-    textarea{min-height:92px;resize:vertical}
-    .row{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:10px}
-    .alert{padding:10px 12px;border-radius:12px;margin-top:12px;border:1px solid var(--border);background:rgba(2,6,23,.4)}
-    .alert.ok{border-color:rgba(34,197,94,.35)}
-    .alert.err{border-color:rgba(239,68,68,.35)}
-    table{width:100%;border-collapse:collapse;margin-top:10px}
-    th,td{padding:10px 10px;border-bottom:1px solid var(--border);vertical-align:top}
-    th{color:var(--muted);font-weight:600;text-align:left;font-size:13px}
-    td{font-size:14px}
-    .muted{color:var(--muted);font-size:13px}
-    .pill{display:inline-block;padding:3px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted);font-size:12px}
-  </style>
+    <meta charset="UTF-8">
+    <title>Esquema de Vacuna | CEVIMEP</title>
+    <link rel="stylesheet" href="/assets/css/styles.css?v=50">
+    <style>
+        /* Ajustes mínimos, sin romper tu styles.css */
+        .page-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+        .card{background: rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:16px}
+        .muted{opacity:.8}
+        .alert{border-radius:12px;padding:12px 14px;margin:12px 0}
+        .alert.err{border:1px solid rgba(255,77,77,.35); background: rgba(255,77,77,.08)}
+        .alert.ok{border:1px solid rgba(80,200,120,.35); background: rgba(80,200,120,.08)}
+        .table{width:100%;border-collapse:collapse}
+        .table th,.table td{padding:10px 8px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:left;vertical-align:top}
+        .table th{opacity:.85;font-weight:600}
+        .btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 14px;border-radius:999px;border:0;background:#2b74ff;color:#fff;text-decoration:none;cursor:pointer}
+        .btn-primary:hover{filter:brightness(1.05)}
+        .form-grid{display:grid;grid-template-columns:1fr 220px;gap:12px}
+        .field{display:flex;flex-direction:column;gap:6px}
+        .field input,.field textarea{width:100%;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.18);color:#fff;outline:none}
+        .field textarea{min-height:90px;resize:vertical}
+        .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:10px}
+        .btn-ghost{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:transparent;color:#fff;text-decoration:none;cursor:pointer}
+        .btn-ghost:hover{background:rgba(255,255,255,.06)}
+        .hidden{display:none}
+        @media(max-width: 820px){
+            .form-grid{grid-template-columns:1fr}
+        }
+    </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="top">
-      <div>
-        <h1>Esquema de Vacuna</h1>
-        <?php if ($patient_id): ?>
-          <div class="muted">Paciente ID: <span class="pill"><?php echo h($patient_id); ?></span></div>
+
+<!-- TOPBAR -->
+<header class="navbar">
+    <div class="inner">
+        <div class="brand">
+            <span class="dot"></span>
+            <span>CEVIMEP</span>
+        </div>
+
+        <div class="nav-right">
+            <a href="/logout.php" class="btn-pill">Salir</a>
+        </div>
+    </div>
+</header>
+
+<div class="layout">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+        <div class="menu-title">Menú</div>
+
+        <nav class="menu">
+            <a href="/private/dashboard.php">🏠 Panel</a>
+            <a class="active" href="/private/patients/index.php">👤 Pacientes</a>
+            <a href="/private/citas/index.php">📅 Citas</a>
+            <a href="/private/facturacion/index.php">🧾 Facturación</a>
+            <a href="/private/caja/index.php">💳 Caja</a>
+            <a href="/private/inventario/index.php">📦 Inventario</a>
+            <a href="/private/estadistica/index.php">📊 Estadísticas</a>
+        </nav>
+    </aside>
+
+    <!-- CONTENIDO -->
+    <main class="content">
+
+        <div class="page-head">
+            <div>
+                <h1 style="margin:0">Esquema de Vacuna</h1>
+                <div class="muted" style="margin-top:6px">
+                    <?php if ($patientId > 0): ?>
+                        Paciente ID: <strong><?= (int)$patientId ?></strong>
+                    <?php else: ?>
+                        <strong class="muted">Tip:</strong> abre esta pantalla con <code>?patient_id=ID</code> desde el perfil del paciente.
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <button class="btn-primary" type="button" id="btnToggleForm">Registrar nueva vacuna</button>
+        </div>
+
+        <?php if ($errors): ?>
+            <div class="alert err">
+                <strong>Revisa lo siguiente:</strong>
+                <ul style="margin:8px 0 0 18px">
+                    <?php foreach ($errors as $e): ?>
+                        <li><?= htmlspecialchars($e) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
         <?php endif; ?>
-      </div>
-      <button class="btn" type="button" id="toggleForm">Registrar nueva vacuna</button>
-    </div>
 
-    <?php if ($flash_success): ?>
-      <div class="alert ok"><?php echo h($flash_success); ?></div>
-    <?php endif; ?>
-
-    <?php if ($errors): ?>
-      <div class="alert err">
-        <div style="font-weight:700;margin-bottom:6px;color:#fecaca;">Revisa lo siguiente:</div>
-        <ul style="margin:0;padding-left:18px;">
-          <?php foreach ($errors as $e): ?>
-            <li><?php echo h($e); ?></li>
-          <?php endforeach; ?>
-        </ul>
-      </div>
-    <?php endif; ?>
-
-    <div class="card" id="formCard" style="display:none;">
-      <form method="post" autocomplete="off">
-        <input type="hidden" name="action" value="add_vaccine">
-        <div class="grid">
-          <div>
-            <label for="vacuna">Vacuna</label>
-            <input id="vacuna" name="vacuna" type="text" placeholder="Ej: Influenza, HPV, Neumococo..." value="<?php echo h($_POST['vacuna'] ?? ''); ?>" required>
-          </div>
-          <div>
-            <label for="fecha_vacuna">Fecha de vacuna</label>
-            <input id="fecha_vacuna" name="fecha_vacuna" type="date" value="<?php echo h($_POST['fecha_vacuna'] ?? ''); ?>" required>
-          </div>
-        </div>
-
-        <div style="margin-top:12px;">
-          <label for="comentario">Comentario</label>
-          <textarea id="comentario" name="comentario" placeholder="Observaciones, lote, reacción, etc."><?php echo h($_POST['comentario'] ?? ''); ?></textarea>
-        </div>
-
-        <div class="row">
-          <button class="btn secondary" type="button" id="cancelBtn">Cancelar</button>
-          <button class="btn" type="submit">Guardar</button>
-        </div>
-        <?php if (!($has_mysqli || $has_pdo)): ?>
-          <div class="muted" style="margin-top:10px;">
-            Nota: no detecté conexión a BD en este archivo. El formulario funciona para UI, pero no guardará hasta conectar tu $conn (mysqli) o $pdo (PDO).
-          </div>
+        <?php if ($success): ?>
+            <div class="alert ok">
+                <?= htmlspecialchars($success) ?>
+            </div>
         <?php endif; ?>
-      </form>
-    </div>
 
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-        <div style="font-weight:700;">Vacunas registradas</div>
-        <div class="muted"><?php echo ($has_mysqli || $has_pdo) ? 'Mostrando registros guardados.' : 'Mostrando sin BD (vacío).'; ?></div>
-      </div>
+        <div class="card <?= ($patientId > 0 ? '' : 'hidden') ?>" id="formCard">
+            <h3 style="margin-top:0">Registrar vacuna</h3>
 
-      <?php if (!$rows): ?>
-        <div class="muted" style="padding:12px 0;">No hay vacunas registradas.</div>
-      <?php else: ?>
-        <div style="overflow:auto;">
-          <table>
-            <thead>
-              <tr>
-                <th>Vacuna</th>
-                <th>Fecha de vacuna</th>
-                <th>Comentario</th>
-              </tr>
-            </thead>
-            <tbody>
-              <?php foreach ($rows as $r): ?>
-                <tr>
-                  <td><?php echo h($r['vacuna'] ?? ''); ?></td>
-                  <td><?php echo h($r['fecha_vacuna'] ?? ''); ?></td>
-                  <td><?php echo nl2br(h($r['comentario'] ?? '')); ?></td>
-                </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
+            <form method="POST">
+                <input type="hidden" name="action" value="add_vaccine">
+                <input type="hidden" name="patient_id" value="<?= (int)$patientId ?>">
+
+                <div class="form-grid">
+                    <div class="field">
+                        <label>Vacuna</label>
+                        <input type="text" name="vaccine" placeholder="Ej: Influenza, HPV, Neumococo..." required>
+                    </div>
+
+                    <div class="field">
+                        <label>Fecha de vacuna</label>
+                        <input type="date" name="vaccine_date" required>
+                    </div>
+                </div>
+
+                <div class="field" style="margin-top:12px">
+                    <label>Comentario</label>
+                    <textarea name="comment" placeholder="Observaciones (opcional)"></textarea>
+                </div>
+
+                <div class="actions">
+                    <button type="button" class="btn-ghost" id="btnCancel">Cancelar</button>
+                    <button type="submit" class="btn-primary">Guardar</button>
+                </div>
+            </form>
         </div>
-      <?php endif; ?>
-    </div>
-  </div>
 
-  <script>
-    (function(){
-      const btn = document.getElementById('toggleForm');
-      const card = document.getElementById('formCard');
-      const cancel = document.getElementById('cancelBtn');
+        <div class="card" style="margin-top:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+                <h3 style="margin:0">Vacunas registradas</h3>
+                <div class="muted">Mostrando registros guardados.</div>
+            </div>
 
-      function openForm(){
-        card.style.display = 'block';
-        btn.textContent = 'Ocultar formulario';
-        const v = document.getElementById('vacuna');
-        if (v) setTimeout(()=>v.focus(), 60);
-      }
-      function closeForm(){
-        card.style.display = 'none';
-        btn.textContent = 'Registrar nueva vacuna';
-      }
+            <div style="margin-top:10px;overflow:auto">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th style="min-width:180px">Vacuna</th>
+                            <th style="min-width:140px">Fecha</th>
+                            <th>Comentario</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if ($patientId <= 0): ?>
+                            <tr><td colspan="3" class="muted">Debes abrir esta pantalla con <code>?patient_id=ID</code> para ver/registrar vacunas.</td></tr>
+                        <?php elseif (!$vaccines): ?>
+                            <tr><td colspan="3" class="muted">No hay vacunas registradas.</td></tr>
+                        <?php else: ?>
+                            <?php foreach ($vaccines as $v): ?>
+                                <tr>
+                                    <td><strong><?= htmlspecialchars($v['vaccine_name'] ?? '') ?></strong></td>
+                                    <td><?= htmlspecialchars($v['vaccine_date'] ?? '') ?></td>
+                                    <td><?= nl2br(htmlspecialchars($v['comment'] ?? '')) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
-      btn.addEventListener('click', function(){
-        if (card.style.display === 'none' || card.style.display === '') openForm();
-        else closeForm();
-      });
-      cancel.addEventListener('click', function(){
-        closeForm();
-        // Limpia campos visualmente (sin tocar POST)
-        const form = card.querySelector('form');
-        if (form) form.reset();
-      });
+    </main>
+</div>
 
-      // Si hubo errores, abre el formulario automáticamente
-      const hasErrors = <?php echo $errors ? 'true' : 'false'; ?>;
-      if (hasErrors) openForm();
-    })();
-  </script>
+<footer class="footer">
+    © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
+</footer>
+
+<script>
+(function(){
+    const formCard = document.getElementById('formCard');
+    const btnToggle = document.getElementById('btnToggleForm');
+    const btnCancel = document.getElementById('btnCancel');
+
+    if(btnToggle && formCard){
+        btnToggle.addEventListener('click', ()=> {
+            formCard.classList.toggle('hidden');
+            if(!formCard.classList.contains('hidden')){
+                const firstInput = formCard.querySelector('input[name="vaccine"]');
+                if(firstInput) firstInput.focus();
+            }
+        });
+    }
+    if(btnCancel && formCard){
+        btnCancel.addEventListener('click', ()=> {
+            formCard.classList.add('hidden');
+        });
+    }
+})();
+</script>
+
 </body>
 </html>
