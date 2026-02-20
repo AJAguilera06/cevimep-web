@@ -320,7 +320,7 @@ function buildPageUrl(int $toPage, string $search): string {
                                 <td><?= h($row['gender'] ?? '') ?></td>
                                 <td><?= h($row['blood_type'] ?? '') ?></td>
                                 <td style="white-space:nowrap;">
-                                    <a href="/private/patients/view.php?id=<?= $id ?>" style="font-weight:800;text-decoration:none;">Ver</a>
+                                    <a href="/private/patients/view.php?id=<?= $id ?>" style="font-weight:800;text-decoration:none;">Vacunas</a>
                                     <span style="opacity:.5;margin:0 8px;">·</span>
                                     <a href="/private/patients/edit.php?id=<?= $id ?>" style="font-weight:800;text-decoration:none;">Editar</a>
                                 </td>
