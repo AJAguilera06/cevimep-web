@@ -1,342 +1,154 @@
 <?php
-// private/patients/esquema.php
-if (session_status() !== PHP_SESSION_ACTIVE) { session_start(); }
+declare(strict_types=1);
 
-if (!isset($_SESSION['user'])) {
-    header("Location: /login.php");
-    exit;
+if (session_status() !== PHP_SESSION_ACTIVE) {
+  session_start();
+}
+
+if (empty($_SESSION['user'])) {
+  header('Location: /login.php');
+  exit;
 }
 
 $user = $_SESSION['user'];
-$nombreSucursal = $user['full_name'] ?? 'CEVIMEP';
-$rol = $user['role'] ?? '';
-$sucursalId = $user['branch_id'] ?? '';
+$patient_id = (int)($_GET['patient_id'] ?? ($_GET['id'] ?? 0));
+$isAdmin = (($user['role'] ?? '') === 'admin');
+$userBranchId = (int)($user['branch_id'] ?? 0);
 
-/**
- * Carga de conexión DB (mysqli $conn o PDO $pdo)
- * En Railway te estaba fallando porque la ruta correcta suele ser ../../config/database.php
- */
-$conn = null; $pdo = null;
-$possible = [
-    __DIR__ . '/../../config/database.php', // ✅ usual en tu estructura (/config fuera de /private)
-    __DIR__ . '/../config/database.php',
-    __DIR__ . '/../../config/db.php',
-    __DIR__ . '/../config/db.php',
+/* DB */
+$db_candidates = [
+  __DIR__ . '/../config/db.php',
+  __DIR__ . '/../../config/db.php',
+  __DIR__ . '/../db.php',
+  __DIR__ . '/../../db.php',
 ];
 
-$dbLoaded = false;
-foreach ($possible as $p) {
-    if (file_exists($p)) { require_once $p; $dbLoaded = true; break; }
+$loaded = false;
+foreach ($db_candidates as $p) {
+  if (is_file($p)) { require_once $p; $loaded = true; break; }
+}
+if (!$loaded || !isset($pdo) || !($pdo instanceof PDO)) {
+  http_response_code(500);
+  echo "Error crítico: no se pudo cargar la conexión a la base de datos.";
+  exit;
 }
 
-// Detecta variables comunes
-if (isset($GLOBALS['conn']) && $GLOBALS['conn']) $conn = $GLOBALS['conn'];
-if (isset($GLOBALS['pdo']) && $GLOBALS['pdo']) $pdo = $GLOBALS['pdo'];
-if (isset($conn) && $conn) $conn = $conn; // no-op for clarity
-if (isset($pdo) && $pdo) $pdo = $pdo;
-
-$patient_id = isset($_GET['patient_id']) ? (int)$_GET['patient_id'] : 0;
-
-$errors = [];
-$success = "";
-
-/** Helpers */
-function e($v){ return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
-
-/** Crea tabla si no existe (si el usuario DB tiene permisos) */
-function ensure_table($conn, $pdo, &$errors) {
-    $sql = "CREATE TABLE IF NOT EXISTS patient_vaccines (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        patient_id INT NOT NULL,
-        vaccine_name VARCHAR(255) NOT NULL,
-        vaccine_date DATE NOT NULL,
-        comment TEXT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_patient (patient_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
-
-    try {
-        if ($pdo) {
-            $pdo->exec($sql);
-        } elseif ($conn) {
-            $conn->query($sql);
-        } else {
-            $errors[] = "No se detectó conexión a base de datos (config/database.php).";
-        }
-    } catch (Throwable $t) {
-        // No lo hagas fatal, solo avisa.
-        $errors[] = "No se pudo verificar/crear la tabla patient_vaccines. Ejecuta el SQL manualmente en Railway si hace falta.";
-    }
+function h($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
+function ageFrom($birthDate): string {
+  if (!$birthDate) return '';
+  try { return (string)((new DateTime())->diff(new DateTime((string)$birthDate))->y); }
+  catch (Throwable $e) { return ''; }
 }
 
-ensure_table($conn, $pdo, $errors);
+$id = (int)($_GET['id'] ?? 0);
+if ($id <= 0) { header("Location: /private/patients/index.php"); exit; }
 
-/** Insert */
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'create') {
-    $vaccine_name = trim($_POST['vaccine_name'] ?? '');
-    $vaccine_date = trim($_POST['vaccine_date'] ?? '');
-    $comment      = trim($_POST['comment'] ?? '');
-
-    if ($patient_id <= 0) $errors[] = "Falta patient_id en la URL (ej: esquema.php?patient_id=123).";
-    if ($vaccine_name === '') $errors[] = "La vacuna es obligatoria.";
-    if ($vaccine_date === '') $errors[] = "La fecha de vacuna es obligatoria.";
-
-    if (!$errors) {
-        try {
-            if ($pdo) {
-                $st = $pdo->prepare("INSERT INTO patient_vaccines (patient_id, vaccine_name, vaccine_date, comment) VALUES (?,?,?,?)");
-                $st->execute([$patient_id, $vaccine_name, $vaccine_date, ($comment !== '' ? $comment : null)]);
-            } elseif ($conn) {
-                $st = $conn->prepare("INSERT INTO patient_vaccines (patient_id, vaccine_name, vaccine_date, comment) VALUES (?,?,?,?)");
-                $null = null;
-                $cmt = ($comment !== '' ? $comment : $null);
-                $st->bind_param("isss", $patient_id, $vaccine_name, $vaccine_date, $cmt);
-                $st->execute();
-            } else {
-                $errors[] = "No se detectó conexión a base de datos.";
-            }
-
-            if (!$errors) {
-                $success = "Vacuna registrada correctamente.";
-            }
-        } catch (Throwable $t) {
-            $errors[] = "Error al guardar: " . $t->getMessage();
-        }
-    }
+if ($isAdmin) {
+  $stmt = $pdo->prepare("SELECT p.*, b.name AS branch_name FROM patients p LEFT JOIN branches b ON b.id=p.branch_id WHERE p.id=:id");
+  $stmt->execute(['id' => $id]);
+} else {
+  if ($userBranchId <= 0) { header("Location: /logout.php"); exit; }
+  $stmt = $pdo->prepare("SELECT p.*, b.name AS branch_name FROM patients p LEFT JOIN branches b ON b.id=p.branch_id WHERE p.id=:id AND p.branch_id=:bid");
+  $stmt->execute(['id' => $id, 'bid' => $userBranchId]);
 }
 
-/** Fetch list */
-$vaccines = [];
-try {
-    if ($patient_id > 0) {
-        if ($pdo) {
-            $st = $pdo->prepare("SELECT id, vaccine_name, vaccine_date, comment, created_at
-                                 FROM patient_vaccines WHERE patient_id = ?
-                                 ORDER BY vaccine_date DESC, id DESC");
-            $st->execute([$patient_id]);
-            $vaccines = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } elseif ($conn) {
-            $st = $conn->prepare("SELECT id, vaccine_name, vaccine_date, comment, created_at
-                                  FROM patient_vaccines WHERE patient_id = ?
-                                  ORDER BY vaccine_date DESC, id DESC");
-            $st->bind_param("i", $patient_id);
-            $st->execute();
-            $res = $st->get_result();
-            if ($res) $vaccines = $res->fetch_all(MYSQLI_ASSOC) ?: [];
-        }
-    }
-} catch (Throwable $t) {
-    $errors[] = "No se pudo cargar el listado de vacunas. Detalle: " . $t->getMessage();
-}
+$p = $stmt->fetch(PDO::FETCH_ASSOC);
+if (!$p) { http_response_code(404); echo "Paciente no encontrado."; exit; }
 
-$showForm = isset($_GET['new']) && $_GET['new'] === '1';
+$fullName = trim((string)($p['first_name'] ?? '') . ' ' . (string)($p['last_name'] ?? ''));
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Esquema de Vacuna | CEVIMEP</title>
-    <link rel="stylesheet" href="/assets/css/styles.css?v=50">
-<style>
-        .btn-action{display:inline-block;padding:10px 16px;border-radius:999px;font-weight:700;text-decoration:none;line-height:1;cursor:pointer;}
-        .btn-action.primary{background:linear-gradient(180deg,#0b4ea2,#08356f);color:#fff;border:1px solid rgba(255,255,255,.15);}
-        .btn-action.primary:hover{filter:brightness(1.05);}
-        .btn-action.secondary{background:rgba(8,53,111,.08);color:#08356f;border:1px solid rgba(8,53,111,.25);}
-        .btn-action.secondary:hover{background:rgba(8,53,111,.12);}
-        .btn-action.disabled{opacity:.55;}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CEVIMEP | Ver paciente</title>
+
+  <link rel="stylesheet" href="/assets/css/styles.css?v=60">
+  <link rel="stylesheet" href="/assets/css/paciente.css?v=2">
+
+  <style>
+    .patients-wrap{max-width:1100px;margin:0 auto;padding:24px 18px;}
+    .patients-header{text-align:center;margin-top:10px;margin-bottom:14px;}
+    .patients-header h1{margin:0;font-size:34px;font-weight:800;}
+    .patients-header p{margin:6px 0 0;opacity:.75;}
+    .patients-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:18px 0 18px;}
+    .view-card{max-width:880px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.10);padding:18px;}
+    .kv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+    .kv{background:#f7f9fc;border:1px solid rgba(0,0,0,.06);border-radius:12px;padding:12px;}
+    .k{font-weight:800;opacity:.8;margin-bottom:4px;}
+    .v{font-weight:700;}
+    .span2{grid-column:1 / -1;}
+    @media (max-width: 820px){ .kv-grid{grid-template-columns:1fr;} .view-card{padding:14px;} }
+  </style>
 </head>
 <body>
 
-<!-- TOPBAR (igual a dashboard.php) -->
 <header class="navbar">
-    <div class="inner">
-        <div class="brand">
-            <span class="dot"></span>
-            <span>CEVIMEP</span>
-        </div>
-
-        <div class="nav-right">
-            <a href="/logout.php" class="btn-pill">Salir</a>
-        </div>
-    </div>
+  <div class="inner">
+    <div class="brand"><span class="dot"></span><span>CEVIMEP</span></div>
+    <div class="nav-right"><a href="/logout.php" class="btn-pill">Salir</a></div>
+  </div>
 </header>
 
 <div class="layout">
+  <aside class="sidebar">
+    <div class="menu-title">Menú</div>
+    <nav class="menu">
+      <a href="/private/dashboard.php">🏠 Panel</a>
+      <a class="active" href="/private/patients/index.php">👤 Pacientes</a>
+      <a href="/private/citas/index.php">📅 Citas</a>
+      <a href="/private/facturacion/index.php">🧾 Facturación</a>
+      <a href="/private/caja/index.php">💳 Caja</a>
+      <a href="/private/inventario/index.php">📦 Inventario</a>
+      <a href="/private/estadistica/index.php">📊 Estadísticas</a>
+    </nav>
+  </aside>
 
-    <!-- SIDEBAR (igual a dashboard.php) -->
-    <aside class="sidebar">
-        <div class="menu-title">Menú</div>
+  <main class="content">
+    <div class="patients-wrap">
 
-        <nav class="menu">
-            <a href="/private/dashboard.php">🏠 Panel</a>
-            <a class="active" href="/private/patients/index.php">👤 Pacientes</a>
-            <a href="/private/citas/index.php">📅 Citas</a>
-            <a href="/private/facturacion/index.php">🧾 Facturación</a>
-            <a href="/private/caja/index.php">💳 Caja</a>
-            <a href="/private/inventario/index.php">📦 Inventario</a>
-            <a href="/private/estadistica/index.php">📊 Estadísticas</a>
-        </nav>
-    </aside>
+      <div class="patients-header">
+        <h1>Paciente</h1>
+        <p><?= h($fullName) ?></p>
+      </div>
 
-    <!-- CONTENIDO -->
-    <main class="content">
+      <div class="patients-actions">
+        <a class="btn" href="/private/patients/index.php">← Volver</a>
+        <a class="btn btn-primary" href="/private/patients/edit.php?id=<?= (int)$id ?>">Editar</a>
+      </div>
 
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-            <div>
-                <h1 style="margin:0;">Esquema de Vacuna</h1>
-                <p style="margin:6px 0 0; opacity:.85;">
-                    Paciente ID: <strong><?= (int)$patient_id ?></strong>
-                </p>
-            </div>
+      <div class="view-card">
+        <div class="kv-grid">
+          <div class="kv"><div class="k">No. Libro</div><div class="v"><?= h($p['no_libro'] ?? '') ?></div></div>
+          <div class="kv"><div class="k">Sucursal</div><div class="v"><?= h($p['branch_name'] ?? '') ?></div></div>
 
-            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                <a class="btn-action secondary" href="/private/patients/index.php">Volver</a>
-                <a id="btnNuevaVacuna"
-                   class="btn-action primary"
-                   href="?patient_id=<?= (int)$patient_id ?>&new=1"
-                   data-patient-id="<?= (int)$patient_id ?>">
-                   Registrar nueva vacuna
-                </a>
-            </div>
+          <div class="kv"><div class="k">Nombre</div><div class="v"><?= h($fullName) ?></div></div>
+          <div class="kv"><div class="k">Cédula</div><div class="v"><?= h($p['cedula'] ?? '') ?></div></div>
+
+          <div class="kv"><div class="k">Teléfono</div><div class="v"><?= h($p['phone'] ?? '') ?></div></div>
+          <div class="kv"><div class="k">Correo</div><div class="v"><?= h($p['email'] ?? '') ?></div></div>
+
+          <div class="kv"><div class="k">Fecha nacimiento</div><div class="v"><?= h($p['birth_date'] ?? '') ?></div></div>
+          <div class="kv"><div class="k">Edad</div><div class="v"><?= h(ageFrom($p['birth_date'] ?? null)) ?></div></div>
+
+          <div class="kv"><div class="k">Género</div><div class="v"><?= h($p['gender'] ?? '') ?></div></div>
+          <div class="kv"><div class="k">Tipo de sangre</div><div class="v"><?= h($p['blood_type'] ?? '') ?></div></div>
+
+          <div class="kv span2"><div class="k">Médico que refiere</div><div class="v"><?= h($p['medico_refiere'] ?? '') ?></div></div>
+          <div class="kv span2"><div class="k">Clínica de referencia</div><div class="v"><?= h($p['clinica_referencia'] ?? '') ?></div></div>
+
+          <div class="kv"><div class="k">ARS</div><div class="v"><?= h($p['ars'] ?? '') ?></div></div>
+          <div class="kv"><div class="k">Número afiliado</div><div class="v"><?= h($p['numero_afiliado'] ?? '') ?></div></div>
+
+          <div class="kv span2"><div class="k">Registrado por</div><div class="v"><?= h($p['registrado_por'] ?? '') ?></div></div>
         </div>
+      </div>
 
-        <?php if ($success): ?>
-            <div class="card" style="margin-top:16px; border:1px solid rgba(46, 204, 113,.35);">
-                <div class="card-body">
-                    ✅ <?= e($success) ?>
-                </div>
-            </div>
-        <?php endif; ?>
-
-        <?php if ($errors): ?>
-            <div class="card" style="margin-top:16px; border:1px solid rgba(255, 99, 99,.35);">
-                <div class="card-body">
-                    <strong>Revisa lo siguiente:</strong>
-                    <ul style="margin:10px 0 0 18px;">
-                        <?php foreach ($errors as $er): ?>
-                            <li><?= e($er) ?></li>
-                        <?php endforeach; ?>
-                    </ul>
-
-                    <div style="margin-top:12px; opacity:.9;">
-                        <div style="font-weight:600; margin-bottom:6px;">SQL para crear la tabla (si Railway no te deja crearla desde PHP):</div>
-                        <pre style="white-space:pre-wrap; background:rgba(255,255,255,.04); padding:12px; border-radius:10px; overflow:auto;">CREATE TABLE patient_vaccines (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  patient_id INT NOT NULL,
-  vaccine_name VARCHAR(255) NOT NULL,
-  vaccine_date DATE NOT NULL,
-  comment TEXT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_patient (patient_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;</pre>
-                    </div>
-                </div>
-            </div>
-        <?php endif; ?>
-
-        <?php if ($showForm): ?>
-            <div class="card" style="margin-top:16px;">
-                <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
-                    <strong>Registrar vacuna</strong>
-                    <a href="?patient_id=<?= (int)$patient_id ?>" class="btn-pill" style="text-decoration:none;">Cerrar</a>
-                </div>
-
-                <div class="card-body">
-                    <form method="POST" action="?patient_id=<?= (int)$patient_id ?>">
-                        <input type="hidden" name="action" value="create">
-
-                        <div class="grid" style="display:grid; grid-template-columns: 1fr 220px; gap:12px;">
-                            <div>
-                                <label style="display:block; margin-bottom:6px;">Vacuna</label>
-                                <input name="vaccine_name" type="text" required
-                                       value="<?= e($_POST['vaccine_name'] ?? '') ?>"
-                                       style="width:100%; padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:#fff;">
-                            </div>
-
-                            <div>
-                                <label style="display:block; margin-bottom:6px;">Fecha de vacuna</label>
-                                <input name="vaccine_date" type="date" required
-                                       value="<?= e($_POST['vaccine_date'] ?? '') ?>"
-                                       style="width:100%; padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:#fff;">
-                            </div>
-                        </div>
-
-                        <div style="margin-top:12px;">
-                            <label style="display:block; margin-bottom:6px;">Comentario</label>
-                            <textarea name="comment" rows="3"
-                                      style="width:100%; padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:#fff; resize:vertical;"><?= e($_POST['comment'] ?? '') ?></textarea>
-                        </div>
-
-                        <div style="margin-top:14px; display:flex; gap:10px;">
-                            <button type="submit" class="btn-pill">Guardar</button>
-                            <a href="?patient_id=<?= (int)$patient_id ?>" class="btn-pill" style="text-decoration:none;">Cancelar</a>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        <?php endif; ?>
-
-        <div class="card" style="margin-top:16px;">
-            <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
-                <strong>Vacunas registradas</strong>
-                <span style="opacity:.8; font-size:.95em;">Mostrando registros guardados.</span>
-            </div>
-
-            <div class="card-body">
-                <?php if (!$patient_id): ?>
-                    <div style="opacity:.9;">Abre esta pantalla con un paciente: <code>esquema.php?patient_id=123</code></div>
-                <?php elseif (!$vaccines): ?>
-                    <div style="opacity:.9;">No hay vacunas registradas.</div>
-                <?php else: ?>
-                    <div style="overflow:auto;">
-                        <table style="width:100%; border-collapse:collapse; min-width:720px;">
-                            <thead>
-                                <tr style="text-align:left; opacity:.9;">
-                                    <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.10);">Vacuna</th>
-                                    <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.10); width:160px;">Fecha</th>
-                                    <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.10);">Comentario</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($vaccines as $v): ?>
-                                    <tr>
-                                        <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.06);"><?= e($v['vaccine_name']) ?></td>
-                                        <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.06);"><?= e($v['vaccine_date']) ?></td>
-                                        <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.06);"><?= e($v['comment'] ?? '') ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
-
-    </main>
+    </div>
+  </main>
 </div>
 
-<footer class="footer">
-    © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
-</footer>
-
-
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  const btn = document.getElementById('btnNuevaVacuna');
-  if (!btn) return;
-  const pid = parseInt(btn.getAttribute('data-patient-id') || '0', 10);
-
-  // Si no hay patient_id, mantenemos el botón visible pero evitamos que navegue
-  if (!pid) {
-    btn.classList.add('disabled');
-    btn.addEventListener('click', function (e) {
-      e.preventDefault();
-      alert('Para registrar vacunas debes abrir esta pantalla desde un paciente. Ej: esquema.php?patient_id=123');
-    });
-  }
-});
-</script>
-
+<footer class="footer">© <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.</footer>
 </body>
 </html>
