@@ -1,7 +1,7 @@
 <?php
-if (session_status() !== PHP_SESSION_ACTIVE) {
-    session_start();
-}
+// private/patients/esquema.php
+if (session_status() !== PHP_SESSION_ACTIVE) { session_start(); }
+
 if (!isset($_SESSION['user'])) {
     header("Location: /login.php");
     exit;
@@ -13,107 +13,121 @@ $rol = $user['role'] ?? '';
 $sucursalId = $user['branch_id'] ?? '';
 
 /**
- * Intentar cargar conexión a BD si existe en el proyecto
- * - Si ya tienes $conn (mysqli) o $pdo (PDO) definidos en otro include, esto no estorba.
+ * Carga de conexión DB (mysqli $conn o PDO $pdo)
+ * En Railway te estaba fallando porque la ruta correcta suele ser ../../config/database.php
  */
-@require_once __DIR__ . '/../config/db.php';
-@require_once __DIR__ . '/../config/database.php';
-@require_once __DIR__ . '/../db.php';
+$conn = null; $pdo = null;
+$possible = [
+    __DIR__ . '/../../config/db.php',
+    __DIR__ . '/../config/db.php',
+];
 
-$patientId = isset($_GET['patient_id']) ? (int)$_GET['patient_id'] : (isset($_POST['patient_id']) ? (int)$_POST['patient_id'] : 0);
+$dbLoaded = false;
+foreach ($possible as $p) {
+    if (file_exists($p)) { require_once $p; $dbLoaded = true; break; }
+}
+
+// Detecta variables comunes
+if (isset($GLOBALS['conn']) && $GLOBALS['conn']) $conn = $GLOBALS['conn'];
+if (isset($GLOBALS['pdo']) && $GLOBALS['pdo']) $pdo = $GLOBALS['pdo'];
+if (isset($conn) && $conn) $conn = $conn; // no-op for clarity
+if (isset($pdo) && $pdo) $pdo = $pdo;
+
+$patient_id = isset($_GET['patient_id']) ? (int)$_GET['patient_id'] : 0;
 
 $errors = [];
-$success = null;
+$success = "";
 
-/**
- * Crear tabla automáticamente si no existe (evita el error en Railway).
- * Ajusta nombres de campos si ya tienes una tabla creada.
- */
-function ensure_table_exists_mysqli(mysqli $conn): void {
-    $sql = "
-        CREATE TABLE IF NOT EXISTS patient_vaccines (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            patient_id INT NOT NULL,
-            vaccine_name VARCHAR(255) NOT NULL,
-            vaccine_date DATE NOT NULL,
-            comment TEXT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    ";
-    @$conn->query($sql);
+/** Helpers */
+function e($v){ return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
+
+/** Crea tabla si no existe (si el usuario DB tiene permisos) */
+function ensure_table($conn, $pdo, &$errors) {
+    $sql = "CREATE TABLE IF NOT EXISTS patient_vaccines (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        patient_id INT NOT NULL,
+        vaccine_name VARCHAR(255) NOT NULL,
+        vaccine_date DATE NOT NULL,
+        comment TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_patient (patient_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+
+    try {
+        if ($pdo) {
+            $pdo->exec($sql);
+        } elseif ($conn) {
+            $conn->query($sql);
+        } else {
+            $errors[] = "No se detectó conexión a base de datos (config/database.php).";
+        }
+    } catch (Throwable $t) {
+        // No lo hagas fatal, solo avisa.
+        $errors[] = "No se pudo verificar/crear la tabla patient_vaccines. Ejecuta el SQL manualmente en Railway si hace falta.";
+    }
 }
 
-function ensure_table_exists_pdo(PDO $pdo): void {
-    $sql = "
-        CREATE TABLE IF NOT EXISTS patient_vaccines (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            patient_id INT NOT NULL,
-            vaccine_name VARCHAR(255) NOT NULL,
-            vaccine_date DATE NOT NULL,
-            comment TEXT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    ";
-    try { $pdo->exec($sql); } catch (Throwable $e) { /* si no hay permisos, ignorar */ }
-}
+ensure_table($conn, $pdo, $errors);
 
-$hasMysqli = isset($conn) && $conn instanceof mysqli;
-$hasPdo = isset($pdo) && $pdo instanceof PDO;
+/** Insert */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'create') {
+    $vaccine_name = trim($_POST['vaccine_name'] ?? '');
+    $vaccine_date = trim($_POST['vaccine_date'] ?? '');
+    $comment      = trim($_POST['comment'] ?? '');
 
-if ($hasMysqli) ensure_table_exists_mysqli($conn);
-if ($hasPdo) ensure_table_exists_pdo($pdo);
-
-/** Guardar registro */
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_vaccine') {
-    $vaccine = trim($_POST['vaccine'] ?? '');
-    $vaccineDate = trim($_POST['vaccine_date'] ?? '');
-    $comment = trim($_POST['comment'] ?? '');
-
-    if ($patientId <= 0) $errors[] = "Falta el paciente (patient_id).";
-    if ($vaccine === '') $errors[] = "La vacuna es obligatoria.";
-    if ($vaccineDate === '') $errors[] = "La fecha de vacuna es obligatoria.";
+    if ($patient_id <= 0) $errors[] = "Falta patient_id en la URL (ej: esquema.php?patient_id=123).";
+    if ($vaccine_name === '') $errors[] = "La vacuna es obligatoria.";
+    if ($vaccine_date === '') $errors[] = "La fecha de vacuna es obligatoria.";
 
     if (!$errors) {
         try {
-            if ($hasMysqli) {
-                $stmt = $conn->prepare("INSERT INTO patient_vaccines (patient_id, vaccine_name, vaccine_date, comment) VALUES (?, ?, ?, ?)");
-                $stmt->bind_param("isss", $patientId, $vaccine, $vaccineDate, $comment);
-                $stmt->execute();
-                $stmt->close();
-                $success = "Vacuna registrada correctamente.";
-            } elseif ($hasPdo) {
-                $stmt = $pdo->prepare("INSERT INTO patient_vaccines (patient_id, vaccine_name, vaccine_date, comment) VALUES (:pid, :v, :d, :c)");
-                $stmt->execute([':pid'=>$patientId, ':v'=>$vaccine, ':d'=>$vaccineDate, ':c'=>$comment]);
-                $success = "Vacuna registrada correctamente.";
+            if ($pdo) {
+                $st = $pdo->prepare("INSERT INTO patient_vaccines (patient_id, vaccine_name, vaccine_date, comment) VALUES (?,?,?,?)");
+                $st->execute([$patient_id, $vaccine_name, $vaccine_date, ($comment !== '' ? $comment : null)]);
+            } elseif ($conn) {
+                $st = $conn->prepare("INSERT INTO patient_vaccines (patient_id, vaccine_name, vaccine_date, comment) VALUES (?,?,?,?)");
+                $null = null;
+                $cmt = ($comment !== '' ? $comment : $null);
+                $st->bind_param("isss", $patient_id, $vaccine_name, $vaccine_date, $cmt);
+                $st->execute();
             } else {
-                $errors[] = "No se encontró conexión a base de datos (\$conn o \$pdo).";
+                $errors[] = "No se detectó conexión a base de datos.";
             }
-        } catch (Throwable $e) {
-            $errors[] = "No se pudo guardar: " . $e->getMessage();
+
+            if (!$errors) {
+                $success = "Vacuna registrada correctamente.";
+            }
+        } catch (Throwable $t) {
+            $errors[] = "Error al guardar: " . $t->getMessage();
         }
     }
 }
 
-/** Listado */
+/** Fetch list */
 $vaccines = [];
-if ($patientId > 0) {
-    try {
-        if ($hasMysqli) {
-            $stmt = $conn->prepare("SELECT id, vaccine_name, vaccine_date, comment, created_at FROM patient_vaccines WHERE patient_id = ? ORDER BY vaccine_date DESC, id DESC");
-            $stmt->bind_param("i", $patientId);
-            $stmt->execute();
-            $res = $stmt->get_result();
-            while ($row = $res->fetch_assoc()) $vaccines[] = $row;
-            $stmt->close();
-        } elseif ($hasPdo) {
-            $stmt = $pdo->prepare("SELECT id, vaccine_name, vaccine_date, comment, created_at FROM patient_vaccines WHERE patient_id = :pid ORDER BY vaccine_date DESC, id DESC");
-            $stmt->execute([':pid'=>$patientId]);
-            $vaccines = $stmt->fetchAll(PDO::FETCH_ASSOC);
+try {
+    if ($patient_id > 0) {
+        if ($pdo) {
+            $st = $pdo->prepare("SELECT id, vaccine_name, vaccine_date, comment, created_at
+                                 FROM patient_vaccines WHERE patient_id = ?
+                                 ORDER BY vaccine_date DESC, id DESC");
+            $st->execute([$patient_id]);
+            $vaccines = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } elseif ($conn) {
+            $st = $conn->prepare("SELECT id, vaccine_name, vaccine_date, comment, created_at
+                                  FROM patient_vaccines WHERE patient_id = ?
+                                  ORDER BY vaccine_date DESC, id DESC");
+            $st->bind_param("i", $patient_id);
+            $st->execute();
+            $res = $st->get_result();
+            if ($res) $vaccines = $res->fetch_all(MYSQLI_ASSOC) ?: [];
         }
-    } catch (Throwable $e) {
-        $errors[] = "No se pudo cargar el listado de vacunas. Detalle: " . $e->getMessage();
     }
+} catch (Throwable $t) {
+    $errors[] = "No se pudo cargar el listado de vacunas. Detalle: " . $t->getMessage();
 }
+
+$showForm = isset($_GET['new']) && $_GET['new'] === '1';
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -121,35 +135,10 @@ if ($patientId > 0) {
     <meta charset="UTF-8">
     <title>Esquema de Vacuna | CEVIMEP</title>
     <link rel="stylesheet" href="/assets/css/styles.css?v=50">
-    <style>
-        /* Ajustes mínimos, sin romper tu styles.css */
-        .page-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
-        .card{background: rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:16px}
-        .muted{opacity:.8}
-        .alert{border-radius:12px;padding:12px 14px;margin:12px 0}
-        .alert.err{border:1px solid rgba(255,77,77,.35); background: rgba(255,77,77,.08)}
-        .alert.ok{border:1px solid rgba(80,200,120,.35); background: rgba(80,200,120,.08)}
-        .table{width:100%;border-collapse:collapse}
-        .table th,.table td{padding:10px 8px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:left;vertical-align:top}
-        .table th{opacity:.85;font-weight:600}
-        .btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 14px;border-radius:999px;border:0;background:#2b74ff;color:#fff;text-decoration:none;cursor:pointer}
-        .btn-primary:hover{filter:brightness(1.05)}
-        .form-grid{display:grid;grid-template-columns:1fr 220px;gap:12px}
-        .field{display:flex;flex-direction:column;gap:6px}
-        .field input,.field textarea{width:100%;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.18);color:#fff;outline:none}
-        .field textarea{min-height:90px;resize:vertical}
-        .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:10px}
-        .btn-ghost{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:transparent;color:#fff;text-decoration:none;cursor:pointer}
-        .btn-ghost:hover{background:rgba(255,255,255,.06)}
-        .hidden{display:none}
-        @media(max-width: 820px){
-            .form-grid{grid-template-columns:1fr}
-        }
-    </style>
 </head>
 <body>
 
-<!-- TOPBAR -->
+<!-- TOPBAR (igual a dashboard.php) -->
 <header class="navbar">
     <div class="inner">
         <div class="brand">
@@ -165,7 +154,7 @@ if ($patientId > 0) {
 
 <div class="layout">
 
-    <!-- SIDEBAR -->
+    <!-- SIDEBAR (igual a dashboard.php) -->
     <aside class="sidebar">
         <div class="menu-title">Menú</div>
 
@@ -183,100 +172,129 @@ if ($patientId > 0) {
     <!-- CONTENIDO -->
     <main class="content">
 
-        <div class="page-head">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
             <div>
-                <h1 style="margin:0">Esquema de Vacuna</h1>
-                <div class="muted" style="margin-top:6px">
-                    <?php if ($patientId > 0): ?>
-                        Paciente ID: <strong><?= (int)$patientId ?></strong>
-                    <?php else: ?>
-                        <strong class="muted">Tip:</strong> abre esta pantalla con <code>?patient_id=ID</code> desde el perfil del paciente.
-                    <?php endif; ?>
-                </div>
+                <h1 style="margin:0;">Esquema de Vacuna</h1>
+                <p style="margin:6px 0 0; opacity:.85;">
+                    Paciente ID: <strong><?= (int)$patient_id ?></strong>
+                </p>
             </div>
 
-            <button class="btn-primary" type="button" id="btnToggleForm">Registrar nueva vacuna</button>
+            <div style="display:flex; gap:10px; align-items:center;">
+                <a class="btn-pill" href="/private/patients/index.php" style="text-decoration:none;">Volver</a>
+                <a class="btn-pill" href="?patient_id=<?= (int)$patient_id ?>&new=1" style="text-decoration:none;">Registrar nueva vacuna</a>
+            </div>
         </div>
-
-        <?php if ($errors): ?>
-            <div class="alert err">
-                <strong>Revisa lo siguiente:</strong>
-                <ul style="margin:8px 0 0 18px">
-                    <?php foreach ($errors as $e): ?>
-                        <li><?= htmlspecialchars($e) ?></li>
-                    <?php endforeach; ?>
-                </ul>
-            </div>
-        <?php endif; ?>
 
         <?php if ($success): ?>
-            <div class="alert ok">
-                <?= htmlspecialchars($success) ?>
+            <div class="card" style="margin-top:16px; border:1px solid rgba(46, 204, 113,.35);">
+                <div class="card-body">
+                    ✅ <?= e($success) ?>
+                </div>
             </div>
         <?php endif; ?>
 
-        <div class="card <?= ($patientId > 0 ? '' : 'hidden') ?>" id="formCard">
-            <h3 style="margin-top:0">Registrar vacuna</h3>
+        <?php if ($errors): ?>
+            <div class="card" style="margin-top:16px; border:1px solid rgba(255, 99, 99,.35);">
+                <div class="card-body">
+                    <strong>Revisa lo siguiente:</strong>
+                    <ul style="margin:10px 0 0 18px;">
+                        <?php foreach ($errors as $er): ?>
+                            <li><?= e($er) ?></li>
+                        <?php endforeach; ?>
+                    </ul>
 
-            <form method="POST">
-                <input type="hidden" name="action" value="add_vaccine">
-                <input type="hidden" name="patient_id" value="<?= (int)$patientId ?>">
-
-                <div class="form-grid">
-                    <div class="field">
-                        <label>Vacuna</label>
-                        <input type="text" name="vaccine" placeholder="Ej: Influenza, HPV, Neumococo..." required>
+                    <div style="margin-top:12px; opacity:.9;">
+                        <div style="font-weight:600; margin-bottom:6px;">SQL para crear la tabla (si Railway no te deja crearla desde PHP):</div>
+                        <pre style="white-space:pre-wrap; background:rgba(255,255,255,.04); padding:12px; border-radius:10px; overflow:auto;">CREATE TABLE patient_vaccines (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  patient_id INT NOT NULL,
+  vaccine_name VARCHAR(255) NOT NULL,
+  vaccine_date DATE NOT NULL,
+  comment TEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_patient (patient_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;</pre>
                     </div>
+                </div>
+            </div>
+        <?php endif; ?>
 
-                    <div class="field">
-                        <label>Fecha de vacuna</label>
-                        <input type="date" name="vaccine_date" required>
-                    </div>
+        <?php if ($showForm): ?>
+            <div class="card" style="margin-top:16px;">
+                <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
+                    <strong>Registrar vacuna</strong>
+                    <a href="?patient_id=<?= (int)$patient_id ?>" class="btn-pill" style="text-decoration:none;">Cerrar</a>
                 </div>
 
-                <div class="field" style="margin-top:12px">
-                    <label>Comentario</label>
-                    <textarea name="comment" placeholder="Observaciones (opcional)"></textarea>
-                </div>
+                <div class="card-body">
+                    <form method="POST" action="?patient_id=<?= (int)$patient_id ?>">
+                        <input type="hidden" name="action" value="create">
 
-                <div class="actions">
-                    <button type="button" class="btn-ghost" id="btnCancel">Cancelar</button>
-                    <button type="submit" class="btn-primary">Guardar</button>
-                </div>
-            </form>
-        </div>
+                        <div class="grid" style="display:grid; grid-template-columns: 1fr 220px; gap:12px;">
+                            <div>
+                                <label style="display:block; margin-bottom:6px;">Vacuna</label>
+                                <input name="vaccine_name" type="text" required
+                                       value="<?= e($_POST['vaccine_name'] ?? '') ?>"
+                                       style="width:100%; padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:#fff;">
+                            </div>
 
-        <div class="card" style="margin-top:14px">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-                <h3 style="margin:0">Vacunas registradas</h3>
-                <div class="muted">Mostrando registros guardados.</div>
+                            <div>
+                                <label style="display:block; margin-bottom:6px;">Fecha de vacuna</label>
+                                <input name="vaccine_date" type="date" required
+                                       value="<?= e($_POST['vaccine_date'] ?? '') ?>"
+                                       style="width:100%; padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:#fff;">
+                            </div>
+                        </div>
+
+                        <div style="margin-top:12px;">
+                            <label style="display:block; margin-bottom:6px;">Comentario</label>
+                            <textarea name="comment" rows="3"
+                                      style="width:100%; padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:#fff; resize:vertical;"><?= e($_POST['comment'] ?? '') ?></textarea>
+                        </div>
+
+                        <div style="margin-top:14px; display:flex; gap:10px;">
+                            <button type="submit" class="btn-pill">Guardar</button>
+                            <a href="?patient_id=<?= (int)$patient_id ?>" class="btn-pill" style="text-decoration:none;">Cancelar</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <div class="card" style="margin-top:16px;">
+            <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
+                <strong>Vacunas registradas</strong>
+                <span style="opacity:.8; font-size:.95em;">Mostrando registros guardados.</span>
             </div>
 
-            <div style="margin-top:10px;overflow:auto">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th style="min-width:180px">Vacuna</th>
-                            <th style="min-width:140px">Fecha</th>
-                            <th>Comentario</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if ($patientId <= 0): ?>
-                            <tr><td colspan="3" class="muted">Debes abrir esta pantalla con <code>?patient_id=ID</code> para ver/registrar vacunas.</td></tr>
-                        <?php elseif (!$vaccines): ?>
-                            <tr><td colspan="3" class="muted">No hay vacunas registradas.</td></tr>
-                        <?php else: ?>
-                            <?php foreach ($vaccines as $v): ?>
-                                <tr>
-                                    <td><strong><?= htmlspecialchars($v['vaccine_name'] ?? '') ?></strong></td>
-                                    <td><?= htmlspecialchars($v['vaccine_date'] ?? '') ?></td>
-                                    <td><?= nl2br(htmlspecialchars($v['comment'] ?? '')) ?></td>
+            <div class="card-body">
+                <?php if (!$patient_id): ?>
+                    <div style="opacity:.9;">Abre esta pantalla con un paciente: <code>esquema.php?patient_id=123</code></div>
+                <?php elseif (!$vaccines): ?>
+                    <div style="opacity:.9;">No hay vacunas registradas.</div>
+                <?php else: ?>
+                    <div style="overflow:auto;">
+                        <table style="width:100%; border-collapse:collapse; min-width:720px;">
+                            <thead>
+                                <tr style="text-align:left; opacity:.9;">
+                                    <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.10);">Vacuna</th>
+                                    <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.10); width:160px;">Fecha</th>
+                                    <th style="padding:10px; border-bottom:1px solid rgba(255,255,255,.10);">Comentario</th>
                                 </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($vaccines as $v): ?>
+                                    <tr>
+                                        <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.06);"><?= e($v['vaccine_name']) ?></td>
+                                        <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.06);"><?= e($v['vaccine_date']) ?></td>
+                                        <td style="padding:10px; border-bottom:1px solid rgba(255,255,255,.06);"><?= e($v['comment'] ?? '') ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -286,29 +304,6 @@ if ($patientId > 0) {
 <footer class="footer">
     © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
 </footer>
-
-<script>
-(function(){
-    const formCard = document.getElementById('formCard');
-    const btnToggle = document.getElementById('btnToggleForm');
-    const btnCancel = document.getElementById('btnCancel');
-
-    if(btnToggle && formCard){
-        btnToggle.addEventListener('click', ()=> {
-            formCard.classList.toggle('hidden');
-            if(!formCard.classList.contains('hidden')){
-                const firstInput = formCard.querySelector('input[name="vaccine"]');
-                if(firstInput) firstInput.focus();
-            }
-        });
-    }
-    if(btnCancel && formCard){
-        btnCancel.addEventListener('click', ()=> {
-            formCard.classList.add('hidden');
-        });
-    }
-})();
-</script>
 
 </body>
 </html>
