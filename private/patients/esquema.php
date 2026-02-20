@@ -18,6 +18,8 @@ $sucursalId = $user['branch_id'] ?? '';
  */
 $conn = null; $pdo = null;
 $possible = [
+    __DIR__ . '/../../config/database.php', // ✅ usual en tu estructura (/config fuera de /private)
+    __DIR__ . '/../config/database.php',
     __DIR__ . '/../../config/db.php',
     __DIR__ . '/../config/db.php',
 ];
@@ -135,6 +137,14 @@ $showForm = isset($_GET['new']) && $_GET['new'] === '1';
     <meta charset="UTF-8">
     <title>Esquema de Vacuna | CEVIMEP</title>
     <link rel="stylesheet" href="/assets/css/styles.css?v=50">
+<style>
+        .btn-action{display:inline-block;padding:10px 16px;border-radius:999px;font-weight:700;text-decoration:none;line-height:1;cursor:pointer;}
+        .btn-action.primary{background:linear-gradient(180deg,#0b4ea2,#08356f);color:#fff;border:1px solid rgba(255,255,255,.15);}
+        .btn-action.primary:hover{filter:brightness(1.05);}
+        .btn-action.secondary{background:rgba(8,53,111,.08);color:#08356f;border:1px solid rgba(8,53,111,.25);}
+        .btn-action.secondary:hover{background:rgba(8,53,111,.12);}
+        .btn-action.disabled{opacity:.55;}
+</style>
 </head>
 <body>
 
@@ -180,9 +190,14 @@ $showForm = isset($_GET['new']) && $_GET['new'] === '1';
                 </p>
             </div>
 
-            <div style="display:flex; gap:10px; align-items:center;">
-                <a class="btn-pill" href="/private/patients/index.php" style="text-decoration:none;">Volver</a>
-                <a class="btn-pill" href="?patient_id=<?= (int)$patient_id ?>&new=1" style="text-decoration:none;">Registrar nueva vacuna</a>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <a class="btn-action secondary" href="/private/patients/index.php">Volver</a>
+                <a id="btnNuevaVacuna"
+                   class="btn-action primary"
+                   href="?patient_id=<?= (int)$patient_id ?>&new=1"
+                   data-patient-id="<?= (int)$patient_id ?>">
+                   Registrar nueva vacuna
+                </a>
             </div>
         </div>
 
@@ -304,6 +319,24 @@ $showForm = isset($_GET['new']) && $_GET['new'] === '1';
 <footer class="footer">
     © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
 </footer>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const btn = document.getElementById('btnNuevaVacuna');
+  if (!btn) return;
+  const pid = parseInt(btn.getAttribute('data-patient-id') || '0', 10);
+
+  // Si no hay patient_id, mantenemos el botón visible pero evitamos que navegue
+  if (!pid) {
+    btn.classList.add('disabled');
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      alert('Para registrar vacunas debes abrir esta pantalla desde un paciente. Ej: esquema.php?patient_id=123');
+    });
+  }
+});
+</script>
 
 </body>
 </html>
