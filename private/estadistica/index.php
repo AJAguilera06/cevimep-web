@@ -37,11 +37,9 @@ if (!isset($_SESSION["user"])) {
 $user = $_SESSION["user"];
 $yearNow = date("Y");
 
-// Sidebar active
-$active = "estadistica";
-$base = "../";
-
-// Protección (password)
+/* =======================
+   Protección (password)
+   ======================= */
 $estadistica_ok = !empty($_SESSION["estadistica_ok"]);
 
 /* =======================
@@ -99,6 +97,7 @@ function column_exists($pdo, $table, $col)
 
     return (int)$st->fetchColumn() > 0;
 }
+
 /* =======================
    DATA
    ======================= */
@@ -143,7 +142,6 @@ if ($estadistica_ok) {
     $nameExprParts[] = "CONCAT('Item #', ii.item_id)";
     $nameExpr = "COALESCE(" . implode(", ", $nameExprParts) . ")";
 
-    // Ranking mensual
     $sqlTop = "
         SELECT $nameExpr AS vacuna, SUM(ii.qty) AS cantidad
         FROM invoice_items ii
@@ -158,7 +156,6 @@ if ($estadistica_ok) {
     $st->execute([$startStr, $endStr]);
     $top = $st->fetchAll(PDO::FETCH_ASSOC);
 
-    // Historial del mes
     $sqlHist = "
         SELECT DATE(i.created_at) AS fecha, $nameExpr AS vacuna, SUM(ii.qty) AS cantidad
         FROM invoice_items ii
@@ -173,7 +170,6 @@ if ($estadistica_ok) {
     $st2->execute([$startStr, $endStr]);
     $historial = $st2->fetchAll(PDO::FETCH_ASSOC);
 
-    // Ventas por día
     $sqlDia = "
         SELECT DATE(i.created_at) AS fecha, SUM(ii.qty) AS cantidad
         FROM invoice_items ii
@@ -243,24 +239,68 @@ $monthName = $start->format("F");
             gap:10px;
         }
         .topbar .brand .dot{
-            width:9px;height:9px;border-radius:50%;
-            background:#22c55e; display:inline-block;
+            width:9px;
+            height:9px;
+            border-radius:50%;
+            background:#22c55e;
+            display:inline-block;
         }
-        .topbar .right{ position:absolute; right:18px; display:flex; gap:10px; align-items:center; }
+        .topbar .right{
+            position:absolute;
+            right:18px;
+            display:flex;
+            gap:10px;
+            align-items:center;
+        }
         .topbar .right a{
-            color:#fff; text-decoration:none;
+            color:#fff;
+            text-decoration:none;
             border:1px solid rgba(255,255,255,.35);
-            padding:6px 14px; border-radius:999px;
+            padding:6px 14px;
+            border-radius:999px;
             font-weight:600;
         }
-        .appwrap{ display:flex; min-height: calc(100vh - 58px - 52px); }
+        .appwrap{
+            display:flex;
+            min-height: calc(100vh - 58px - 52px);
+        }
         .sidebar{
             width:260px;
-            background:#f7f7f7;
+            background:#0a2c6b;
             border-right:1px solid rgba(0,0,0,.06);
             padding:18px 14px;
+            color:#fff;
         }
-        .content{ flex:1; padding:22px 24px; }
+        .sidebar .menu-title{
+            font-weight:800;
+            margin-bottom:16px;
+            text-align:center;
+        }
+        .menu{
+            display:flex;
+            flex-direction:column;
+            gap:10px;
+        }
+        .menu a{
+            display:block;
+            color:#fff;
+            text-decoration:none;
+            padding:11px 14px;
+            border-radius:14px;
+            font-weight:700;
+            transition:.2s ease;
+        }
+        .menu a:hover{
+            background:rgba(255,255,255,.10);
+        }
+        .menu a.active{
+            background:#0e5e91;
+        }
+        .content{
+            flex:1;
+            padding:22px 24px;
+            background: linear-gradient(90deg, #d8eaee 0%, #f1f4fa 100%);
+        }
         .soft-card{
             background:#fff;
             border-radius:16px;
@@ -270,11 +310,15 @@ $monthName = $start->format("F");
         .soft-card .card-h{
             padding:14px 16px;
             border-bottom:1px solid rgba(0,0,0,.06);
-            display:flex; align-items:center; justify-content:space-between;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
             gap:10px;
             flex-wrap:wrap;
         }
-        .soft-card .card-b{ padding:16px; }
+        .soft-card .card-b{
+            padding:16px;
+        }
         .footer{
             height:52px;
             background: linear-gradient(90deg, #0a2c6b, #063b85);
@@ -284,9 +328,20 @@ $monthName = $start->format("F");
             justify-content:center;
             font-weight:600;
         }
-        .mini-muted{ font-size:12px; color:#6b7280; }
-        .filter-wrap{ display:flex; gap:10px; align-items:end; flex-wrap:wrap; }
-        .filter-wrap .form-select, .filter-wrap .form-control{ min-width:140px; }
+        .mini-muted{
+            font-size:12px;
+            color:#6b7280;
+        }
+        .filter-wrap{
+            display:flex;
+            gap:10px;
+            align-items:end;
+            flex-wrap:wrap;
+        }
+        .filter-wrap .form-select,
+        .filter-wrap .form-control{
+            min-width:140px;
+        }
     </style>
 </head>
 <body>
@@ -300,11 +355,16 @@ $monthName = $start->format("F");
 
 <div class="appwrap">
     <aside class="sidebar">
-        <?php
-        $active = "estadistica";
-        $base   = "../";
-        ?>
-        <?php include "../partials/sidebar.php"; ?>
+        <div class="menu-title">Menú</div>
+        <nav class="menu">
+            <a href="/private/dashboard.php">🏠 Panel</a>
+            <a href="/private/patients/index.php">👤 Pacientes</a>
+            <a href="/private/citas/index.php">📅 Citas</a>
+            <a href="/private/facturacion/index.php">🧾 Facturación</a>
+            <a href="/private/caja/index.php">💳 Caja</a>
+            <a href="/private/inventario/index.php">📦 Inventario</a>
+            <a class="active" href="/private/estadistica/index.php">📊 Estadísticas</a>
+        </nav>
     </aside>
 
     <section class="content">
@@ -332,7 +392,14 @@ $monthName = $start->format("F");
                         </div>
                         <div>
                             <div class="mini-muted">Año</div>
-                            <input name="year" type="number" class="form-control form-control-sm" value="<?php echo (int)$year; ?>" min="2020" max="2100">
+                            <input
+                                name="year"
+                                type="number"
+                                class="form-control form-control-sm"
+                                value="<?php echo (int)$year; ?>"
+                                min="2020"
+                                max="2100"
+                            >
                         </div>
                         <div>
                             <button class="btn btn-sm btn-primary" type="submit">Aplicar</button>
