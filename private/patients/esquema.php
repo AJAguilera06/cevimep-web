@@ -53,7 +53,7 @@ function h($v): string {
 function ageFrom($birthDate): string {
     if (!$birthDate) return '';
     try {
-        return (string)((new DateTime())->diff(new DateTime((string)$birthDate))->y;
+        return (string)(new DateTime())->diff(new DateTime((string)$birthDate))->y;
     } catch (Throwable $e) {
         return '';
     }
