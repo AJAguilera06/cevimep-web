@@ -13,10 +13,9 @@ $user = $_SESSION['user'];
 $id = (int)($_GET['id'] ?? 0);
 $isAdmin = (($user['role'] ?? '') === 'admin');
 $userBranchId = (int)($user['branch_id'] ?? 0);
-$createdBy = (int)($user['id'] ?? 0);
 
 if ($id <= 0) {
-    header("Location: /private/patients/index.php");
+    header('Location: /private/patients/index.php');
     exit;
 }
 
@@ -38,15 +37,17 @@ foreach ($db_candidates as $p) {
 
 if (!$loaded || !isset($pdo) || !($pdo instanceof PDO)) {
     http_response_code(500);
-    echo "Error crítico: no se pudo cargar la conexión a la base de datos.";
+    echo 'Error crítico: no se pudo cargar la conexión a la base de datos.';
     exit;
 }
 
-function h($v) {
+function h($v)
+{
     return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 }
 
-function ageFrom($birthDate) {
+function ageFrom($birthDate)
+{
     if (!$birthDate) {
         return '';
     }
@@ -61,6 +62,9 @@ function ageFrom($birthDate) {
     }
 }
 
+/* ===============================
+   CARGAR PACIENTE
+   =============================== */
 if ($isAdmin) {
     $stmt = $pdo->prepare("
         SELECT p.*, b.name AS branch_name
@@ -71,7 +75,7 @@ if ($isAdmin) {
     $stmt->execute(['id' => $id]);
 } else {
     if ($userBranchId <= 0) {
-        header("Location: /logout.php");
+        header('Location: /logout.php');
         exit;
     }
 
@@ -82,7 +86,7 @@ if ($isAdmin) {
         WHERE p.id = :id AND p.branch_id = :bid
     ");
     $stmt->execute([
-        'id' => $id,
+        'id'  => $id,
         'bid' => $userBranchId
     ]);
 }
@@ -91,7 +95,7 @@ $p = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$p) {
     http_response_code(404);
-    echo "Paciente no encontrado.";
+    echo 'Paciente no encontrado.';
     exit;
 }
 
@@ -117,10 +121,15 @@ $vaccinesList = [
 $success = '';
 $error = '';
 
+/* ===============================
+   VALIDAR ESTRUCTURA REAL DE TABLA
+   =============================== */
 $pvColumns = [];
+
 try {
     $colStmt = $pdo->query("SHOW COLUMNS FROM patient_vaccines");
     $cols = $colStmt->fetchAll(PDO::FETCH_ASSOC);
+
     foreach ($cols as $col) {
         if (!empty($col['Field'])) {
             $pvColumns[] = $col['Field'];
@@ -130,88 +139,54 @@ try {
     $error = 'No se pudo leer la estructura de la tabla patient_vaccines.';
 }
 
-$dateColumn = null;
-if (in_array('application_date', $pvColumns, true)) {
-    $dateColumn = 'application_date';
-} elseif (in_array('date', $pvColumns, true)) {
-    $dateColumn = 'date';
-} elseif (in_array('fecha', $pvColumns, true)) {
-    $dateColumn = 'fecha';
-}
+$hasPatientId       = in_array('patient_id', $pvColumns, true);
+$hasVaccineName     = in_array('vaccine_name', $pvColumns, true);
+$hasApplicationDate = in_array('application_date', $pvColumns, true);
+$hasComment         = in_array('comment', $pvColumns, true);
+$hasCreatedAt       = in_array('created_at', $pvColumns, true);
 
-$commentsColumn = null;
-if (in_array('comments', $pvColumns, true)) {
-    $commentsColumn = 'comments';
-} elseif (in_array('comment', $pvColumns, true)) {
-    $commentsColumn = 'comment';
-} elseif (in_array('observations', $pvColumns, true)) {
-    $commentsColumn = 'observations';
-} elseif (in_array('observacion', $pvColumns, true)) {
-    $commentsColumn = 'observacion';
-}
-
-$createdAtColumn = null;
-if (in_array('created_at', $pvColumns, true)) {
-    $createdAtColumn = 'created_at';
-} elseif (in_array('createdon', $pvColumns, true)) {
-    $createdAtColumn = 'createdon';
-} elseif (in_array('fecha_registro', $pvColumns, true)) {
-    $createdAtColumn = 'fecha_registro';
-}
-
+/* ===============================
+   GUARDAR VACUNA
+   =============================== */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $vaccineName = trim((string)($_POST['vaccine_name'] ?? ''));
     $applicationDate = trim((string)($_POST['application_date'] ?? ''));
     $comments = trim((string)($_POST['comments'] ?? ''));
 
     if ($vaccineName === '') {
-        $error = 'Debes seleccionar una vacuna.';
+        $error = 'Debes escribir o seleccionar una vacuna.';
     } elseif ($applicationDate === '') {
         $error = 'La fecha de aplicación es obligatoria.';
-    } elseif ($dateColumn === null) {
-        $error = 'La tabla patient_vaccines no tiene una columna de fecha válida.';
+    } elseif (!$hasPatientId || !$hasVaccineName || !$hasApplicationDate) {
+        $error = 'La tabla patient_vaccines no tiene la estructura mínima requerida.';
     } else {
         try {
-            $insertFields = ['patient_id', 'vaccine_name', $dateColumn];
-            $insertValues = [':patient_id', ':vaccine_name', ':application_date'];
-
-            if ($commentsColumn !== null) {
-                $insertFields[] = $commentsColumn;
-                $insertValues[] = ':comments';
-            }
-
-            if (in_array('created_by', $pvColumns, true)) {
-                $insertFields[] = 'created_by';
-                $insertValues[] = ':created_by';
-            }
-
             $sqlInsert = "
-                INSERT INTO patient_vaccines (" . implode(', ', $insertFields) . ")
-                VALUES (" . implode(', ', $insertValues) . ")
+                INSERT INTO patient_vaccines (
+                    patient_id,
+                    vaccine_name,
+                    application_date,
+                    comment
+                ) VALUES (
+                    :patient_id,
+                    :vaccine_name,
+                    :application_date,
+                    :comment
+                )
             ";
 
             $ins = $pdo->prepare($sqlInsert);
-
-            $params = [
-                'patient_id' => $id,
-                'vaccine_name' => $vaccineName,
+            $ins->execute([
+                'patient_id'       => $id,
+                'vaccine_name'     => $vaccineName,
                 'application_date' => $applicationDate,
-            ];
+                'comment'          => ($hasComment ? ($comments !== '' ? $comments : null) : null)
+            ]);
 
-            if ($commentsColumn !== null) {
-                $params['comments'] = ($comments !== '' ? $comments : null);
-            }
-
-            if (in_array('created_by', $pvColumns, true)) {
-                $params['created_by'] = ($createdBy > 0 ? $createdBy : null);
-            }
-
-            $ins->execute($params);
-
-            header("Location: /private/patients/esquema.php?id=" . $id . "&saved=1");
+            header('Location: /private/patients/esquema.php?id=' . $id . '&saved=1');
             exit;
         } catch (Throwable $e) {
-            $error = 'No se pudo guardar la vacuna. Revisa la estructura de la tabla patient_vaccines.';
+            $error = 'No se pudo guardar la vacuna: ' . $e->getMessage();
         }
     }
 }
@@ -220,33 +195,38 @@ if (isset($_GET['saved']) && $_GET['saved'] == '1') {
     $success = 'Vacuna registrada correctamente.';
 }
 
+/* ===============================
+   HISTORIAL DE VACUNAS
+   =============================== */
 $vaccineHistory = [];
 
-if ($dateColumn !== null) {
+if ($hasPatientId && $hasVaccineName && $hasApplicationDate) {
     try {
-        $commentsSelect = $commentsColumn !== null ? $commentsColumn : "NULL";
-        $createdAtSelect = $createdAtColumn !== null ? $createdAtColumn : "NULL";
+        $commentSelect = $hasComment ? 'comment' : 'NULL';
+        $createdAtSelect = $hasCreatedAt ? 'created_at' : 'NULL';
 
         $sqlHistory = "
             SELECT
                 id,
                 vaccine_name,
-                {$dateColumn} AS application_date,
-                {$commentsSelect} AS comments,
+                application_date,
+                {$commentSelect} AS comments,
                 {$createdAtSelect} AS created_at
             FROM patient_vaccines
             WHERE patient_id = :patient_id
-            ORDER BY {$dateColumn} DESC, id DESC
+            ORDER BY application_date DESC, id DESC
         ";
 
         $historyStmt = $pdo->prepare($sqlHistory);
         $historyStmt->execute(['patient_id' => $id]);
         $vaccineHistory = $historyStmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {
-        $error = 'No se pudo cargar el historial de vacunas.';
+        if ($error === '') {
+            $error = 'No se pudo cargar el historial de vacunas: ' . $e->getMessage();
+        }
     }
 } elseif ($error === '') {
-    $error = 'La tabla patient_vaccines no tiene una columna de fecha válida.';
+    $error = 'La tabla patient_vaccines no tiene una estructura válida para mostrar el historial.';
 }
 
 $today = date('Y-m-d');
@@ -278,12 +258,17 @@ $today = date('Y-m-d');
         .form-group{display:flex;flex-direction:column;gap:6px;}
         .form-group label{font-weight:800;color:#173b7a;}
         .form-group input,.form-group select,.form-group textarea{
-            width:100%;border:1px solid rgba(0,0,0,.12);border-radius:12px;
-            padding:12px 14px;font:inherit;outline:none;background:#fff;
+            width:100%;
+            border:1px solid rgba(0,0,0,.12);
+            border-radius:12px;
+            padding:12px 14px;
+            font:inherit;
+            outline:none;
+            background:#fff;
         }
         .form-group textarea{min-height:110px;resize:vertical;}
         .full{grid-column:1 / -1;}
-        .alert{margin-bottom:14px;padding:12px 14px;border-radius:12px;font-weight:700;}
+        .alert{margin-bottom:14px;padding:12px 14px;border-radius:12px;font-weight:700;word-break:break-word;}
         .alert-success{background:#e9f9ef;color:#166534;border:1px solid #b7ebc6;}
         .alert-error{background:#fff0f0;color:#991b1b;border:1px solid #f5b5b5;}
         .history-card{margin-top:24px;}
@@ -292,6 +277,7 @@ $today = date('Y-m-d');
         .table th{background:#0f4fa8;color:#fff;padding:12px 10px;text-align:left;font-size:14px;}
         .table td{padding:12px 10px;border-bottom:1px solid #eef1f6;background:#fff;}
         .empty-state{text-align:center;padding:24px 10px;font-weight:700;opacity:.75;}
+
         @media (max-width:980px){
             .grid-top,.form-grid,.kv-grid{grid-template-columns:1fr;}
             .full{grid-column:auto;}
@@ -369,22 +355,40 @@ $today = date('Y-m-d');
                         <div class="form-grid">
                             <div class="form-group">
                                 <label for="vaccine_name">Vacuna</label>
-                                <select name="vaccine_name" id="vaccine_name" required>
-                                    <option value="">Seleccione una vacuna</option>
+                                <input
+                                    type="text"
+                                    name="vaccine_name"
+                                    id="vaccine_name"
+                                    list="vaccines_suggestions"
+                                    placeholder="Escriba o seleccione una vacuna"
+                                    value="<?= h($_POST['vaccine_name'] ?? '') ?>"
+                                    required
+                                >
+                                <datalist id="vaccines_suggestions">
                                     <?php foreach ($vaccinesList as $vac): ?>
-                                        <option value="<?= h($vac) ?>"><?= h($vac) ?></option>
+                                        <option value="<?= h($vac) ?>">
                                     <?php endforeach; ?>
-                                </select>
+                                </datalist>
                             </div>
 
                             <div class="form-group">
                                 <label for="application_date">Fecha de aplicación</label>
-                                <input type="date" id="application_date" name="application_date" value="<?= h($today) ?>" required>
+                                <input
+                                    type="date"
+                                    id="application_date"
+                                    name="application_date"
+                                    value="<?= h($_POST['application_date'] ?? $today) ?>"
+                                    required
+                                >
                             </div>
 
                             <div class="form-group full">
                                 <label for="comments">Comentario / esquema</label>
-                                <textarea id="comments" name="comments" placeholder="Ej.: Primera dosis aplicada sin eventos adversos. Próxima dosis en 2 meses."></textarea>
+                                <textarea
+                                    id="comments"
+                                    name="comments"
+                                    placeholder="Ej.: Primera dosis aplicada sin eventos adversos. Próxima dosis en 2 meses."
+                                ><?= h($_POST['comments'] ?? '') ?></textarea>
                             </div>
 
                             <div class="form-group full">
