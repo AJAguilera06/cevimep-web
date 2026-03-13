@@ -71,21 +71,34 @@ $endStr   = $end->format("Y-m-d H:i:s");
    ======================= */
 function table_exists($pdo, $table)
 {
-    try {
-        $pdo->query("SELECT 1 FROM `$table` LIMIT 1");
-        return true;
-    } catch (Exception $e) {
-        return false;
-    }
+    $sql = "
+        SELECT COUNT(*)
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = ?
+    ";
+
+    $st = $pdo->prepare($sql);
+    $st->execute([$table]);
+
+    return (int)$st->fetchColumn() > 0;
 }
 
 function column_exists($pdo, $table, $col)
 {
-    $st = $pdo->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
-    $st->execute([$col]);
-    return (bool)$st->fetch();
-}
+    $sql = "
+        SELECT COUNT(*)
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = ?
+          AND COLUMN_NAME = ?
+    ";
 
+    $st = $pdo->prepare($sql);
+    $st->execute([$table, $col]);
+
+    return (int)$st->fetchColumn() > 0;
+}
 /* =======================
    DATA
    ======================= */
