@@ -579,7 +579,7 @@ $printData = $_SESSION["entrada_last_print"] ?? null;
           </button>
         </div>
 
-        <div id="histBody" class="hist-body">
+        <div id="histBody" class="hist-body show">
           <div class="table-wrap" style="margin-top:12px;">
             <table>
               <thead>
