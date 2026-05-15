@@ -313,14 +313,23 @@ try {
     $st->execute($params);
     $items_all = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
   } else {
-    $sql = "SELECT $colItemId AS id, $colCat AS category_id, $colName AS name, $colPrice AS sale_price
-            FROM inventory_items";
+    $sql = "
+SELECT 
+    i.$colItemId AS id,
+    i.$colCat AS category_id,
+    CONCAT(i.$colName, ' ', ip.price_name) AS name,
+    ip.sale_price AS sale_price,
+    ip.stock_discount AS stock_discount
+FROM inventory_items i
+INNER JOIN item_prices ip 
+    ON ip.item_id = i.$colItemId
+";
     $where = [];
     $params = [];
     if ($colActive !== null) $where[] = "$colActive=1";
     if ($colBranchItems !== null) { $where[] = "$colBranchItems=?"; $params[] = $branch_id; }
     if ($where) $sql .= " WHERE " . implode(" AND ", $where);
-    $sql .= " ORDER BY $colName ASC";
+    $sql .= " ORDER BY i.$colName ASC, ip.price_name ASC";
 
     $st = $conn->prepare($sql);
     $st->execute($params);
