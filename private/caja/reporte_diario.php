@@ -39,7 +39,7 @@ try {
 
 function getSession(PDO $pdo, int $branchId, int $cajaNum, string $date, string $start, string $end): ?array {
   $st = $pdo->prepare("
-    SELECT * FROM cash_sessions
+    SELECT * FROM caja_sesiones
     WHERE branch_id=? AND date_open=? AND caja_num=? AND shift_start=? AND shift_end=?
     ORDER BY id DESC LIMIT 1
   ");
@@ -105,7 +105,7 @@ try {
   if ($caja1) { $t1 = getTotals($pdo, (int)$caja1["id"]); $m1 = getMovements($pdo, (int)$caja1["id"]); }
   if ($caja2) { $t2 = getTotals($pdo, (int)$caja2["id"]); $m2 = getMovements($pdo, (int)$caja2["id"]); }
 } catch (Throwable $e) {
-  $error = "Error interno generando el reporte. Verifica tablas/columnas (cash_sessions, cash_movements).";
+  $error = "Error interno generando el reporte. Verifica tablas/columnas (caja_sesiones, cash_movements).";
 }
 ?>
 <!doctype html>
