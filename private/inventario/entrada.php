@@ -296,38 +296,36 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 /* =========================
    HISTORIAL (últimos 50 IN)
 ========================= */
+
 $history = [];
+
 try {
-  $movCols = table_columns($conn, "inventory_movements");
-  $mov_branch = pick_col($movCols, ["branch_id","sucursal_id"]);
-  $mov_item   = pick_col($movCols, ["item_id","product_id","inventory_item_id"]);
-  $mov_qty    = pick_col($movCols, ["quantity","qty","cantidad"]);
-  $mov_type   = pick_col($movCols, ["movement_type","type","mov_type","direction"]);
-  $mov_date   = pick_col($movCols, ["created_at","date","fecha","created_on"]);
-  $mov_note   = pick_col($movCols, ["note","notes","detalle","description"]);
 
-  if ($mov_branch && $mov_item && $mov_qty) {
-    $selDate = $mov_date ? "`$mov_date` AS mov_date" : "NULL AS mov_date";
-    $selNote = $mov_note ? "`$mov_note` AS mov_note" : "NULL AS mov_note";
+  $sql = "
+    SELECT
+      m.created_at AS mov_date,
+      m.note AS mov_note,
+      m.qty AS qty,
+      COALESCE(i.name, CONCAT('Producto #', m.item_id)) AS item_name
+    FROM inventory_movements m
+    LEFT JOIN inventory_items i
+      ON i.id = m.item_id
+    WHERE m.branch_id = ?
+      AND m.movement_type = 'IN'
+    ORDER BY m.id DESC
+    LIMIT 50
+  ";
 
-    $sql = "
-      SELECT $selDate, $selNote,
-             i.name AS item_name,
-             m.`$mov_qty` AS qty
-      FROM inventory_movements m
-      LEFT JOIN inventory_items i ON i.id = m.`$mov_item`
-      WHERE m.`$mov_branch` = ?
-    ";
-    if ($mov_type) {
-      $sql .= " AND (m.`$mov_type`='IN' OR m.`$mov_type`='entrada' OR m.`$mov_type`='ENTRADA') ";
-    }
-    $sql .= " ORDER BY " . ($mov_date ? "m.`$mov_date`" : "m.id") . " DESC LIMIT 50";
+  $stH = $conn->prepare($sql);
+  $stH->execute([$branch_id]);
 
-    $stH = $conn->prepare($sql);
-    $stH->execute([$branch_id]);
-    $history = $stH->fetchAll(PDO::FETCH_ASSOC);
-  }
-} catch (Throwable $e) {}
+  $history = $stH->fetchAll(PDO::FETCH_ASSOC);
+
+} catch (Throwable $e) {
+
+  $history = [];
+
+}
 
 $cart = $_SESSION["entrada_cart"];
 
