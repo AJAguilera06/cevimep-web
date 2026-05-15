@@ -101,7 +101,8 @@ $year = date("Y");
 
   <!-- SIDEBAR -->
   <aside class="sidebar">
-    <h3 class="menu-title">Menú</h3>
+    <div class="menu-title">Menú</div>
+
     <nav class="menu">
       <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
       <a href="/private/patients/index.php"><span class="ico">👤</span> Pacientes</a>
@@ -111,7 +112,7 @@ $year = date("Y");
       <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
       <a href="/private/caja/index.php"><span class="ico">💳</span> Caja</a>
       <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="/private/estadisticas/index.php"><span class="ico">📊</span> Estadísticas</a>
+      <a href="/private/estadistica/index.php">📊 Estadísticas</a>
     </nav>
   </aside>
 
