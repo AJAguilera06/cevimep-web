@@ -372,10 +372,20 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
               <?php else: ?>
                 <?php foreach ($items as $it): ?>
                   <?php
-                    $stock = (int)($it["stock"] ?? 0);
-                    if ($stock <= 0) { $pillClass = "pill-out"; $pillText = "0 · Agotado"; }
-                    elseif ($stock <= 1) { $pillClass = "pill-low"; $pillText = $stock . " · Bajo"; }
-                    else { $pillClass = "pill-ok"; $pillText = $stock . " · OK"; }
+                    $stock = (float)($it["stock"] ?? 0);
+
+if ($stock <= 0) {
+  $pillClass = "pill-out";
+  $pillText = number_format($stock, 2) . " · Agotado";
+}
+elseif ($stock <= 1) {
+  $pillClass = "pill-low";
+  $pillText = number_format($stock, 2) . " · Bajo";
+}
+else {
+  $pillClass = "pill-ok";
+  $pillText = number_format($stock, 2) . " · OK";
+}
                   ?>
                   <tr>
                     <td style="font-weight:950;"><?= h($it["name"] ?? "") ?></td>
