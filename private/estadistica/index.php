@@ -574,7 +574,7 @@ $monthName = $start->format("F");
                 const fd = new FormData();
                 fd.append("password", password);
 
-                const r = await fetch("auth.php", {
+                const r = await fetch("/private/estadistica/auth.php", {
                     method: "POST",
                     body: fd
                 });
