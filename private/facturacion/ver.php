@@ -1,13 +1,9 @@
-sda# ver.php
-
-```php
 <?php
-declare(strict_types=1);
 
 require_once __DIR__ . "/../_guard.php";
 $conn = $pdo;
 
-function h($s): string {
+function h($s){
     return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8");
 }
 
@@ -15,14 +11,12 @@ $user = $_SESSION['user'] ?? [];
 $sucursalId = (int)($user['branch_id'] ?? 0);
 
 if ($sucursalId <= 0) {
-    http_response_code(400);
     die("Sucursal inválida.");
 }
 
-$invoice_id = (int)($_GET['id'] ?? 0);
+$id = (int)($_GET['id'] ?? 0);
 
-if ($invoice_id <= 0) {
-    http_response_code(400);
+if ($id <= 0) {
     die("Factura inválida.");
 }
 
@@ -39,29 +33,29 @@ $stmt = $conn->prepare("
     INNER JOIN patients p ON p.id = i.patient_id
     INNER JOIN branches b ON b.id = i.branch_id
     WHERE i.id = :id
-      AND i.branch_id = :bid
+    AND i.branch_id = :bid
     LIMIT 1
 ");
 
 $stmt->execute([
-    'id'  => $invoice_id,
+    'id' => $id,
     'bid' => $sucursalId
 ]);
 
 $invoice = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$invoice) {
-    http_response_code(404);
     die("Factura no encontrada.");
 }
 
 /**
- * DETALLES
- * Ajusta el nombre de la tabla si tu sistema usa otro.
+ * ITEMS
+ * Ajusta nombres si tu tabla cambia
  */
 $items = [];
 
 try {
+
     $stmt = $conn->prepare("
         SELECT *
         FROM invoice_items
@@ -69,304 +63,264 @@ try {
         ORDER BY id ASC
     ");
 
-    $stmt->execute(['id' => $invoice_id]);
+    $stmt->execute([
+        'id' => $id
+    ]);
+
     $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {
-    // Si no existe la tabla, no rompe la página
+
+} catch(Exception $e){
     $items = [];
 }
+
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Ver factura | CEVIMEP</title>
-    <link rel="stylesheet" href="/assets/css/styles.css?v=50">
+<meta charset="UTF-8">
+<title>Factura #<?= (int)$invoice['id'] ?></title>
 
-    <style>
-        .page-wrap{
-            padding:18px;
-        }
+<style>
 
-        .page-header{
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
-            gap:12px;
-            flex-wrap:wrap;
-            margin-bottom:16px;
-        }
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
 
-        .page-header h1{
-            margin:0;
-            font-size:42px;
-            font-weight:900;
-        }
+body{
+    font-family: Arial, Helvetica, sans-serif;
+    background:#fff;
+    color:#000;
+}
 
-        .page-subtitle{
-            margin-top:5px;
-            opacity:.7;
-            font-weight:700;
-        }
+/* TERMICA 80mm */
+.ticket{
+    width:80mm;
+    margin:0 auto;
+    padding:10px;
+}
 
-        .actions{
-            display:flex;
-            gap:10px;
-            flex-wrap:wrap;
-        }
+.center{
+    text-align:center;
+}
 
-        .btn-pill.secondary{
-            background:#fff;
-            color:#0b4d87;
-            border:1px solid #d7e7fb;
-        }
+.logo{
+    width:170px;
+    margin:0 auto 8px;
+    display:block;
+}
 
-        .btn-pill.primary{
-            background:#0b63b6;
-            color:#fff;
-            border:1px solid #0b63b6;
-        }
+.branch{
+    font-size:18px;
+    font-weight:900;
+    margin-top:4px;
+}
 
-        .card{
-            background:#fff;
-            border-radius:18px;
-            border:1px solid #e6eef8;
-            box-shadow:0 12px 30px rgba(0,0,0,.06);
-            padding:20px;
-        }
+.line{
+    border-top:2px dashed #999;
+    margin:12px 0;
+}
 
-        .grid{
-            display:grid;
-            grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
-            gap:16px;
-            margin-bottom:20px;
-        }
+.info{
+    font-size:14px;
+    line-height:1.6;
+}
 
-        .info-box{
-            background:#f8fbff;
-            border:1px solid #dcecff;
-            border-radius:14px;
-            padding:14px;
-        }
+.info strong{
+    font-weight:900;
+}
 
-        .label{
-            font-size:12px;
-            font-weight:800;
-            color:#0b4d87;
-            margin-bottom:5px;
-            text-transform:uppercase;
-        }
+.item{
+    margin-bottom:10px;
+}
 
-        .value{
-            font-size:15px;
-            font-weight:800;
-        }
+.item-name{
+    font-size:16px;
+    font-weight:700;
+    margin-bottom:4px;
+}
 
-        table{
-            width:100%;
-            border-collapse:collapse;
-        }
+.item-row{
+    display:flex;
+    justify-content:space-between;
+    font-size:14px;
+}
 
-        th, td{
-            padding:12px;
-            border-bottom:1px solid #eef2f6;
-            text-align:left;
-            font-size:14px;
-        }
+.total-box{
+    margin-top:10px;
+}
 
-        th{
-            color:#0b4d87;
-            font-weight:900;
-        }
+.total-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-weight:900;
+    font-size:18px;
+}
 
-        .total-box{
-            margin-top:20px;
-            display:flex;
-            justify-content:flex-end;
-        }
+.footer{
+    text-align:center;
+    margin-top:16px;
+    font-size:12px;
+    color:#444;
+}
 
-        .total-card{
-            background:#0b63b6;
-            color:#fff;
-            padding:18px 24px;
-            border-radius:18px;
-            min-width:240px;
-            text-align:center;
-        }
+.print-btn{
+    position:fixed;
+    top:15px;
+    right:15px;
+    background:#0b63b6;
+    color:#fff;
+    border:none;
+    padding:12px 18px;
+    border-radius:10px;
+    font-weight:700;
+    cursor:pointer;
+    z-index:999;
+}
 
-        .total-card small{
-            display:block;
-            opacity:.8;
-            margin-bottom:6px;
-            font-weight:700;
-        }
+@media print{
 
-        .total-card strong{
-            font-size:28px;
-            font-weight:900;
-        }
+    .print-btn{
+        display:none;
+    }
 
-        .muted{
-            opacity:.7;
-            font-weight:700;
-        }
-    </style>
+    body{
+        background:#fff;
+    }
+
+    .ticket{
+        width:80mm;
+        padding:0;
+    }
+}
+
+</style>
 </head>
 <body>
 
-<header class="navbar">
-    <div class="inner">
-        <div class="brand">
-            <span class="dot"></span>
-            <span>CEVIMEP</span>
+<button class="print-btn" onclick="window.print()">
+    🖨 Imprimir
+</button>
+
+<div class="ticket">
+
+    <div class="center">
+
+        <img
+            src="/assets/img/logo.png"
+            class="logo"
+            alt="CEVIMEP"
+        >
+
+        <div class="branch">
+            <?= h($invoice['branch_name']) ?>
         </div>
 
-        <div class="nav-right">
-            <a href="/logout.php" class="btn-pill">Salir</a>
-        </div>
     </div>
-</header>
 
-<div class="layout">
+    <div class="line"></div>
 
-    <aside class="sidebar">
-        <div class="menu-title">Menú</div>
+    <div class="info">
 
-        <nav class="menu">
-            <a href="/private/dashboard.php">🏠 Panel</a>
-            <a href="/private/patients/index.php">👤 Pacientes</a>
-            <a href="/private/citas/index.php">📅 Citas</a>
-            <a class="active" href="/private/facturacion/index.php">🧾 Facturación</a>
-            <a href="/private/caja/index.php">💳 Caja</a>
-            <a href="/private/inventario/index.php">📦 Inventario</a>
-            <a href="/private/estadistica/index.php">📊 Estadísticas</a>
-        </nav>
-    </aside>
+        <div>
+            <strong>Factura:</strong>
+            #<?= (int)$invoice['id'] ?>
+        </div>
 
-    <main class="content">
-        <div class="page-wrap">
+        <div>
+            <strong>Fecha:</strong>
+            <?= h(date('Y-m-d H:i', strtotime($invoice['created_at']))) ?>
+        </div>
 
-            <div class="page-header">
-                <div>
-                    <h1>Factura #<?= (int)$invoice['id'] ?></h1>
-                    <div class="page-subtitle">Detalle completo de la factura</div>
+        <div>
+            <strong>Paciente:</strong>
+            <?= h($invoice['first_name'] . ' ' . $invoice['last_name']) ?>
+        </div>
+
+        <?php if(!empty($invoice['representative'])): ?>
+        <div>
+            <strong>Representante:</strong>
+            <?= h($invoice['representative']) ?>
+        </div>
+        <?php endif; ?>
+
+        <div>
+            <strong>Pago:</strong>
+            <?= h($invoice['payment_method']) ?>
+        </div>
+
+    </div>
+
+    <div class="line"></div>
+
+    <?php if(empty($items)): ?>
+
+        <div class="center" style="font-size:14px;">
+            No hay productos registrados
+        </div>
+
+    <?php else: ?>
+
+        <?php foreach($items as $item): ?>
+
+            <div class="item">
+
+                <div class="item-name">
+                    <?= h($item['description'] ?? '-') ?>
                 </div>
 
-                <div class="actions">
-                    <a class="btn-pill secondary" href="/private/facturacion/paciente.php?patient_id=<?= (int)$invoice['patient_id'] ?>">← Volver</a>
+                <div class="item-row">
+                    <span>
+                        Cantidad:
+                        <?= (int)($item['quantity'] ?? 1) ?>
+                    </span>
 
-                    <a class="btn-pill primary" target="_blank" href="/private/facturacion/print.php?id=<?= (int)$invoice['id'] ?>">
-                        🖨 Imprimir
-                    </a>
-                </div>
-            </div>
-
-            <div class="card">
-
-                <div class="grid">
-                    <div class="info-box">
-                        <div class="label">Paciente</div>
-                        <div class="value">
-                            <?= h($invoice['first_name'] . ' ' . $invoice['last_name']) ?>
-                        </div>
-                    </div>
-
-                    <div class="info-box">
-                        <div class="label">Sucursal</div>
-                        <div class="value">
-                            <?= h($invoice['branch_name']) ?>
-                        </div>
-                    </div>
-
-                    <div class="info-box">
-                        <div class="label">Método de pago</div>
-                        <div class="value">
-                            <?= h($invoice['payment_method'] ?? 'N/D') ?>
-                        </div>
-                    </div>
-
-                    <div class="info-box">
-                        <div class="label">Fecha</div>
-                        <div class="value">
-                            <?= h($invoice['created_at']) ?>
-                        </div>
-                    </div>
-                </div>
-
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Descripción</th>
-                            <th>Cantidad</th>
-                            <th>Precio</th>
-                            <th>Total</th>
-                        </tr>
-                    </thead>
-
-                    <tbody>
-
-                    <?php if (empty($items)): ?>
-                        <tr>
-                            <td colspan="4" class="muted">
-                                No hay detalles registrados para esta factura.
-                            </td>
-                        </tr>
-                    <?php else: ?>
-
-                        <?php foreach ($items as $item): ?>
-                            <tr>
-                                <td><?= h($item['description'] ?? '-') ?></td>
-                                <td><?= h($item['quantity'] ?? 1) ?></td>
-                                <td>
-                                    RD$ <?= number_format((float)($item['price'] ?? 0), 2) ?>
-                                </td>
-                                <td>
-                                    RD$ <?= number_format((float)($item['total'] ?? 0), 2) ?>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-
-                    <?php endif; ?>
-
-                    </tbody>
-                </table>
-
-                <div class="total-box">
-                    <div class="total-card">
-                        <small>Total factura</small>
-                        <strong>
-                            RD$ <?= number_format((float)$invoice['total'], 2) ?>
-                        </strong>
-                    </div>
+                    <span>
+                        RD$
+                        <?= number_format((float)($item['total'] ?? 0), 2) ?>
+                    </span>
                 </div>
 
             </div>
+
+        <?php endforeach; ?>
+
+    <?php endif; ?>
+
+    <div class="line"></div>
+
+    <div class="total-box">
+
+        <div class="total-row">
+
+            <span>TOTAL A PAGAR</span>
+
+            <span>
+                RD$
+                <?= number_format((float)$invoice['total'], 2) ?>
+            </span>
 
         </div>
-    </main>
+
+    </div>
+
+    <div class="line"></div>
+
+    <div class="footer">
+        © <?= date('Y') ?> CEVIMEP. Todos los derechos reservados.
+    </div>
 
 </div>
 
-<footer class="footer">
-    © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
-</footer>
+<script>
+window.onload = () => {
+    setTimeout(() => {
+        window.print();
+    }, 500);
+};
+</script>
 
 </body>
 </html>
-```
-
-El botón que ya tienes en `paciente.php` seguirá funcionando:
-
-```php
-href="/private/facturacion/ver.php?id=<?= (int)$inv['id'] ?>"
-```
-
-Y el diseño mantiene:
-
-* navbar
-* sidebar
-* estilos actuales
-* colores
-* cards
-* botones
-* estructura visual del sistema
