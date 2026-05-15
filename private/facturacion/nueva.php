@@ -300,19 +300,25 @@ try {
 
   if ($stockTable !== null) {
     $sql = "
-SELECT 
-    i.$colItemId AS id,
-    i.$colCat AS category_id,
-    CONCAT(i.$colName, ' ', ip.price_name) AS name,
-    ip.sale_price AS sale_price,
-    ip.stock_discount AS stock_discount
-FROM inventory_items i
-INNER JOIN item_prices ip 
-    ON ip.item_id = i.$colItemId
-INNER JOIN $stockTable s 
-    ON s.$stockItemCol = i.$colItemId
-WHERE s.$stockBranchCol = ?
-";
+      SELECT 
+        CASE 
+          WHEN ip.id IS NULL THEN CONCAT('i_', i.$colItemId)
+          ELSE CONCAT('p_', ip.id)
+        END AS line_key,
+        i.$colItemId AS item_id,
+        ip.id AS price_id,
+        i.$colCat AS category_id,
+        CASE 
+          WHEN ip.id IS NULL THEN i.$colName
+          ELSE CONCAT(i.$colName, ' ', ip.price_name)
+        END AS name,
+        COALESCE(ip.sale_price, i.$colPrice) AS sale_price,
+        COALESCE(ip.stock_discount, 1.00) AS stock_discount
+      FROM inventory_items i
+      INNER JOIN $stockTable s ON s.$stockItemCol = i.$colItemId
+      LEFT JOIN item_prices ip ON ip.item_id = i.$colItemId AND ip.is_active = 1
+      WHERE s.$stockBranchCol = ?
+    ";
     $params = [$branch_id];
 
     if ($stockQtyCol !== null) $sql .= " AND COALESCE(s.$stockQtyCol,0) > 0";
@@ -324,20 +330,27 @@ WHERE s.$stockBranchCol = ?
     $items_all = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
   } else {
     $sql = "
-SELECT 
-    i.$colItemId AS id,
-    i.$colCat AS category_id,
-    CONCAT(i.$colName, ' ', ip.price_name) AS name,
-    ip.sale_price AS sale_price,
-    ip.stock_discount AS stock_discount
-FROM inventory_items i
-INNER JOIN item_prices ip 
-    ON ip.item_id = i.$colItemId
-";
+      SELECT 
+        CASE 
+          WHEN ip.id IS NULL THEN CONCAT('i_', i.$colItemId)
+          ELSE CONCAT('p_', ip.id)
+        END AS line_key,
+        i.$colItemId AS item_id,
+        ip.id AS price_id,
+        i.$colCat AS category_id,
+        CASE 
+          WHEN ip.id IS NULL THEN i.$colName
+          ELSE CONCAT(i.$colName, ' ', ip.price_name)
+        END AS name,
+        COALESCE(ip.sale_price, i.$colPrice) AS sale_price,
+        COALESCE(ip.stock_discount, 1.00) AS stock_discount
+      FROM inventory_items i
+      LEFT JOIN item_prices ip ON ip.item_id = i.$colItemId AND ip.is_active = 1
+    ";
     $where = [];
     $params = [];
-    if ($colActive !== null) $where[] = "$colActive=1";
-    if ($colBranchItems !== null) { $where[] = "$colBranchItems=?"; $params[] = $branch_id; }
+    if ($colActive !== null) $where[] = "i.$colActive=1";
+    if ($colBranchItems !== null) { $where[] = "i.$colBranchItems=?"; $params[] = $branch_id; }
     if ($where) $sql .= " WHERE " . implode(" AND ", $where);
     $sql .= " ORDER BY i.$colName ASC, ip.price_name ASC";
 
@@ -369,45 +382,128 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
 
     $cleanLines = [];
     foreach ($lines as $k => $v) {
-      $iid = (int)$k;
+      $key = (string)$k;
       $qty = (int)$v;
-      if ($iid > 0 && $qty > 0) $cleanLines[$iid] = $qty;
+
+      // Aceptamos solo claves del formulario:
+      // p_# = variante de precio en item_prices
+      // i_# = producto normal en inventory_items
+      if ($qty > 0 && preg_match('/^(p|i)_\d+$/', $key)) {
+        $cleanLines[$key] = $qty;
+      }
     }
     if (count($cleanLines) === 0) throw new Exception("Debe agregar productos con cantidad válida.");
 
-    $ids = array_keys($cleanLines);
-    $in  = implode(",", array_fill(0, count($ids), "?"));
-
-    /* Mapa items válidos por sucursal */
-    if ($stockTable !== null) {
-      $sqlMap = "SELECT i.$colItemId AS id, i.$colCat AS category_id, i.$colName AS name, i.$colPrice AS sale_price
-                 FROM inventory_items i
-                 INNER JOIN $stockTable s ON s.$stockItemCol = i.$colItemId
-                 WHERE i.$colItemId IN ($in)
-                   AND s.$stockBranchCol = ?";
-      $paramsMap = array_merge($ids, [$branch_id]);
-      if ($stockQtyCol !== null) $sqlMap .= " AND COALESCE(s.$stockQtyCol,0) > 0";
-      if ($colActive !== null) $sqlMap .= " AND i.$colActive=1";
-      $stMap = $conn->prepare($sqlMap);
-      $stMap->execute($paramsMap);
-    } else {
-      $sqlMap = "SELECT $colItemId AS id, $colCat AS category_id, $colName AS name, $colPrice AS sale_price
-                 FROM inventory_items
-                 WHERE $colItemId IN ($in)";
-      $paramsMap = $ids;
-      if ($colBranchItems !== null) { $sqlMap .= " AND $colBranchItems=?"; $paramsMap[] = $branch_id; }
-      $stMap = $conn->prepare($sqlMap);
-      $stMap->execute($paramsMap);
+    $priceIds = [];
+    $itemIds  = [];
+    foreach (array_keys($cleanLines) as $key) {
+      if (str_starts_with($key, "p_")) $priceIds[] = (int)substr($key, 2);
+      if (str_starts_with($key, "i_")) $itemIds[]  = (int)substr($key, 2);
     }
 
-    $mapRows = $stMap->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    /* Mapa de líneas válidas por sucursal */
     $map = [];
-    foreach ($mapRows as $r) $map[(int)$r["id"]] = $r;
+
+    if ($priceIds) {
+      $inP = implode(",", array_fill(0, count($priceIds), "?"));
+
+      if ($stockTable !== null) {
+        $sqlMapP = "
+          SELECT 
+            CONCAT('p_', ip.id) AS line_key,
+            i.$colItemId AS item_id,
+            ip.id AS price_id,
+            i.$colCat AS category_id,
+            CONCAT(i.$colName, ' ', ip.price_name) AS name,
+            ip.sale_price AS sale_price,
+            ip.stock_discount AS stock_discount
+          FROM item_prices ip
+          INNER JOIN inventory_items i ON i.$colItemId = ip.item_id
+          INNER JOIN $stockTable s ON s.$stockItemCol = i.$colItemId
+          WHERE ip.id IN ($inP)
+            AND ip.is_active = 1
+            AND s.$stockBranchCol = ?
+        ";
+        $paramsMapP = array_merge($priceIds, [$branch_id]);
+        if ($stockQtyCol !== null) $sqlMapP .= " AND COALESCE(s.$stockQtyCol,0) > 0";
+        if ($colActive !== null) $sqlMapP .= " AND i.$colActive=1";
+      } else {
+        $sqlMapP = "
+          SELECT 
+            CONCAT('p_', ip.id) AS line_key,
+            i.$colItemId AS item_id,
+            ip.id AS price_id,
+            i.$colCat AS category_id,
+            CONCAT(i.$colName, ' ', ip.price_name) AS name,
+            ip.sale_price AS sale_price,
+            ip.stock_discount AS stock_discount
+          FROM item_prices ip
+          INNER JOIN inventory_items i ON i.$colItemId = ip.item_id
+          WHERE ip.id IN ($inP)
+            AND ip.is_active = 1
+        ";
+        $paramsMapP = $priceIds;
+        if ($colBranchItems !== null) { $sqlMapP .= " AND i.$colBranchItems=?"; $paramsMapP[] = $branch_id; }
+        if ($colActive !== null) $sqlMapP .= " AND i.$colActive=1";
+      }
+
+      $stMapP = $conn->prepare($sqlMapP);
+      $stMapP->execute($paramsMapP);
+      foreach (($stMapP->fetchAll(PDO::FETCH_ASSOC) ?: []) as $r) {
+        $map[(string)$r["line_key"]] = $r;
+      }
+    }
+
+    if ($itemIds) {
+      $inI = implode(",", array_fill(0, count($itemIds), "?"));
+
+      if ($stockTable !== null) {
+        $sqlMapI = "
+          SELECT 
+            CONCAT('i_', i.$colItemId) AS line_key,
+            i.$colItemId AS item_id,
+            NULL AS price_id,
+            i.$colCat AS category_id,
+            i.$colName AS name,
+            i.$colPrice AS sale_price,
+            1.00 AS stock_discount
+          FROM inventory_items i
+          INNER JOIN $stockTable s ON s.$stockItemCol = i.$colItemId
+          WHERE i.$colItemId IN ($inI)
+            AND s.$stockBranchCol = ?
+        ";
+        $paramsMapI = array_merge($itemIds, [$branch_id]);
+        if ($stockQtyCol !== null) $sqlMapI .= " AND COALESCE(s.$stockQtyCol,0) > 0";
+        if ($colActive !== null) $sqlMapI .= " AND i.$colActive=1";
+      } else {
+        $sqlMapI = "
+          SELECT 
+            CONCAT('i_', $colItemId) AS line_key,
+            $colItemId AS item_id,
+            NULL AS price_id,
+            $colCat AS category_id,
+            $colName AS name,
+            $colPrice AS sale_price,
+            1.00 AS stock_discount
+          FROM inventory_items
+          WHERE $colItemId IN ($inI)
+        ";
+        $paramsMapI = $itemIds;
+        if ($colBranchItems !== null) { $sqlMapI .= " AND $colBranchItems=?"; $paramsMapI[] = $branch_id; }
+        if ($colActive !== null) $sqlMapI .= " AND $colActive=1";
+      }
+
+      $stMapI = $conn->prepare($sqlMapI);
+      $stMapI->execute($paramsMapI);
+      foreach (($stMapI->fetchAll(PDO::FETCH_ASSOC) ?: []) as $r) {
+        $map[(string)$r["line_key"]] = $r;
+      }
+    }
 
     $subtotal = 0.0;
-    foreach ($cleanLines as $iid => $q) {
-      if (!isset($map[(int)$iid])) continue;
-      $price = (float)$map[(int)$iid]["sale_price"];
+    foreach ($cleanLines as $lineKey => $q) {
+      if (!isset($map[(string)$lineKey])) continue;
+      $price = (float)$map[(string)$lineKey]["sale_price"];
       $subtotal += ($price * (int)$q);
     }
 
@@ -486,12 +582,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
       . ") VALUES (?" . ", ?" . ", ?" . ($hasUnit ? ", ?" : "") . ($hasLineTotal ? ", ?" : "") . ")";
     $stLine = $conn->prepare($sqlLine);
 
-    foreach ($cleanLines as $iid => $q) {
-      if (!isset($map[(int)$iid])) continue;
-      $unit = (float)$map[(int)$iid]["sale_price"];
+    foreach ($cleanLines as $lineKey => $q) {
+      if (!isset($map[(string)$lineKey])) continue;
+      $row  = $map[(string)$lineKey];
+      $unit = (float)$row["sale_price"];
       $lt   = $unit * (int)$q;
+      $iid  = (int)$row["item_id"];
 
-      $args = [$invoice_id, (int)$iid, (int)$q];
+      $args = [$invoice_id, $iid, (int)$q];
       if ($hasUnit) $args[] = $unit;
       if ($hasLineTotal) $args[] = $lt;
 
@@ -502,17 +600,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
        ✅ DESCONTAR INVENTARIO (POR SUCURSAL)
        =============================== */
     if ($stockTable !== null && $stockQtyCol !== null) {
-      // Tomamos las líneas ya guardadas (evita mismatch de IDs del front)
-      $sqlGetLines = "SELECT {$colItem} AS item_id, {$colQty} AS qty FROM invoice_items WHERE invoice_id = ?";
-      $stGetLines = $conn->prepare($sqlGetLines);
-      $stGetLines->execute([$invoice_id]);
-      $dbLines = $stGetLines->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-      if (!$dbLines) {
-        throw new RuntimeException("No se encontraron líneas para descontar inventario.");
-      }
-
-      // update seguro: no permite stock negativo
+      // update seguro: no permite stock negativo.
+      // Usa stock_discount de item_prices:
+      // Havrix ADULTOS = 1.00
+      // Havrix NIÑOS   = 0.50
       $sqlUpd = "UPDATE $stockTable
                  SET $stockQtyCol = $stockQtyCol - ?
                  WHERE $stockBranchCol = ?
@@ -520,12 +611,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
                    AND COALESCE($stockQtyCol,0) >= ?";
       $stUpd = $conn->prepare($sqlUpd);
 
-      foreach ($dbLines as $ln) {
-        $iid = (int)($ln["item_id"] ?? 0);
-        $qty = (int)($ln["qty"] ?? 0);
-        if ($iid <= 0 || $qty <= 0) continue;
+      foreach ($cleanLines as $lineKey => $q) {
+        if (!isset($map[(string)$lineKey])) continue;
 
-        $stUpd->execute([$qty, $branch_id, $iid, $qty]);
+        $iid = (int)$map[(string)$lineKey]["item_id"];
+        $stockDiscount = (float)$map[(string)$lineKey]["stock_discount"];
+        $qtyToDiscount = $stockDiscount * (int)$q;
+
+        if ($iid <= 0 || $qtyToDiscount <= 0) continue;
+
+        $stUpd->execute([$qtyToDiscount, $branch_id, $iid, $qtyToDiscount]);
         if ($stUpd->rowCount() <= 0) {
           throw new RuntimeException("Stock insuficiente para el producto ID #{$iid} en esta sucursal.");
         }
@@ -734,7 +829,14 @@ $today = date("Y-m-d");
                 <select id="item_select">
                   <option value="0">-- Seleccionar --</option>
                   <?php foreach ($items_all as $it): ?>
-                    <option value="<?php echo (int)$it["id"]; ?>" data-cat="<?php echo (int)$it["category_id"]; ?>" data-price="<?php echo h($it["sale_price"]); ?>">
+                    <option 
+                      value="<?php echo h($it["line_key"] ?? ('i_' . (int)($it["item_id"] ?? $it["id"] ?? 0))); ?>" 
+                      data-item-id="<?php echo (int)($it["item_id"] ?? $it["id"] ?? 0); ?>"
+                      data-price-id="<?php echo h($it["price_id"] ?? ""); ?>"
+                      data-cat="<?php echo (int)$it["category_id"]; ?>" 
+                      data-price="<?php echo h($it["sale_price"]); ?>"
+                      data-stock-discount="<?php echo h($it["stock_discount"] ?? "1.00"); ?>"
+                    >
                       <?php echo h($it["name"]); ?>
                     </option>
                   <?php endforeach; ?>
@@ -809,7 +911,7 @@ $today = date("Y-m-d");
   const tTotal  = document.getElementById("t_total");
   const tChange = document.getElementById("t_change");
 
-  let lines = {}; // {id: {name, price, qty, cat}}
+  let lines = {}; // {line_key: {name, price, qty, cat, itemId, priceId, stockDiscount}}
 
   function syncPaymentUI(){
     const m = (payment.value || "").toUpperCase();
@@ -894,16 +996,19 @@ $today = date("Y-m-d");
 
   btnAdd.addEventListener("click", ()=>{
     const opt = itemSel.options[itemSel.selectedIndex];
-    const id = Number(itemSel.value||0);
-    if (!id) return;
+    const id = String(itemSel.value || "0");
+    if (id === "0") return;
 
     const qty = Math.max(1, Number(qtyInp.value||1));
     const name = opt.textContent.trim();
     const price = Number(opt.getAttribute("data-price")||0);
     const cat = Number(opt.getAttribute("data-cat")||0);
+    const itemId = Number(opt.getAttribute("data-item-id")||0);
+    const priceId = opt.getAttribute("data-price-id") || "";
+    const stockDiscount = Number(opt.getAttribute("data-stock-discount")||1);
 
     if (!lines[id]) {
-      lines[id] = {name, price, qty, cat};
+      lines[id] = {name, price, qty, cat, itemId, priceId, stockDiscount};
     } else {
       lines[id].qty += qty;
     }
