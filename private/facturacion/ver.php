@@ -7,16 +7,22 @@ function h($s){
     return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8");
 }
 
-date_default_timezone_set("America/Santo_Domingo");
-
 $user = $_SESSION["user"] ?? [];
 $sucursalId = (int)($user["branch_id"] ?? 0);
 
 $id = (int)($_GET["id"] ?? 0);
 
-if ($sucursalId <= 0) die("Sucursal inválida.");
-if ($id <= 0) die("Factura inválida.");
+if ($sucursalId <= 0) {
+    die("Sucursal inválida.");
+}
 
+if ($id <= 0) {
+    die("Factura inválida.");
+}
+
+/**
+ * FACTURA
+ */
 $stmt = $conn->prepare("
     SELECT
         i.*,
@@ -25,14 +31,19 @@ $stmt = $conn->prepare("
         b.name AS branch_name,
         u.full_name AS created_by_name
     FROM invoices i
+
     INNER JOIN patients p
         ON p.id = i.patient_id
+
     INNER JOIN branches b
         ON b.id = i.branch_id
+
     LEFT JOIN users u
         ON u.id = i.created_by
+
     WHERE i.id = :id
     AND i.branch_id = :bid
+
     LIMIT 1
 ");
 
@@ -43,7 +54,7 @@ $stmt->execute([
 
 $invoice = $stmt->fetch(PDO::FETCH_ASSOC);
 
-if (!$invoice){
+if (!$invoice) {
     die("Factura no encontrada.");
 }
 
@@ -55,9 +66,12 @@ $stmt = $conn->prepare("
         ii.*,
         inv.name AS product_name
     FROM invoice_items ii
+
     LEFT JOIN inventory_items inv
         ON inv.id = ii.item_id
+
     WHERE ii.invoice_id = :id
+
     ORDER BY ii.id ASC
 ");
 
@@ -69,8 +83,6 @@ $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 /**
  * REPRESENTANTE
- * viene guardado dentro de notes:
- * Representante: Juan
  */
 $representante = "";
 
@@ -81,24 +93,37 @@ if (!empty($invoice["notes"])) {
     }
 }
 
+/**
+ * PACIENTE
+ */
 $paciente = trim(
     ($invoice["first_name"] ?? "") . " " .
     ($invoice["last_name"] ?? "")
 );
 
+/**
+ * FECHA CORRECTA RD
+ */
 $fecha = "";
 
 if (!empty($invoice["created_at"])) {
-    $fecha = date(
-        "Y-m-d h:i A",
-        strtotime($invoice["created_at"])
+
+    $dt = new DateTime(
+        $invoice["created_at"],
+        new DateTimeZone("UTC")
     );
+
+    $dt->setTimezone(
+        new DateTimeZone("America/Santo_Domingo")
+    );
+
+    $fecha = $dt->format("Y-m-d h:i A");
 }
 
 /**
  * LOGO
  */
-$logo = "/assets/img/logo.png";
+$logo = "/assets/img/CEVIMEP.png";
 
 ?>
 <!DOCTYPE html>
@@ -135,9 +160,10 @@ body{
 }
 
 .logo{
-    width:190px;
+    width:210px;
+    max-width:100%;
     display:block;
-    margin:0 auto 4px;
+    margin:0 auto 5px;
 }
 
 .sucursal{
@@ -294,6 +320,7 @@ body{
     <?php if(empty($items)): ?>
 
         <div class="item">
+
             <div class="item-name">
                 Producto no encontrado
             </div>
@@ -301,6 +328,7 @@ body{
             <div class="item-qty">
                 Cantidad: 1
             </div>
+
         </div>
 
     <?php else: ?>
