@@ -105,7 +105,9 @@ $year = date("Y");
     <nav class="menu">
       <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
       <a href="/private/patients/index.php"><span class="ico">👤</span> Pacientes</a>
-      <a href="/private/citas/index.php"><span class="ico">📅</span> Citas</a>
+      <a href="#" onclick="return false;" style="opacity:.5;cursor:not-allowed;">
+    📅 Citas (Próximamente)
+</a>
       <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
       <a href="/private/caja/index.php"><span class="ico">💳</span> Caja</a>
       <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>

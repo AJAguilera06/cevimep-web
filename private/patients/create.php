@@ -207,7 +207,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     <nav class="menu">
       <a href="/private/dashboard.php">🏠 Panel</a>
       <a class="active" href="/private/patients/index.php">👤 Pacientes</a>
-      <a href="/private/citas/index.php">📅 Citas</a>
+      <a href="#" onclick="return false;" style="opacity:.5;cursor:not-allowed;">
+    📅 Citas (Próximamente)
+</a>
       <a href="/private/facturacion/index.php">🧾 Facturación</a>
       <a href="/private/caja/index.php">💳 Caja</a>
       <a href="/private/inventario/index.php">📦 Inventario</a>
