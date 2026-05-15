@@ -299,15 +299,25 @@ try {
   if ($branch_id <= 0) throw new RuntimeException("No se pudo determinar la sucursal del usuario.");
 
   if ($stockTable !== null) {
-    $sql = "SELECT i.$colItemId AS id, i.$colCat AS category_id, i.$colName AS name, i.$colPrice AS sale_price
-            FROM inventory_items i
-            INNER JOIN $stockTable s ON s.$stockItemCol = i.$colItemId
-            WHERE s.$stockBranchCol = ?";
+    $sql = "
+SELECT 
+    i.$colItemId AS id,
+    i.$colCat AS category_id,
+    CONCAT(i.$colName, ' ', ip.price_name) AS name,
+    ip.sale_price AS sale_price,
+    ip.stock_discount AS stock_discount
+FROM inventory_items i
+INNER JOIN item_prices ip 
+    ON ip.item_id = i.$colItemId
+INNER JOIN $stockTable s 
+    ON s.$stockItemCol = i.$colItemId
+WHERE s.$stockBranchCol = ?
+";
     $params = [$branch_id];
 
     if ($stockQtyCol !== null) $sql .= " AND COALESCE(s.$stockQtyCol,0) > 0";
     if ($colActive !== null) $sql .= " AND i.$colActive=1";
-    $sql .= " ORDER BY i.$colName ASC";
+    $sql .= " ORDER BY i.$colName ASC, ip.price_name ASC";
 
     $st = $conn->prepare($sql);
     $st->execute($params);
