@@ -208,17 +208,20 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 
       <!-- SIDEBAR -->
       <aside class="sidebar">
-        <h3 class="menu-title">Menú</h3>
-        <nav class="menu">
-          <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
-          <a href="/private/patients/index.php"><span class="ico">👤</span> Pacientes</a>
-          <a href="/private/citas/index.php"><span class="ico">📅</span> Citas</a>
-          <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
-          <a href="/private/caja/index.php"><span class="ico">💳</span> Caja</a>
-          <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
-          <a href="/private/estadisticas/index.php"><span class="ico">📊</span> Estadísticas</a>
-        </nav>
-      </aside>
+    <div class="menu-title">Menú</div>
+
+    <nav class="menu">
+      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
+      <a href="/private/patients/index.php"><span class="ico">👤</span> Pacientes</a>
+      <a href="#" onclick="return false;" style="opacity:.5;cursor:not-allowed;">
+    📅 Citas (Próximamente)
+</a>
+      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
+      <a href="/private/caja/index.php"><span class="ico">💳</span> Caja</a>
+      <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
+      <a href="/private/estadistica/index.php">📊 Estadísticas</a>
+    </nav>
+  </aside>
 
       <main class="content">
         <div class="page-wrap">
