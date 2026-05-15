@@ -1,5 +1,9 @@
 <?php
-session_start();
+
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
 header('Content-Type: application/json');
 
 if (!isset($_SESSION["user"])) {
@@ -7,7 +11,6 @@ if (!isset($_SESSION["user"])) {
   exit;
 }
 
-// ✅ CAMBIA ESTA CLAVE
 define("ESTADISTICA_PASSWORD", "Admin123");
 
 $pass = trim($_POST["password"] ?? "");
@@ -18,4 +21,5 @@ if ($pass === "" || $pass !== ESTADISTICA_PASSWORD) {
 }
 
 $_SESSION["estadistica_ok"] = true;
+
 echo json_encode(["ok"=>true]);
