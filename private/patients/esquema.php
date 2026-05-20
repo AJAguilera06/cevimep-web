@@ -261,10 +261,45 @@ $today = date('Y-m-d');
         .alert{margin-bottom:14px;padding:12px 14px;border-radius:12px;font-weight:700;word-break:break-word;}
         .alert-success{background:#e9f9ef;color:#166534;border:1px solid #b7ebc6;}
         .alert-error{background:#fff0f0;color:#991b1b;border:1px solid #f5b5b5;}
-        .table-wrap{overflow:auto;}
+
+        /* Evita que el historial siga creciendo hacia abajo cada vez que agregas vacunas */
+        .history-card{
+            margin-top:18px;
+            max-height:260px;
+            overflow:hidden;
+            padding-bottom:14px;
+        }
+        .history-card h3{
+            margin-bottom:12px;
+        }
+        .table-wrap{
+            max-height:175px;
+            overflow-y:auto;
+            overflow-x:auto;
+            border-radius:10px;
+        }
         .table{width:100%;border-collapse:collapse;}
-        .table th{background:#0f4fa8;color:#fff;padding:12px 10px;text-align:left;font-size:14px;}
-        .table td{padding:12px 10px;border-bottom:1px solid #eef1f6;background:#fff;}
+        .table th{
+            position:sticky;
+            top:0;
+            z-index:2;
+            background:#0f4fa8;
+            color:#fff;
+            padding:10px 10px;
+            text-align:left;
+            font-size:14px;
+        }
+        .table td{
+            padding:10px 10px;
+            border-bottom:1px solid #eef1f6;
+            background:#fff;
+            vertical-align:top;
+        }
+        .table td:nth-child(3){
+            max-width:360px;
+            white-space:normal;
+            word-break:break-word;
+        }
         .empty-state{text-align:center;padding:24px 10px;font-weight:700;opacity:.75;}
 
         @media (max-width:980px){
