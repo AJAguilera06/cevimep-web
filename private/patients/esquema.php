@@ -101,22 +101,6 @@ if (!$p) {
 
 $fullName = trim((string)($p['first_name'] ?? '') . ' ' . (string)($p['last_name'] ?? ''));
 
-$vaccinesList = [
-    'BCG',
-    'Hepatitis B',
-    'Pentavalente',
-    'Polio IPV',
-    'Polio OPV',
-    'Rotavirus',
-    'Neumococo',
-    'SRP',
-    'DPT',
-    'Influenza',
-    'COVID-19',
-    'VPH',
-    'Td',
-    'Otra'
-];
 
 $success = '';
 $error = '';
@@ -154,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $comments = trim((string)($_POST['comments'] ?? ''));
 
     if ($vaccineName === '') {
-        $error = 'Debes escribir o seleccionar una vacuna.';
+        $error = 'Debes escribir una vacuna.';
     } elseif ($applicationDate === '') {
         $error = 'La fecha de aplicación es obligatoria.';
     } elseif (!$hasPatientId || !$hasVaccineName || !$hasApplicationDate) {
@@ -242,11 +226,11 @@ $today = date('Y-m-d');
     <link rel="stylesheet" href="/assets/css/paciente.css?v=2">
 
     <style>
-        .patients-wrap{max-width:1200px;margin:0 auto;padding:24px 18px 40px;}
-        .patients-header{text-align:center;margin-top:10px;margin-bottom:18px;}
-        .patients-header h1{margin:0;font-size:38px;font-weight:900;}
+        .patients-wrap{max-width:1200px;margin:0 auto;padding:18px 18px 28px;}
+        .patients-header{text-align:center;margin-top:4px;margin-bottom:12px;}
+        .patients-header h1{margin:0;font-size:34px;font-weight:900;}
         .patients-header p{margin:8px 0 0;opacity:.78;font-weight:600;}
-        .patients-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:18px 0 24px;}
+        .patients-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:14px 0 20px;}
         .grid-top{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start;}
         .card{background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);padding:20px;}
         .card h3{margin:0 0 16px;font-size:22px;font-weight:900;color:#0b2f6b;}
@@ -266,12 +250,17 @@ $today = date('Y-m-d');
             outline:none;
             background:#fff;
         }
-        .form-group textarea{min-height:110px;resize:vertical;}
+        .form-group textarea{min-height:92px;max-height:140px;resize:vertical;}
+        .register-card{height:auto;}
+        .history-card{margin-top:22px;}
+        .history-card .table-wrap{max-height:260px;overflow:auto;}
+        .history-card .table thead th{position:sticky;top:0;z-index:2;}
+        .history-card .table td:nth-child(3){max-width:420px;white-space:normal;word-break:break-word;}
+        .history-card .table td{vertical-align:top;}
         .full{grid-column:1 / -1;}
         .alert{margin-bottom:14px;padding:12px 14px;border-radius:12px;font-weight:700;word-break:break-word;}
         .alert-success{background:#e9f9ef;color:#166534;border:1px solid #b7ebc6;}
         .alert-error{background:#fff0f0;color:#991b1b;border:1px solid #f5b5b5;}
-        .history-card{margin-top:24px;}
         .table-wrap{overflow:auto;}
         .table{width:100%;border-collapse:collapse;}
         .table th{background:#0f4fa8;color:#fff;padding:12px 10px;text-align:left;font-size:14px;}
@@ -340,7 +329,7 @@ $today = date('Y-m-d');
                     </div>
                 </div>
 
-                <div class="card">
+                <div class="card register-card">
                     <h3>Registrar vacuna</h3>
 
                     <?php if ($success): ?>
@@ -359,16 +348,11 @@ $today = date('Y-m-d');
                                     type="text"
                                     name="vaccine_name"
                                     id="vaccine_name"
-                                    list="vaccines_suggestions"
-                                    placeholder="Escriba o seleccione una vacuna"
+                                    placeholder="Escriba la vacuna"
+                                    autocomplete="off"
                                     value="<?= h($_POST['vaccine_name'] ?? '') ?>"
                                     required
                                 >
-                                <datalist id="vaccines_suggestions">
-                                    <?php foreach ($vaccinesList as $vac): ?>
-                                        <option value="<?= h($vac) ?>">
-                                    <?php endforeach; ?>
-                                </datalist>
                             </div>
 
                             <div class="form-group">
