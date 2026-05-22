@@ -18,7 +18,8 @@ $user = $_SESSION["user"];
 $year = (int)date("Y");
 
 $isAdmin  = (($user["role"] ?? "") === "admin");
-$branchId = (int)($user["branch_id"] ?? 0);
+$userBranchId = (int)($user["branch_id"] ?? 0);
+$branchId = $userBranchId;
 
 if (!$isAdmin && $branchId <= 0) {
   header("Location: /logout.php");
@@ -40,6 +41,26 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
   $date = $today;
 }
 
+/* Sucursales disponibles */
+$branchesList = [];
+
+try {
+  if ($isAdmin) {
+    $stBranches = $pdo->query("SELECT id, name FROM branches ORDER BY name ASC");
+    $branchesList = $stBranches->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    $requestedBranchId = (int)($_GET["branch_id"] ?? 0);
+
+    if ($requestedBranchId > 0) {
+      $branchId = $requestedBranchId;
+    } elseif ($branchId <= 0 && !empty($branchesList)) {
+      $branchId = (int)$branchesList[0]["id"];
+    }
+  }
+} catch (Throwable $e) {
+  // No detener la página si falla la lista de sucursales
+}
+
 /* Nombre sucursal */
 $branchName = $user["branch_name"] ?? $user["branch"] ?? ("Sucursal #" . $branchId);
 
@@ -56,20 +77,24 @@ try {
 }
 
 /* Buscar sesión de caja */
-function getSession(PDO $pdo, int $branchId, int $cajaNum, string $date, string $start, string $end): ?array {
+function getSession(PDO $pdo, int $branchId, int $cajaNum, string $date): ?array {
+  /*
+    Antes se exigía que hora_inicio y hora_fin fueran exactamente iguales
+    a 08:00:00-13:00:00 o 13:00:00-18:00:00. Si la caja se abrió
+    a las 08:03, 12:59, etc., el reporte salía en cero. Ahora busca
+    la última sesión de esa caja, sucursal y fecha.
+  */
   $st = $pdo->prepare("
     SELECT *
     FROM caja_sesiones
     WHERE branch_id = ?
       AND fecha = ?
       AND caja_num = ?
-      AND hora_inicio = ?
-      AND hora_fin = ?
     ORDER BY id DESC
     LIMIT 1
   ");
 
-  $st->execute([$branchId, $date, $cajaNum, $start, $end]);
+  $st->execute([$branchId, $date, $cajaNum]);
 
   $row = $st->fetch(PDO::FETCH_ASSOC);
   return $row ?: null;
@@ -160,8 +185,8 @@ $m1 = [];
 $m2 = [];
 
 try {
-  $caja1 = getSession($pdo, $branchId, 1, $date, $s1[0], $s1[1]);
-  $caja2 = getSession($pdo, $branchId, 2, $date, $s2[0], $s2[1]);
+  $caja1 = getSession($pdo, $branchId, 1, $date);
+  $caja2 = getSession($pdo, $branchId, 2, $date);
 
   if ($caja1) {
     $t1 = getTotals($pdo, (int)$caja1["id"]);
@@ -437,6 +462,21 @@ try {
           <div class="branchTag"><?= h($branchName) ?>:</div>
 
           <form class="reportTopLeft" method="GET" action="/private/caja/reporte_diario.php">
+            <?php if ($isAdmin && !empty($branchesList)): ?>
+              <div class="pill">
+                <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Sucursal</label>
+                <select name="branch_id" style="border:0;outline:none;font-weight:900;background:#fff;">
+                  <?php foreach ($branchesList as $br): ?>
+                    <option value="<?= (int)$br["id"] ?>" <?= ((int)$br["id"] === (int)$branchId) ? "selected" : "" ?>>
+                      <?= h($br["name"]) ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+            <?php else: ?>
+              <input type="hidden" name="branch_id" value="<?= (int)$branchId ?>">
+            <?php endif; ?>
+
             <div class="pill">
               <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Fecha</label>
               <input type="date" name="date" value="<?= h($date) ?>" style="border:0;outline:none;font-weight:900;">
