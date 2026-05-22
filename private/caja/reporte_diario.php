@@ -523,38 +523,7 @@ try {
               </tbody>
             </table>
 
-            <div class="sectionTitle">Movimientos</div>
-
-            <table>
-              <thead>
-                <tr>
-                  <th>Hora</th>
-                  <th>Tipo</th>
-                  <th>Método</th>
-                  <th>Concepto</th>
-                  <th>Monto</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                <?php if (!$m1): ?>
-                  <tr>
-                    <td colspan="5" class="muted">Sin movimientos.</td>
-                  </tr>
-                <?php else: ?>
-                  <?php foreach ($m1 as $mv): ?>
-                    <tr>
-                      <td><?= h(substr((string)$mv["created_at"], 11, 5)) ?></td>
-                      <td><?= h($mv["type"]) ?></td>
-                      <td><?= h($mv["metodo_pago"]) ?></td>
-                      <td><?= h($mv["concept"] ?? "") ?></td>
-                      <td><?= ($mv["type"] === "desembolso" ? "- " : "") ?>RD$ <?= money($mv["amount"]) ?></td>
-                    </tr>
-                  <?php endforeach; ?>
-                <?php endif; ?>
-              </tbody>
-            </table>
-          </section>
+            </section>
 
           <section class="cajaCard">
             <div class="cajaHead">Caja 2 (01:00 PM - 06:00 PM)</div>
@@ -581,38 +550,7 @@ try {
               </tbody>
             </table>
 
-            <div class="sectionTitle">Movimientos</div>
-
-            <table>
-              <thead>
-                <tr>
-                  <th>Hora</th>
-                  <th>Tipo</th>
-                  <th>Método</th>
-                  <th>Concepto</th>
-                  <th>Monto</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                <?php if (!$m2): ?>
-                  <tr>
-                    <td colspan="5" class="muted">Sin movimientos.</td>
-                  </tr>
-                <?php else: ?>
-                  <?php foreach ($m2 as $mv): ?>
-                    <tr>
-                      <td><?= h(substr((string)$mv["created_at"], 11, 5)) ?></td>
-                      <td><?= h($mv["type"]) ?></td>
-                      <td><?= h($mv["metodo_pago"]) ?></td>
-                      <td><?= h($mv["concept"] ?? "") ?></td>
-                      <td><?= ($mv["type"] === "desembolso" ? "- " : "") ?>RD$ <?= money($mv["amount"]) ?></td>
-                    </tr>
-                  <?php endforeach; ?>
-                <?php endif; ?>
-              </tbody>
-            </table>
-          </section>
+            </section>
 
         </div>
       </div>
