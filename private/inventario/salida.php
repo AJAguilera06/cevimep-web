@@ -320,31 +320,32 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 /* =========================
    Historial (últimos 50 OUT)
+   CORREGIDO: usa las columnas reales:
+   branch_id, item_id, movement_type, qty, note, created_at
 ========================= */
 $history = [];
 try {
-  if ($mov_branch && $mov_item && $mov_qty) {
-    $selDate = $mov_date ? "`$mov_date` AS mov_date" : "NULL AS mov_date";
-    $selNote = $mov_note ? "`$mov_note` AS mov_note" : "NULL AS mov_note";
+  $sql = "
+    SELECT
+      m.created_at AS mov_date,
+      m.note AS mov_note,
+      COALESCE(i.name, CONCAT('Producto #', m.item_id)) AS item_name,
+      m.qty AS qty
+    FROM inventory_movements m
+    LEFT JOIN inventory_items i ON i.id = m.item_id
+    WHERE m.branch_id = ?
+      AND UPPER(TRIM(m.movement_type)) = 'OUT'
+    ORDER BY m.id DESC
+    LIMIT 300
+  ";
 
-    $sql = "
-      SELECT $selDate, $selNote,
-             i.name AS item_name,
-             m.`$mov_qty` AS qty
-      FROM inventory_movements m
-      LEFT JOIN inventory_items i ON i.id = m.`$mov_item`
-      WHERE m.`$mov_branch` = ?
-    ";
-    if ($mov_type) {
-      $sql .= " AND (m.`$mov_type`='OUT' OR m.`$mov_type`='salida' OR m.`$mov_type`='SALIDA') ";
-    }
-    $sql .= " ORDER BY " . ($mov_date ? "m.`$mov_date`" : "m.id") . " DESC LIMIT 300";
+  $stH = $conn->prepare($sql);
+  $stH->execute([$branch_id]);
+  $history = $stH->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-    $stH = $conn->prepare($sql);
-    $stH->execute([$branch_id]);
-    $history = $stH->fetchAll(PDO::FETCH_ASSOC);
-  }
-} catch (Throwable $e) {}
+} catch (Throwable $e) {
+  $errors[] = "Error cargando historial de salidas: " . $e->getMessage();
+}
 
 $historyGrouped = [];
 
@@ -681,7 +682,7 @@ $printData = $_SESSION["salida_last_print"] ?? null;
           </button>
         </div>
 
-        <div id="histBody" class="hist-body">
+        <div id="histBody" class="hist-body show">
           <div class="table-wrap" style="margin-top:12px;">
             <table>
               <thead>
