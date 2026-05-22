@@ -29,7 +29,11 @@ function pick_col(array $cols, array $candidates): ?string {
 
 function extract_order_code(?string $text): ?string {
   if (!$text) return null;
-  if (preg_match('/(ORD-\d{1,10})/i', $text, $m)) return strtoupper($m[1]);
+
+  if (preg_match('/ORD-\d+/i', $text, $m)) {
+    return strtoupper(trim($m[0]));
+  }
+
   return null;
 }
 function extract_order_num(?string $text): ?int {
