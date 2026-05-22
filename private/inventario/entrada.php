@@ -313,7 +313,7 @@ try {
     WHERE m.branch_id = ?
       AND m.movement_type = 'IN'
     ORDER BY m.id DESC
-    LIMIT 50
+    LIMIT 300
   ";
 
   $stH = $conn->prepare($sql);
@@ -326,6 +326,31 @@ try {
   $history = [];
 
 }
+
+$historyGrouped = [];
+
+foreach ($history as $r) {
+  $code = extract_order_code($r["mov_note"] ?? null);
+  if (!$code) {
+    $code = "SIN-ORDEN-" . (string)($r["mov_date"] ?? "");
+  }
+
+  if (!isset($historyGrouped[$code])) {
+    $historyGrouped[$code] = [
+      "order_code" => $code,
+      "date" => (string)($r["mov_date"] ?? ""),
+      "note" => (string)($r["mov_note"] ?? ""),
+      "items" => []
+    ];
+  }
+
+  $historyGrouped[$code]["items"][] = [
+    "name" => (string)($r["item_name"] ?? ""),
+    "qty" => (int)($r["qty"] ?? 0)
+  ];
+}
+
+$historyGrouped = array_slice($historyGrouped, 0, 50, true);
 
 $cart = $_SESSION["entrada_cart"];
 
@@ -351,9 +376,26 @@ $printData = $_SESSION["entrada_last_print"] ?? null;
   <style>
     /* Acuse NO visible en pantalla */
     .acuse-hidden { display:none; }
-    /* En impresión debe aparecer */
+
+    .receipt { padding:18px 24px; font-family:Arial, Helvetica, sans-serif; color:#111; }
+    .receipt .logo { text-align:center; margin-top:8px; }
+    .receipt .logo img { width:160px; height:auto; display:inline-block; }
+    .receipt .title { text-align:center; margin:10px 0 14px; font-weight:800; font-size:18px; }
+    .receipt .meta { display:flex; justify-content:space-between; gap:18px; font-size:12px; margin-bottom:10px; }
+    .receipt .meta .col { flex:1; }
+    .receipt .meta .row { margin:3px 0; }
+    .receipt table { width:100%; border-collapse:collapse; font-size:12px; margin-top:10px; }
+    .receipt th, .receipt td { border:1px solid #cfcfcf; padding:6px 8px; text-align:left; }
+    .receipt th { font-weight:800; background:#f3f3f3; text-align:center; }
+    .receipt td:last-child, .receipt th:last-child { text-align:center; width:90px; }
+    .receipt .footer { text-align:center; margin-top:18px; font-size:11px; color:#333; }
+
     @media print {
+      .navbar, .sidebar, .footer, .inv-head, .inv-card { display:none !important; }
       .acuse-hidden { display:block !important; }
+      body, html { background:#fff !important; }
+      .layout { display:block !important; }
+      .content.inv-root { padding:0 !important; margin:0 !important; }
     }
   </style>
 </head>
@@ -402,43 +444,30 @@ $printData = $_SESSION["entrada_last_print"] ?? null;
 
       <!-- ACUSE OCULTO SOLO PARA IMPRIMIR AUTOMÁTICO -->
       <?php if ($autoPrint && is_array($printData)): ?>
-        <div class="inv-card acuse acuse-hidden" id="acusePrint">
-          <div class="section-head">
-            <div>
-              <h3>Acuse de Entrada</h3>
-              <p class="muted">Impresión automática</p>
+        <div class="acuse-hidden">
+          <div class="receipt">
+            <div class="logo"><img src="/assets/img/logo.png" alt="CEVIMEP"></div>
+            <div class="title">Comprobante de Entrada</div>
+            <div class="meta">
+              <div class="col">
+                <div class="row"><strong># Orden:</strong> <?= h($printData["order_code"] ?? "") ?></div>
+                <div class="row"><strong>Fecha:</strong> <?= h($printData["date"] ?? "") ?></div>
+                <div class="row"><strong>Área de destino:</strong> <?= h($printData["destino"] ?? "") ?></div>
+              </div>
+              <div class="col">
+                <div class="row"><strong>Suplidor:</strong> <?= h($printData["supplier"] ?? "") ?></div>
+                <div class="row"><strong>Hecha por:</strong> <?= h($printData["made_by"] ?? "") ?></div>
+              </div>
             </div>
-          </div>
-
-          <div class="acuse row">
-            <div><div class="k"># Orden</div><div class="v"><?= h($printData["order_code"] ?? "") ?></div></div>
-            <div><div class="k">Fecha</div><div class="v"><?= h($printData["date"] ?? "") ?></div></div>
-            <div><div class="k">Destino</div><div class="v"><?= h($printData["destino"] ?? "") ?></div></div>
-            <div><div class="k">Suplidor</div><div class="v"><?= h($printData["supplier"] ?? "") ?></div></div>
-            <div><div class="k">Hecha por</div><div class="v"><?= h($printData["made_by"] ?? "") ?></div></div>
-          </div>
-
-          <div class="table-wrap" style="margin-top:12px;">
             <table>
-              <thead>
-                <tr>
-                  <th>Producto</th>
-                  <th style="width:140px;">Cantidad</th>
-                </tr>
-              </thead>
+              <thead><tr><th>Producto</th><th>Cantidad</th></tr></thead>
               <tbody>
                 <?php foreach (($printData["lines"] ?? []) as $ln): ?>
-                  <tr>
-                    <td><?= h($ln["name"] ?? "") ?></td>
-                    <td><?= (int)($ln["qty"] ?? 0) ?></td>
-                  </tr>
+                  <tr><td><?= h($ln["name"] ?? "") ?></td><td><?= (int)($ln["qty"] ?? 0) ?></td></tr>
                 <?php endforeach; ?>
               </tbody>
             </table>
-          </div>
-
-          <div class="muted" style="margin-top:10px;">
-            <?= h($printData["receipt_id"] ?? "") ?>
+            <div class="footer">© <?= (int)date("Y") ?> CEVIMEP. Todos los derechos reservados.</div>
           </div>
         </div>
       <?php endif; ?>
@@ -585,25 +614,23 @@ $printData = $_SESSION["entrada_last_print"] ?? null;
               <thead>
                 <tr>
                   <th style="width:230px;">Fecha</th>
-                  <th>Producto</th>
-                  <th style="width:120px;">Cantidad</th>
+                  <th>Productos incluidos en el acuse</th>
                   <th style="width:140px;"># Orden</th>
                 </tr>
               </thead>
               <tbody>
-                <?php if (empty($history)): ?>
-                  <tr><td colspan="4" style="text-align:center; padding:18px;">No hay registros.</td></tr>
+                <?php if (empty($historyGrouped)): ?>
+                  <tr><td colspan="3" style="text-align:center; padding:18px;">No hay registros.</td></tr>
                 <?php else: ?>
-                  <?php foreach($history as $r): ?>
-                    <?php
-                      $code = extract_order_code($r["mov_note"] ?? null);
-                      $ord_txt = $code ? $code : "—";
-                    ?>
+                  <?php foreach($historyGrouped as $g): ?>
                     <tr>
-                      <td><?= h($r["mov_date"] ?? "") ?></td>
-                      <td style="font-weight:900;"><?= h($r["item_name"] ?? "") ?></td>
-                      <td><?= (int)($r["qty"] ?? 0) ?></td>
-                      <td style="font-weight:900;"><?= h($ord_txt) ?></td>
+                      <td><?= h($g["date"] ?? "") ?></td>
+                      <td>
+                        <?php foreach (($g["items"] ?? []) as $it): ?>
+                          <div style="font-weight:900;"><?= h($it["name"] ?? "") ?> <span style="font-weight:700;">x <?= (int)($it["qty"] ?? 0) ?></span></div>
+                        <?php endforeach; ?>
+                      </td>
+                      <td style="font-weight:900;"><?= h($g["order_code"] ?? "—") ?></td>
                     </tr>
                   <?php endforeach; ?>
                 <?php endif; ?>

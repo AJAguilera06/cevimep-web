@@ -334,13 +334,38 @@ try {
     if ($mov_type) {
       $sql .= " AND (m.`$mov_type`='OUT' OR m.`$mov_type`='salida' OR m.`$mov_type`='SALIDA') ";
     }
-    $sql .= " ORDER BY " . ($mov_date ? "m.`$mov_date`" : "m.id") . " DESC LIMIT 50";
+    $sql .= " ORDER BY " . ($mov_date ? "m.`$mov_date`" : "m.id") . " DESC LIMIT 300";
 
     $stH = $conn->prepare($sql);
     $stH->execute([$branch_id]);
     $history = $stH->fetchAll(PDO::FETCH_ASSOC);
   }
 } catch (Throwable $e) {}
+
+$historyGrouped = [];
+
+foreach ($history as $r) {
+  $code = extract_order_code($r["mov_note"] ?? null);
+  if (!$code) {
+    $code = "SIN-ORDEN-" . (string)($r["mov_date"] ?? "");
+  }
+
+  if (!isset($historyGrouped[$code])) {
+    $historyGrouped[$code] = [
+      "order_code" => $code,
+      "date" => (string)($r["mov_date"] ?? ""),
+      "note" => (string)($r["mov_note"] ?? ""),
+      "items" => []
+    ];
+  }
+
+  $historyGrouped[$code]["items"][] = [
+    "name" => (string)($r["item_name"] ?? ""),
+    "qty" => (int)($r["qty"] ?? 0)
+  ];
+}
+
+$historyGrouped = array_slice($historyGrouped, 0, 50, true);
 
 $cart = $_SESSION["salida_cart"];
 
@@ -658,25 +683,23 @@ $printData = $_SESSION["salida_last_print"] ?? null;
               <thead>
                 <tr>
                   <th style="width:230px;">Fecha</th>
-                  <th>Producto</th>
-                  <th style="width:120px;">Cantidad</th>
+                  <th>Productos incluidos en el acuse</th>
                   <th style="width:140px;"># Orden</th>
                 </tr>
               </thead>
               <tbody>
-                <?php if (empty($history)): ?>
-                  <tr><td colspan="4" style="text-align:center; padding:18px;">No hay registros.</td></tr>
+                <?php if (empty($historyGrouped)): ?>
+                  <tr><td colspan="3" style="text-align:center; padding:18px;">No hay registros.</td></tr>
                 <?php else: ?>
-                  <?php foreach($history as $r): ?>
-                    <?php
-                      $code = extract_order_code($r["mov_note"] ?? null);
-                      $ord_txt = $code ? $code : "—";
-                    ?>
+                  <?php foreach($historyGrouped as $g): ?>
                     <tr>
-                      <td><?= h($r["mov_date"] ?? "") ?></td>
-                      <td style="font-weight:900;"><?= h($r["item_name"] ?? "") ?></td>
-                      <td><?= (int)($r["qty"] ?? 0) ?></td>
-                      <td style="font-weight:900;"><?= h($ord_txt) ?></td>
+                      <td><?= h($g["date"] ?? "") ?></td>
+                      <td>
+                        <?php foreach (($g["items"] ?? []) as $it): ?>
+                          <div style="font-weight:900;"><?= h($it["name"] ?? "") ?> <span style="font-weight:700;">x <?= (int)($it["qty"] ?? 0) ?></span></div>
+                        <?php endforeach; ?>
+                      </td>
+                      <td style="font-weight:900;"><?= h($g["order_code"] ?? "—") ?></td>
                     </tr>
                   <?php endforeach; ?>
                 <?php endif; ?>
