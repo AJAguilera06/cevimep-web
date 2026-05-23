@@ -15,12 +15,13 @@ $error = '';
 
 try {
     $stmt = $pdo->query("
-      SELECT id, motivo, amount, created_at, created_by
-      FROM cash_movements
-      WHERE type='desembolso'
-      ORDER BY id DESC
-      LIMIT 500
-    ");
+  SELECT id, motivo, amount, created_at, created_by
+  FROM cash_movements
+  WHERE type='desembolso'
+  AND branch_id = 4
+  ORDER BY id DESC
+  LIMIT 500
+");
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
     $error = "❌ No se pudo cargar el historial: " . $e->getMessage();
