@@ -12,7 +12,36 @@ $horaActual24 = date('H:i');
 $mensaje = '';
 $tipo_mensaje = 'info';
 
-$branch_id  = (int)caja_require_branch_id();
+function h($s){ 
+  return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); 
+}
+
+/**
+ * Buscar ID de sucursal Santiago.
+ * Si no la encuentra, usa la sucursal actual como respaldo.
+ */
+function obtener_branch_santiago(PDO $pdo): int {
+  try {
+    $stmt = $pdo->prepare("
+      SELECT id 
+      FROM branches 
+      WHERE LOWER(name) LIKE '%santiago%' 
+      LIMIT 1
+    ");
+    $stmt->execute();
+    $id = (int)$stmt->fetchColumn();
+
+    if ($id > 0) {
+      return $id;
+    }
+  } catch (Throwable $e) {
+    // Si falla, usa fallback abajo
+  }
+
+  return (int)caja_require_branch_id();
+}
+
+$branch_id  = obtener_branch_santiago($pdo);
 $created_by = (int)($_SESSION['user']['id'] ?? 0);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -22,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $hechoPor = trim((string)($_POST['hecho_por'] ?? ''));
 
   if ($branch_id <= 0) {
-    $mensaje = "⚠️ No se encontró la sucursal (branch_id).";
+    $mensaje = "⚠️ No se encontró la sucursal Santiago.";
     $tipo_mensaje = "warning";
 
   } elseif (!($monto_in > 0) || $motivo === '') {
@@ -31,16 +60,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   } else {
 
-    // ✅ Crear/obtener sesión automática por turno (Caja 1 / Caja 2) usando PDO
     $caja_sesion_id = (int)caja_get_or_create_session_id($pdo, $branch_id);
 
     if ($caja_sesion_id <= 0) {
-      $mensaje = "⚠️ No se encontró/creó una sesión de caja válida (caja_sesion_id).";
+      $mensaje = "⚠️ No se encontró/creó una sesión de caja válida.";
       $tipo_mensaje = "warning";
     } else {
 
       try {
-        $amount = -abs($monto_in); // desembolso negativo
+        $amount = -abs($monto_in);
+
         $motivo_db = $hechoPor !== ''
           ? "Hecho por: {$hechoPor} | {$motivo}"
           : $motivo;
@@ -49,6 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (branch_id, caja_sesion_id, type, motivo, metodo_pago, amount, created_by)
                 VALUES
                 (:branch_id, :caja_sesion_id, 'desembolso', :motivo, 'efectivo', :amount, :created_by)";
+
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
           ':branch_id' => $branch_id,
@@ -75,11 +105,9 @@ $print_id = isset($_GET['print_id']) ? (int)$_GET['print_id'] : 0;
 $ok = isset($_GET['ok']) ? (int)$_GET['ok'] : 0;
 
 if ($ok === 1 && $print_id > 0) {
-  $mensaje = "✅ Desembolso registrado. Abriendo acuse para imprimir…";
+  $mensaje = "✅ Desembolso registrado en Santiago. Abriendo acuse para imprimir…";
   $tipo_mensaje = "success";
 }
-
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -148,9 +176,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
     <nav class="menu">
       <a href="/private/dashboard.php">🏠 Panel</a>
       <a href="/private/patients/index.php">👤 Pacientes</a>
-      <a href="#" onclick="return false;" style="opacity:.5;cursor:not-allowed;">
-    📅 Citas (Próximamente)
-</a>
+      <a href="#" onclick="return false;" style="opacity:.5;cursor:not-allowed;">📅 Citas (Próximamente)</a>
       <a href="/private/facturacion/index.php">🧾 Facturación</a>
       <a class="active" href="/private/caja/index.php">💳 Caja</a>
       <a href="/private/inventario/index.php">📦 Inventario</a>
@@ -197,7 +223,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
             <div>
               <label>Hecho por</label>
               <input type="text" name="hecho_por" placeholder="Ej: Claudia Peña / Caja Santiago">
-              <div class="hint">Este texto se imprime en el acuse (se guarda dentro del motivo).</div>
+              <div class="hint">Este texto se imprime en el acuse.</div>
             </div>
           </div>
 
