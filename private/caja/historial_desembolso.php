@@ -14,14 +14,20 @@ $rows = [];
 $error = '';
 
 try {
-    $stmt = $pdo->query("
+    $branch_id = (int)caja_require_branch_id();
+
+$stmt = $pdo->prepare("
   SELECT id, motivo, amount, created_at, created_by
   FROM cash_movements
   WHERE type='desembolso'
-  AND branch_id = 4
+  AND branch_id = :branch_id
   ORDER BY id DESC
   LIMIT 500
 ");
+
+$stmt->execute([
+  ':branch_id' => $branch_id
+]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
     $error = "❌ No se pudo cargar el historial: " . $e->getMessage();
