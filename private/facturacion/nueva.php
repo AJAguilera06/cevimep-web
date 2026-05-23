@@ -543,9 +543,50 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     if ($hasBranch && $branch_id <= 0) {
       throw new RuntimeException("No se pudo determinar la sucursal del usuario.");
     }
+// ✅ Numeración independiente por sucursal
+$invoice_number = 1;
 
-    $fields = ["patient_id","invoice_date","payment_method","subtotal","total"];
-    $vals   = [$patient_id,$invoice_date,$payment_method,$subtotal,$total];
+try {
+  if (columnExists($conn, "invoices", "invoice_number")) {
+
+    $stNum = $conn->prepare("
+      SELECT COALESCE(MAX(invoice_number), 0) + 1
+      FROM invoices
+      WHERE branch_id = ?
+    ");
+
+    $stNum->execute([$branch_id]);
+
+    $invoice_number = (int)$stNum->fetchColumn();
+
+    if ($invoice_number <= 0) {
+      $invoice_number = 1;
+    }
+  }
+} catch (Throwable $e) {
+  $invoice_number = 1;
+}
+    $fields = [
+  "patient_id",
+  "invoice_date",
+  "payment_method",
+  "subtotal",
+  "total"
+];
+
+$vals = [
+  $patient_id,
+  $invoice_date,
+  $payment_method,
+  $subtotal,
+  $total
+];
+
+// ✅ guardar número independiente por sucursal
+if (columnExists($conn, "invoices", "invoice_number")) {
+  $fields[] = "invoice_number";
+  $vals[]   = $invoice_number;
+}
 
     if ($hasBranch) { $fields[]="branch_id"; $vals[]=$branch_id; }
     if ($hasNotes)  { $fields[]="notes"; $vals[]=($notes ?? null); }
