@@ -330,12 +330,12 @@ $today = date('d/m/Y');
     <link rel="stylesheet" href="/assets/css/paciente.css?v=2">
 
     <style>
-        .patients-wrap{max-width:1200px;margin:0 auto;padding:18px 18px 28px;}
+        .patients-wrap{max-width:1320px;margin:0 auto;padding:18px 18px 28px;}
         .patients-header{text-align:center;margin-top:4px;margin-bottom:12px;}
         .patients-header h1{margin:0;font-size:34px;font-weight:900;}
         .patients-header p{margin:8px 0 0;opacity:.78;font-weight:600;}
         .patients-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:14px 0 20px;}
-        .grid-top{display:grid;grid-template-columns:1fr;gap:16px;align-items:start;max-width:520px;margin:0 auto;}
+        .grid-top{display:grid;grid-template-columns:430px minmax(0,1fr);gap:22px;align-items:start;width:100%;max-width:1280px;margin:0 auto;}
         .card{background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);padding:16px;}
         .card h3{margin:0 0 12px;font-size:20px;font-weight:900;color:#0b2f6b;text-align:center;}
         .kv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
@@ -398,8 +398,8 @@ $today = date('d/m/Y');
             font-size:12px;
         }
         .form-group textarea{min-height:66px;max-height:105px;resize:vertical;}
-        .register-card{height:auto;max-width:520px;margin:0 auto;width:100%;}
-        .history-card{margin-top:22px;max-width:1000px;margin-left:auto;margin-right:auto;}
+        .register-card{height:auto;max-width:430px;margin:0;width:100%;}
+        .history-card{margin-top:0;max-width:none;margin-left:0;margin-right:0;width:100%;}
         .history-card .table-wrap{max-height:260px;overflow:auto;}
         .history-card .table thead th{position:sticky;top:0;z-index:2;}
         .history-card .table td:nth-child(3){max-width:420px;white-space:normal;word-break:break-word;}
@@ -411,8 +411,8 @@ $today = date('d/m/Y');
 
         /* Evita que el historial siga creciendo hacia abajo cada vez que agregas vacunas */
         .history-card{
-            margin-top:18px;
-            max-height:260px;
+            margin-top:0;
+            max-height:420px;
             overflow:hidden;
             padding-bottom:14px;
         }
@@ -420,7 +420,7 @@ $today = date('d/m/Y');
             margin-bottom:12px;
         }
         .table-wrap{
-            max-height:175px;
+            max-height:330px;
             overflow-y:auto;
             overflow-x:auto;
             border-radius:10px;
@@ -452,7 +452,11 @@ $today = date('d/m/Y');
         .empty-state{text-align:center;padding:24px 10px;font-weight:700;opacity:.75;}
 
         @media (max-width:980px){
-            .grid-top,.form-grid,.kv-grid{grid-template-columns:1fr;}
+            .grid-top{grid-template-columns:1fr;max-width:520px;}
+            .form-grid,.kv-grid{grid-template-columns:1fr;}
+            .register-card{max-width:520px;margin:0 auto;}
+            .history-card{max-height:360px;}
+            .table-wrap{max-height:270px;}
             .full{grid-column:auto;}
         }
     </style>
@@ -561,9 +565,8 @@ $today = date('d/m/Y');
                         </div>
                     </form>
                 </div>
-            </div>
 
-            <div class="card history-card">
+                <div class="card history-card">
                 <h3>Historial de vacunas</h3>
 
                 <div class="table-wrap">
@@ -594,6 +597,7 @@ $today = date('d/m/Y');
                         </tbody>
                     </table>
                 </div>
+            </div>
             </div>
 
         </div>
