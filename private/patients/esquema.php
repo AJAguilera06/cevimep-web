@@ -279,27 +279,27 @@ $today = date('d/m/Y');
         .patients-header h1{margin:0;font-size:34px;font-weight:900;}
         .patients-header p{margin:8px 0 0;opacity:.78;font-weight:600;}
         .patients-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:14px 0 20px;}
-        .grid-top{display:grid;grid-template-columns:1fr;gap:22px;align-items:start;max-width:700px;margin:0 auto;}
-        .card{background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);padding:20px;}
-        .card h3{margin:0 0 16px;font-size:22px;font-weight:900;color:#0b2f6b;}
+        .grid-top{display:grid;grid-template-columns:1fr;gap:18px;align-items:start;max-width:560px;margin:0 auto;}
+        .card{background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);padding:18px;}
+        .card h3{margin:0 0 14px;font-size:21px;font-weight:900;color:#0b2f6b;text-align:center;}
         .kv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
         .kv{background:#f7f9fc;border:1px solid rgba(0,0,0,.06);border-radius:12px;padding:12px;}
         .kv .k{font-weight:800;opacity:.8;margin-bottom:4px;}
         .kv .v{font-weight:700;}
-        .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+        .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
         .form-group{display:flex;flex-direction:column;gap:6px;}
         .form-group label{font-weight:800;color:#173b7a;}
         .form-group input,.form-group select,.form-group textarea{
             width:100%;
             border:1px solid rgba(0,0,0,.12);
             border-radius:12px;
-            padding:12px 14px;
+            padding:10px 12px;
             font:inherit;
             outline:none;
             background:#fff;
         }
-        .form-group textarea{min-height:92px;max-height:140px;resize:vertical;}
-        .register-card{height:auto;}
+        .form-group textarea{min-height:78px;max-height:120px;resize:vertical;}
+        .register-card{height:auto;max-width:560px;margin:0 auto;width:100%;}
         .history-card{margin-top:22px;max-width:1000px;margin-left:auto;margin-right:auto;}
         .history-card .table-wrap{max-height:260px;overflow:auto;}
         .history-card .table thead th{position:sticky;top:0;z-index:2;}
@@ -334,19 +334,21 @@ $today = date('d/m/Y');
             background:#0f4fa8;
             color:#fff;
             padding:10px 10px;
-            text-align:left;
+            text-align:center;
             font-size:14px;
         }
         .table td{
             padding:10px 10px;
             border-bottom:1px solid #eef1f6;
             background:#fff;
-            vertical-align:top;
+            vertical-align:middle;
+            text-align:center;
         }
         .table td:nth-child(3){
             max-width:360px;
             white-space:normal;
             word-break:break-word;
+            text-align:center;
         }
         .empty-state{text-align:center;padding:24px 10px;font-weight:700;opacity:.75;}
 
