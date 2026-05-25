@@ -43,6 +43,50 @@ function h($v): string {
   return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 }
 
+function normalize_date_to_mysql(string $date): string {
+  $date = trim($date);
+
+  if ($date === '') {
+    return '';
+  }
+
+  // Si viene como DD/MM/AAAA, convertir a AAAA-MM-DD para MySQL
+  if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $date, $m)) {
+    $day = (int)$m[1];
+    $month = (int)$m[2];
+    $year = (int)$m[3];
+
+    if (checkdate($month, $day, $year)) {
+      return sprintf('%04d-%02d-%02d', $year, $month, $day);
+    }
+
+    return '';
+  }
+
+  // Si ya viene como AAAA-MM-DD, validar y dejar igual
+  if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $m)) {
+    $year = (int)$m[1];
+    $month = (int)$m[2];
+    $day = (int)$m[3];
+
+    if (checkdate($month, $day, $year)) {
+      return sprintf('%04d-%02d-%02d', $year, $month, $day);
+    }
+  }
+
+  return '';
+}
+
+function mysql_date_to_dmy(string $date): string {
+  $date = trim($date);
+
+  if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $m)) {
+    return $m[3] . '/' . $m[2] . '/' . $m[1];
+  }
+
+  return $date;
+}
+
 /* ===============================
    Sucursal (admin puede elegir)
    =============================== */
@@ -84,7 +128,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
   $cedula             = trim((string)($_POST['cedula'] ?? ''));
   $phone              = trim((string)($_POST['phone'] ?? ''));
   $email              = trim((string)($_POST['email'] ?? ''));
-  $birth_date         = trim((string)($_POST['birth_date'] ?? ''));
+  $birth_date         = normalize_date_to_mysql((string)($_POST['birth_date'] ?? ''));
   $gender             = trim((string)($_POST['gender'] ?? ''));
   $blood_type         = trim((string)($_POST['blood_type'] ?? ''));
 
@@ -106,6 +150,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $error = "El No. Libro es obligatorio.";
   } elseif ($first_name === '' || $last_name === '') {
     $error = "Nombre y apellido son obligatorios.";
+  } elseif (trim((string)($_POST['birth_date'] ?? '')) !== '' && $birth_date === '') {
+    $error = "Fecha de nacimiento inválida. Usa el formato DD/MM/AAAA.";
   } else {
     try {
       $chk = $pdo->prepare("SELECT id FROM patients WHERE branch_id = :bid AND no_libro = :nl LIMIT 1");
@@ -276,8 +322,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             </div>
 
             <div>
-              <label for="birth_date">Fecha de nacimiento</label>
-              <input id="birth_date" name="birth_date" type="date" class="input" value="<?= h($birth_date) ?>">
+              <label for="birth_date_view">Fecha de nacimiento</label>
+              <input
+                id="birth_date_view"
+                type="text"
+                class="input"
+                placeholder="DD/MM/AAAA"
+                maxlength="10"
+                inputmode="numeric"
+                value="<?= h(mysql_date_to_dmy($birth_date)) ?>"
+              >
+              <input id="birth_date" name="birth_date" type="hidden" value="<?= h($birth_date) ?>">
             </div>
 
             <div>
@@ -335,6 +390,42 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 <footer class="footer">
   © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
 </footer>
+
+
+<script>
+(function () {
+  const view = document.getElementById('birth_date_view');
+  const hidden = document.getElementById('birth_date');
+
+  if (!view || !hidden) return;
+
+  function formatDate() {
+    let v = view.value.replace(/\D/g, '').slice(0, 8);
+
+    if (v.length >= 5) {
+      view.value = v.slice(0, 2) + '/' + v.slice(2, 4) + '/' + v.slice(4);
+    } else if (v.length >= 3) {
+      view.value = v.slice(0, 2) + '/' + v.slice(2);
+    } else {
+      view.value = v;
+    }
+
+    const parts = view.value.split('/');
+    if (parts.length === 3 && parts[0].length === 2 && parts[1].length === 2 && parts[2].length === 4) {
+      hidden.value = parts[2] + '-' + parts[1] + '-' + parts[0];
+    } else {
+      hidden.value = '';
+    }
+  }
+
+  view.addEventListener('input', formatDate);
+
+  const form = view.closest('form');
+  if (form) {
+    form.addEventListener('submit', formatDate);
+  }
+})();
+</script>
 
 </body>
 </html>
