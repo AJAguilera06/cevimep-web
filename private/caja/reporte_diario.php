@@ -220,6 +220,17 @@ try {
   $error = "Error interno generando el reporte: " . $e->getMessage();
 }
 
+
+$tTotal = [
+  "efectivo"      => (float)$t1["efectivo"] + (float)$t2["efectivo"],
+  "tarjeta"       => (float)$t1["tarjeta"] + (float)$t2["tarjeta"],
+  "transferencia" => (float)$t1["transferencia"] + (float)$t2["transferencia"],
+  "cobertura"     => (float)$t1["cobertura"] + (float)$t2["cobertura"],
+  "desembolso"    => (float)$t1["desembolso"] + (float)$t2["desembolso"],
+  "ing"           => (float)$t1["ing"] + (float)$t2["ing"],
+  "net"           => (float)$t1["net"] + (float)$t2["net"]
+];
+
 ?>
 <!doctype html>
 <html lang="es">
@@ -325,11 +336,11 @@ try {
 
     .gridBox{
       display:grid;
-      grid-template-columns:repeat(2, minmax(0,1fr));
+      grid-template-columns:repeat(3, minmax(0,1fr));
       gap:14px;
     }
 
-    @media(max-width:900px){
+    @media(max-width:1100px){
       .gridBox{
         grid-template-columns:1fr;
       }
@@ -570,6 +581,31 @@ try {
             </table>
 
             </section>
+
+          <section class="cajaCard">
+            <div class="cajaHead">TOTAL GENERAL</div>
+            <div class="cajaSub">Caja 1 + Caja 2</div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>Concepto</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                <tr><td>Efectivo</td><td>RD$ <?= money($tTotal["efectivo"]) ?></td></tr>
+                <tr><td>Tarjeta</td><td>RD$ <?= money($tTotal["tarjeta"]) ?></td></tr>
+                <tr><td>Transferencia</td><td>RD$ <?= money($tTotal["transferencia"]) ?></td></tr>
+                <tr><td>Cobertura</td><td>RD$ <?= money($tTotal["cobertura"]) ?></td></tr>
+                <tr><td>Desembolsos</td><td>- RD$ <?= money($tTotal["desembolso"]) ?></td></tr>
+                <tr><td style="font-weight:900;">Total ingresos</td><td style="font-weight:900;">RD$ <?= money($tTotal["ing"]) ?></td></tr>
+                <tr><td style="font-weight:900;">Neto</td><td style="font-weight:900;">RD$ <?= money($tTotal["net"]) ?></td></tr>
+              </tbody>
+            </table>
+
+          </section>
 
         </div>
       </div>
