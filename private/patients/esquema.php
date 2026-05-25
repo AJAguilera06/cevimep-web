@@ -62,6 +62,53 @@ function ageFrom($birthDate)
     }
 }
 
+function formatDateDMY($date)
+{
+    if (!$date) {
+        return '';
+    }
+
+    try {
+        return (new DateTime((string)$date))->format('d/m/Y');
+    } catch (Throwable $e) {
+        return '';
+    }
+}
+
+function formatDateTimeDMY($date)
+{
+    if (!$date) {
+        return '';
+    }
+
+    try {
+        return (new DateTime((string)$date))->format('d/m/Y H:i:s');
+    } catch (Throwable $e) {
+        return '';
+    }
+}
+
+function dateToDB($date)
+{
+    $date = trim((string)$date);
+
+    if ($date === '') {
+        return '';
+    }
+
+    $d = DateTime::createFromFormat('d/m/Y', $date);
+    if ($d instanceof DateTime) {
+        return $d->format('Y-m-d');
+    }
+
+    $d = DateTime::createFromFormat('Y-m-d', $date);
+    if ($d instanceof DateTime) {
+        return $d->format('Y-m-d');
+    }
+
+    return '';
+}
+
 /* ===============================
    CARGAR PACIENTE
    =============================== */
@@ -134,13 +181,14 @@ $hasCreatedAt       = in_array('created_at', $pvColumns, true);
    =============================== */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $vaccineName = trim((string)($_POST['vaccine_name'] ?? ''));
-    $applicationDate = trim((string)($_POST['application_date'] ?? ''));
+    $applicationDateRaw = trim((string)($_POST['application_date'] ?? ''));
+    $applicationDate = dateToDB($applicationDateRaw);
     $comments = trim((string)($_POST['comments'] ?? ''));
 
     if ($vaccineName === '') {
         $error = 'Debes escribir una vacuna.';
-    } elseif ($applicationDate === '') {
-        $error = 'La fecha de aplicación es obligatoria.';
+    } elseif ($applicationDateRaw === '' || $applicationDate === '') {
+        $error = 'La fecha de aplicación es obligatoria y debe tener formato DD/MM/AAAA.';
     } elseif (!$hasPatientId || !$hasVaccineName || !$hasApplicationDate) {
         $error = 'La tabla patient_vaccines no tiene la estructura mínima requerida.';
     } else {
@@ -213,7 +261,7 @@ if ($hasPatientId && $hasVaccineName && $hasApplicationDate) {
     $error = 'La tabla patient_vaccines no tiene una estructura válida para mostrar el historial.';
 }
 
-$today = date('Y-m-d');
+$today = date('d/m/Y');
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -231,7 +279,7 @@ $today = date('Y-m-d');
         .patients-header h1{margin:0;font-size:34px;font-weight:900;}
         .patients-header p{margin:8px 0 0;opacity:.78;font-weight:600;}
         .patients-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:14px 0 20px;}
-        .grid-top{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start;}
+        .grid-top{display:grid;grid-template-columns:1fr;gap:22px;align-items:start;max-width:700px;margin:0 auto;}
         .card{background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);padding:20px;}
         .card h3{margin:0 0 16px;font-size:22px;font-weight:900;color:#0b2f6b;}
         .kv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
@@ -252,7 +300,7 @@ $today = date('Y-m-d');
         }
         .form-group textarea{min-height:92px;max-height:140px;resize:vertical;}
         .register-card{height:auto;}
-        .history-card{margin-top:22px;}
+        .history-card{margin-top:22px;max-width:1000px;margin-left:auto;margin-right:auto;}
         .history-card .table-wrap{max-height:260px;overflow:auto;}
         .history-card .table thead th{position:sticky;top:0;z-index:2;}
         .history-card .table td:nth-child(3){max-width:420px;white-space:normal;word-break:break-word;}
@@ -346,24 +394,9 @@ $today = date('Y-m-d');
 
             <div class="patients-actions">
                 <a class="btn" href="/private/patients/index.php">← Volver</a>
-                <a class="btn btn-primary" href="/private/patients/edit.php?id=<?= (int)$id ?>">Editar paciente</a>
             </div>
 
             <div class="grid-top">
-                <div class="card">
-                    <h3>Datos del paciente</h3>
-                    <div class="kv-grid">
-                        <div class="kv"><div class="k">No. Libro</div><div class="v"><?= h($p['no_libro'] ?? '') ?></div></div>
-                        <div class="kv"><div class="k">Sucursal</div><div class="v"><?= h($p['branch_name'] ?? '') ?></div></div>
-                        <div class="kv"><div class="k">Nombre</div><div class="v"><?= h($fullName) ?></div></div>
-                        <div class="kv"><div class="k">Cédula</div><div class="v"><?= h($p['cedula'] ?? '') ?></div></div>
-                        <div class="kv"><div class="k">Teléfono</div><div class="v"><?= h($p['phone'] ?? '') ?></div></div>
-                        <div class="kv"><div class="k">Correo</div><div class="v"><?= h($p['email'] ?? '') ?></div></div>
-                        <div class="kv"><div class="k">Edad</div><div class="v"><?= h(ageFrom($p['birth_date'] ?? null)) ?></div></div>
-                        <div class="kv"><div class="k">Tipo de sangre</div><div class="v"><?= h($p['blood_type'] ?? '') ?></div></div>
-                    </div>
-                </div>
-
                 <div class="card register-card">
                     <h3>Registrar vacuna</h3>
 
@@ -393,9 +426,11 @@ $today = date('Y-m-d');
                             <div class="form-group">
                                 <label for="application_date">Fecha de aplicación</label>
                                 <input
-                                    type="date"
+                                    type="text"
                                     id="application_date"
                                     name="application_date"
+                                    placeholder="DD/MM/AAAA"
+                                    maxlength="10"
                                     value="<?= h($_POST['application_date'] ?? $today) ?>"
                                     required
                                 >
@@ -440,9 +475,9 @@ $today = date('Y-m-d');
                                 <?php foreach ($vaccineHistory as $item): ?>
                                     <tr>
                                         <td><?= h($item['vaccine_name'] ?? '') ?></td>
-                                        <td><?= h($item['application_date'] ?? '') ?></td>
+                                        <td><?= h(formatDateDMY($item['application_date'] ?? '')) ?></td>
                                         <td><?= h($item['comments'] ?? '') ?></td>
-                                        <td><?= h($item['created_at'] ?? '') ?></td>
+                                        <td><?= h(formatDateTimeDMY($item['created_at'] ?? '')) ?></td>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -458,6 +493,24 @@ $today = date('Y-m-d');
 <footer class="footer">
     © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
 </footer>
+
+<script>
+(function(){
+    const input = document.getElementById('application_date');
+    if (!input) return;
+
+    input.addEventListener('input', function(){
+        let v = this.value.replace(/\D/g, '').slice(0, 8);
+        if (v.length >= 5) {
+            this.value = v.slice(0,2) + '/' + v.slice(2,4) + '/' + v.slice(4);
+        } else if (v.length >= 3) {
+            this.value = v.slice(0,2) + '/' + v.slice(2);
+        } else {
+            this.value = v;
+        }
+    });
+})();
+</script>
 
 </body>
 </html>
