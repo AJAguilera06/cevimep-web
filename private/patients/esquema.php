@@ -177,16 +177,66 @@ $hasComment         = in_array('comment', $pvColumns, true);
 $hasCreatedAt       = in_array('created_at', $pvColumns, true);
 
 /* ===============================
-   GUARDAR VACUNA
+   LISTADO DE VACUNAS
+   =============================== */
+$availableVaccines = [
+    'Varivax',
+    'Varilrix',
+    'Avaxim 80',
+    'Hep A Genérica',
+    'Havrix',
+    'SRP genérica',
+    'Priorix',
+    'Infanrix',
+    'Hexaxim',
+    'Pentaxim',
+    'Boostrix',
+    'Adacel',
+    'Tetraxim',
+    'Imovax Polio',
+    'Rotateq',
+    'Shingrix',
+    'Inmunoglobulina Anti-D Rhophylac 300',
+    'Inmunoglobulina Anti-D Rhoclone',
+    'Influvac',
+    'Vaxigrip',
+    'Gardasil',
+    'Tetanogamma',
+    'DT genérica',
+    'Prevenar 13',
+    'Prevenar 20',
+    'Synflorix',
+    'Vaxneuvance 15',
+    'Pneumovax 23',
+    'Engerix B',
+    'Hep B genérica adulto',
+    'Hep B genérica pediátrica',
+    'Abrysvo',
+    'Menquadfi',
+    'Menactra',
+    'Meningococo BC'
+];
+
+/* ===============================
+   GUARDAR VACUNAS
    =============================== */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $vaccineName = trim((string)($_POST['vaccine_name'] ?? ''));
+    $vaccineNames = $_POST['vaccine_names'] ?? [];
+
+    if (!is_array($vaccineNames)) {
+        $vaccineNames = [];
+    }
+
+    $vaccineNames = array_values(array_unique(array_filter(array_map(function($v) {
+        return trim((string)$v);
+    }, $vaccineNames))));
+
     $applicationDateRaw = trim((string)($_POST['application_date'] ?? ''));
     $applicationDate = dateToDB($applicationDateRaw);
     $comments = trim((string)($_POST['comments'] ?? ''));
 
-    if ($vaccineName === '') {
-        $error = 'Debes escribir una vacuna.';
+    if (empty($vaccineNames)) {
+        $error = 'Debes seleccionar al menos una vacuna.';
     } elseif ($applicationDateRaw === '' || $applicationDate === '') {
         $error = 'La fecha de aplicación es obligatoria y debe tener formato DD/MM/AAAA.';
     } elseif (!$hasPatientId || !$hasVaccineName || !$hasApplicationDate) {
@@ -208,23 +258,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ";
 
             $ins = $pdo->prepare($sqlInsert);
-            $ins->execute([
-                'patient_id'       => $id,
-                'vaccine_name'     => $vaccineName,
-                'application_date' => $applicationDate,
-                'comment'          => ($hasComment ? ($comments !== '' ? $comments : null) : null)
-            ]);
 
-            header('Location: /private/patients/esquema.php?id=' . $id . '&saved=1');
+            foreach ($vaccineNames as $vaccineName) {
+                $ins->execute([
+                    'patient_id'       => $id,
+                    'vaccine_name'     => $vaccineName,
+                    'application_date' => $applicationDate,
+                    'comment'          => ($hasComment ? ($comments !== '' ? $comments : null) : null)
+                ]);
+            }
+
+            header('Location: /private/patients/esquema.php?id=' . $id . '&saved=' . count($vaccineNames));
             exit;
         } catch (Throwable $e) {
-            $error = 'No se pudo guardar la vacuna: ' . $e->getMessage();
+            $error = 'No se pudieron guardar las vacunas: ' . $e->getMessage();
         }
     }
 }
 
-if (isset($_GET['saved']) && $_GET['saved'] == '1') {
-    $success = 'Vacuna registrada correctamente.';
+if (isset($_GET['saved']) && (int)$_GET['saved'] > 0) {
+    $savedCount = (int)$_GET['saved'];
+    $success = $savedCount === 1
+        ? 'Vacuna registrada correctamente.'
+        : $savedCount . ' vacunas registradas correctamente.';
 }
 
 /* ===============================
@@ -279,27 +335,70 @@ $today = date('d/m/Y');
         .patients-header h1{margin:0;font-size:34px;font-weight:900;}
         .patients-header p{margin:8px 0 0;opacity:.78;font-weight:600;}
         .patients-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:14px 0 20px;}
-        .grid-top{display:grid;grid-template-columns:1fr;gap:18px;align-items:start;max-width:560px;margin:0 auto;}
-        .card{background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);padding:18px;}
-        .card h3{margin:0 0 14px;font-size:21px;font-weight:900;color:#0b2f6b;text-align:center;}
+        .grid-top{display:grid;grid-template-columns:1fr;gap:16px;align-items:start;max-width:520px;margin:0 auto;}
+        .card{background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);padding:16px;}
+        .card h3{margin:0 0 12px;font-size:20px;font-weight:900;color:#0b2f6b;text-align:center;}
         .kv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
         .kv{background:#f7f9fc;border:1px solid rgba(0,0,0,.06);border-radius:12px;padding:12px;}
         .kv .k{font-weight:800;opacity:.8;margin-bottom:4px;}
         .kv .v{font-weight:700;}
-        .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+        .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
         .form-group{display:flex;flex-direction:column;gap:6px;}
         .form-group label{font-weight:800;color:#173b7a;}
         .form-group input,.form-group select,.form-group textarea{
             width:100%;
             border:1px solid rgba(0,0,0,.12);
             border-radius:12px;
-            padding:10px 12px;
+            padding:9px 11px;
             font:inherit;
             outline:none;
             background:#fff;
         }
-        .form-group textarea{min-height:78px;max-height:120px;resize:vertical;}
-        .register-card{height:auto;max-width:560px;margin:0 auto;width:100%;}
+        .vaccine-box{
+            border:1px solid rgba(0,0,0,.12);
+            border-radius:12px;
+            padding:8px;
+            max-height:145px;
+            overflow-y:auto;
+            display:grid;
+            grid-template-columns:repeat(2,minmax(0,1fr));
+            gap:6px;
+            background:#fff;
+        }
+        .vaccine-option{
+            display:flex;
+            align-items:center;
+            gap:6px;
+            font-size:13px;
+            font-weight:700;
+            color:#18223a;
+            padding:5px 6px;
+            border-radius:8px;
+            background:#f8fafc;
+        }
+        .vaccine-option input{
+            width:auto;
+            margin:0;
+        }
+        .mini-actions{
+            display:flex;
+            justify-content:center;
+            gap:8px;
+            margin-top:6px;
+            flex-wrap:wrap;
+        }
+        .mini-btn{
+            border:1px solid #dbeafe;
+            background:#fff;
+            color:#0b3b9a;
+            border-radius:999px;
+            padding:5px 10px;
+            font-weight:900;
+            cursor:pointer;
+            font-size:12px;
+        }
+        .form-group textarea{min-height:66px;max-height:105px;resize:vertical;}
+        .register-card{height:auto;max-width:520px;margin:0 auto;width:100%;}
         .history-card{margin-top:22px;max-width:1000px;margin-left:auto;margin-right:auto;}
         .history-card .table-wrap{max-height:260px;overflow:auto;}
         .history-card .table thead th{position:sticky;top:0;z-index:2;}
@@ -412,20 +511,29 @@ $today = date('d/m/Y');
 
                     <form method="post">
                         <div class="form-grid">
-                            <div class="form-group">
-                                <label for="vaccine_name">Vacuna</label>
-                                <input
-                                    type="text"
-                                    name="vaccine_name"
-                                    id="vaccine_name"
-                                    placeholder="Escriba la vacuna"
-                                    autocomplete="off"
-                                    value="<?= h($_POST['vaccine_name'] ?? '') ?>"
-                                    required
-                                >
+                            <div class="form-group full">
+                                <label>Vacunas</label>
+                                <div class="vaccine-box" id="vaccine_box">
+                                    <?php $selectedVaccines = $_POST['vaccine_names'] ?? []; ?>
+                                    <?php foreach ($availableVaccines as $vac): ?>
+                                        <label class="vaccine-option">
+                                            <input
+                                                type="checkbox"
+                                                name="vaccine_names[]"
+                                                value="<?= h($vac) ?>"
+                                                <?= in_array($vac, (array)$selectedVaccines, true) ? 'checked' : '' ?>
+                                            >
+                                            <span><?= h($vac) ?></span>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </div>
+                                <div class="mini-actions">
+                                    <button type="button" class="mini-btn" onclick="marcarVacunas(true)">Seleccionar todas</button>
+                                    <button type="button" class="mini-btn" onclick="marcarVacunas(false)">Limpiar</button>
+                                </div>
                             </div>
 
-                            <div class="form-group">
+                            <div class="form-group full">
                                 <label for="application_date">Fecha de aplicación</label>
                                 <input
                                     type="text"
@@ -512,6 +620,12 @@ $today = date('d/m/Y');
         }
     });
 })();
+
+function marcarVacunas(valor){
+    document.querySelectorAll('input[name="vaccine_names[]"]').forEach(function(chk){
+        chk.checked = valor;
+    });
+}
 </script>
 
 </body>
