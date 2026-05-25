@@ -76,13 +76,12 @@ try {
   // No detener la página si falla el nombre de sucursal
 }
 
-/* Buscar sesión de caja */
-function getSession(PDO $pdo, int $branchId, int $cajaNum, string $date): ?array {
+/* Buscar sesiones de caja */
+function getSessions(PDO $pdo, int $branchId, int $cajaNum, string $date): array {
   /*
-    Antes se exigía que hora_inicio y hora_fin fueran exactamente iguales
-    a 08:00:00-13:00:00 o 13:00:00-18:00:00. Si la caja se abrió
-    a las 08:03, 12:59, etc., el reporte salía en cero. Ahora busca
-    la última sesión de esa caja, sucursal y fecha.
+    Trae TODAS las sesiones de esa caja, sucursal y fecha.
+    Si solo se toma la última sesión, movimientos/desembolsos guardados
+    en otra sesión del mismo día no se reflejan en el reporte.
   */
   $st = $pdo->prepare("
     SELECT *
@@ -90,59 +89,79 @@ function getSession(PDO $pdo, int $branchId, int $cajaNum, string $date): ?array
     WHERE branch_id = ?
       AND fecha = ?
       AND caja_num = ?
-    ORDER BY id DESC
-    LIMIT 1
+    ORDER BY id ASC
   ");
 
   $st->execute([$branchId, $date, $cajaNum]);
-
-  $row = $st->fetch(PDO::FETCH_ASSOC);
-  return $row ?: null;
+  return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
 
+function sessionIds(array $sessions): array {
+  return array_values(array_filter(array_map(
+    fn($s) => (int)($s["id"] ?? 0),
+    $sessions
+  )));
+}
 /* Totales de movimientos */
-function getTotals(PDO $pdo, int $sessionId): array {
+function getTotals(PDO $pdo, array $sessionIds): array {
+  $empty = [
+    "efectivo" => 0,
+    "tarjeta" => 0,
+    "transferencia" => 0,
+    "cobertura" => 0,
+    "desembolso" => 0,
+    "ing" => 0,
+    "net" => 0
+  ];
+
+  if (empty($sessionIds)) {
+    return $empty;
+  }
+
+  $ph = implode(",", array_fill(0, count($sessionIds), "?"));
+
   $st = $pdo->prepare("
     SELECT
       COALESCE(SUM(CASE WHEN type = 'ingreso' AND metodo_pago = 'efectivo' THEN amount END), 0) AS efectivo,
       COALESCE(SUM(CASE WHEN type = 'ingreso' AND metodo_pago = 'tarjeta' THEN amount END), 0) AS tarjeta,
       COALESCE(SUM(CASE WHEN type = 'ingreso' AND metodo_pago = 'transferencia' THEN amount END), 0) AS transferencia,
       COALESCE(SUM(CASE WHEN type = 'ingreso' AND metodo_pago = 'cobertura' THEN amount END), 0) AS cobertura,
-      COALESCE(SUM(CASE WHEN type = 'desembolso' THEN amount END), 0) AS desembolso
+      COALESCE(SUM(CASE WHEN type = 'desembolso' THEN ABS(amount) END), 0) AS desembolso
     FROM cash_movements
-    WHERE caja_sesion_id = ?
+    WHERE caja_sesion_id IN ($ph)
   ");
 
-  $st->execute([$sessionId]);
+  $st->execute($sessionIds);
 
-  $r = $st->fetch(PDO::FETCH_ASSOC) ?: [
-    "efectivo" => 0,
-    "tarjeta" => 0,
-    "transferencia" => 0,
-    "cobertura" => 0,
-    "desembolso" => 0
-  ];
+  $r = $st->fetch(PDO::FETCH_ASSOC) ?: $empty;
 
   $ing = (float)$r["efectivo"]
        + (float)$r["tarjeta"]
        + (float)$r["transferencia"]
        + (float)$r["cobertura"];
 
-  $net = $ing - (float)$r["desembolso"];
+  $desembolso = (float)$r["desembolso"];
+  $net = $ing - $desembolso;
 
   return [
     "efectivo"      => (float)$r["efectivo"],
     "tarjeta"       => (float)$r["tarjeta"],
     "transferencia" => (float)$r["transferencia"],
     "cobertura"     => (float)$r["cobertura"],
-    "desembolso"    => (float)$r["desembolso"],
+    "desembolso"    => $desembolso,
     "ing"           => $ing,
     "net"           => $net
   ];
 }
 
 /* Movimientos */
-function getMovements(PDO $pdo, int $sessionId): array {
+function getMovements(PDO $pdo, array $sessionIds): array {
+  if (empty($sessionIds)) {
+    return [];
+  }
+
+  $ph = implode(",", array_fill(0, count($sessionIds), "?"));
+
   $st = $pdo->prepare("
     SELECT
       id,
@@ -152,11 +171,11 @@ function getMovements(PDO $pdo, int $sessionId): array {
       motivo AS concept,
       amount
     FROM cash_movements
-    WHERE caja_sesion_id = ?
+    WHERE caja_sesion_id IN ($ph)
     ORDER BY created_at ASC, id ASC
   ");
 
-  $st->execute([$sessionId]);
+  $st->execute($sessionIds);
 
   return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
@@ -185,22 +204,22 @@ $m1 = [];
 $m2 = [];
 
 try {
-  $caja1 = getSession($pdo, $branchId, 1, $date);
-  $caja2 = getSession($pdo, $branchId, 2, $date);
+  $caja1 = getSessions($pdo, $branchId, 1, $date);
+  $caja2 = getSessions($pdo, $branchId, 2, $date);
 
-  if ($caja1) {
-    $t1 = getTotals($pdo, (int)$caja1["id"]);
-    $m1 = getMovements($pdo, (int)$caja1["id"]);
-  }
+  $idsCaja1 = sessionIds($caja1);
+  $idsCaja2 = sessionIds($caja2);
 
-  if ($caja2) {
-    $t2 = getTotals($pdo, (int)$caja2["id"]);
-    $m2 = getMovements($pdo, (int)$caja2["id"]);
-  }
+  $t1 = getTotals($pdo, $idsCaja1);
+  $m1 = getMovements($pdo, $idsCaja1);
+
+  $t2 = getTotals($pdo, $idsCaja2);
+  $m2 = getMovements($pdo, $idsCaja2);
 
 } catch (Throwable $e) {
   $error = "Error interno generando el reporte: " . $e->getMessage();
 }
+
 ?>
 <!doctype html>
 <html lang="es">
@@ -501,7 +520,7 @@ try {
           <section class="cajaCard">
             <div class="cajaHead">Caja 1 (08:00 AM - 01:00 PM)</div>
             <div class="cajaSub">
-              <?= $caja1 ? "Sesión #" . (int)$caja1["id"] : "Sin sesión registrada" ?>
+              <?= !empty($caja1) ? count($caja1) . " sesión(es)" : "Sin sesión registrada" ?>
             </div>
 
             <table>
@@ -528,7 +547,7 @@ try {
           <section class="cajaCard">
             <div class="cajaHead">Caja 2 (01:00 PM - 06:00 PM)</div>
             <div class="cajaSub">
-              <?= $caja2 ? "Sesión #" . (int)$caja2["id"] : "Sin sesión registrada" ?>
+              <?= !empty($caja2) ? count($caja2) . " sesión(es)" : "Sin sesión registrada" ?>
             </div>
 
             <table>

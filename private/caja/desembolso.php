@@ -16,32 +16,10 @@ function h($s){
   return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); 
 }
 
-/**
- * Buscar ID de sucursal Santiago.
- * Si no la encuentra, usa la sucursal actual como respaldo.
- */
-function obtener_branch_santiago(PDO $pdo): int {
-  try {
-    $stmt = $pdo->prepare("
-      SELECT id 
-      FROM branches 
-      WHERE LOWER(name) LIKE '%santiago%' 
-      LIMIT 1
-    ");
-    $stmt->execute();
-    $id = (int)$stmt->fetchColumn();
-
-    if ($id > 0) {
-      return $id;
-    }
-  } catch (Throwable $e) {
-    // Si falla, usa fallback abajo
-  }
-
-  return (int)caja_require_branch_id();
-}
-
-$branch_id  = obtener_branch_santiago($pdo);
+// Usar SIEMPRE la sucursal del usuario logueado.
+// Antes estaba forzando Santiago, por eso los desembolsos no se reflejaban
+// en la sucursal correcta.
+$branch_id  = (int)caja_require_branch_id();
 $created_by = (int)($_SESSION['user']['id'] ?? 0);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -51,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $hechoPor = trim((string)($_POST['hecho_por'] ?? ''));
 
   if ($branch_id <= 0) {
-    $mensaje = "⚠️ No se encontró la sucursal Santiago.";
+    $mensaje = "⚠️ No se encontró una sucursal válida.";
     $tipo_mensaje = "warning";
 
   } elseif (!($monto_in > 0) || $motivo === '') {
@@ -105,7 +83,7 @@ $print_id = isset($_GET['print_id']) ? (int)$_GET['print_id'] : 0;
 $ok = isset($_GET['ok']) ? (int)$_GET['ok'] : 0;
 
 if ($ok === 1 && $print_id > 0) {
-  $mensaje = "✅ Desembolso registrado en Santiago. Abriendo acuse para imprimir…";
+  $mensaje = "✅ Desembolso registrado. Abriendo acuse para imprimir…";
   $tipo_mensaje = "success";
 }
 ?>

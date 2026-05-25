@@ -51,7 +51,7 @@ function getTotalsBySessionIds(PDO $pdo, array $sessionIds): array {
         COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='tarjeta' THEN amount END),0) AS tarjeta,
         COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='transferencia' THEN amount END),0) AS transferencia,
         COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='cobertura' THEN amount END),0) AS cobertura,
-        COALESCE(SUM(CASE WHEN type='desembolso' THEN amount END),0) AS desembolso
+        COALESCE(SUM(CASE WHEN type=\'desembolso\' THEN ABS(amount) END),0) AS desembolso
       FROM cash_movements
       WHERE caja_sesion_id IN ($ph)
     ");
@@ -62,7 +62,7 @@ function getTotalsBySessionIds(PDO $pdo, array $sessionIds): array {
   }
 
   $ing = (float)$r["efectivo"] + (float)$r["tarjeta"] + (float)$r["transferencia"] + (float)$r["cobertura"];
-  $net = $ing + (float)$r["desembolso"]; // desembolso es negativo
+  $net = $ing - (float)$r["desembolso"]; // desembolso se calcula positivo con ABS(amount)
 
   return [$r, $ing, $net];
 }
