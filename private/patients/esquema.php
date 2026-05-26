@@ -345,12 +345,12 @@ $today = date('d/m/Y');
     <link rel="stylesheet" href="/assets/css/paciente.css?v=2">
 
     <style>
-        .patients-wrap{max-width:1380px;margin:0 auto;padding:18px 18px 28px;}
+        .patients-wrap{max-width:1500px;margin:0 auto;padding:18px 14px 28px;}
         .patients-header{text-align:center;margin-top:4px;margin-bottom:12px;}
         .patients-header h1{margin:0;font-size:34px;font-weight:900;}
         .patients-header p{margin:8px 0 0;opacity:.78;font-weight:600;}
         .patients-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:14px 0 20px;}
-        .grid-top{display:grid;grid-template-columns:380px minmax(760px,1fr);gap:18px;align-items:start;width:100%;max-width:1280px;margin:0 auto;justify-content:center;}
+        .grid-top{display:grid;grid-template-columns:350px minmax(920px,1fr);gap:16px;align-items:start;width:100%;max-width:1420px;margin:0 auto;justify-content:center;}
         .card{background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);padding:16px;}
         .card h3{margin:0 0 12px;font-size:20px;font-weight:900;color:#0b2f6b;text-align:center;}
         .kv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
@@ -413,9 +413,9 @@ $today = date('d/m/Y');
             font-size:12px;
         }
         .form-group textarea{min-height:66px;max-height:105px;resize:vertical;}
-        .register-card{height:auto;max-width:380px;margin:0;width:100%;}
+        .register-card{height:auto;max-width:350px;margin:0;width:100%;}
         .history-card{margin-top:0;max-width:none;margin-left:0;margin-right:0;width:100%;min-width:0;}
-        .history-card .table-wrap{max-height:260px;overflow:auto;text-align:center;}
+        .history-card .table-wrap{max-height:260px;overflow-y:auto;overflow-x:hidden;text-align:center;width:100%;}
         .history-card .table thead th{position:sticky;top:0;z-index:2;}
         .history-card .table td:nth-child(3){max-width:420px;white-space:normal;word-break:break-word;}
         .history-card .table td{vertical-align:top;}
@@ -439,8 +439,10 @@ $today = date('d/m/Y');
             overflow-y:auto;
             overflow-x:hidden;
             border-radius:10px;
+            width:100%;
         }
-        .table{width:100%;border-collapse:collapse;table-layout:fixed;}
+        .table{width:100%;max-width:100%;border-collapse:collapse;table-layout:fixed;}
+        .table th, .table td{box-sizing:border-box;}
         .table th{
             position:sticky;
             top:0;
@@ -452,11 +454,13 @@ $today = date('d/m/Y');
             font-size:14px;
         }
         .table td{
-            padding:10px 10px;
+            padding:10px 8px;
             border-bottom:1px solid #eef1f6;
             background:#fff;
             vertical-align:middle;
             text-align:center;
+            white-space:normal;
+            overflow-wrap:anywhere;
         }
 
         .table th:nth-child(1), .table td:nth-child(1){width:28%;text-align:center;}
