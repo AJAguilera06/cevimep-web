@@ -4,6 +4,8 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
+date_default_timezone_set('America/Santo_Domingo');
+
 if (empty($_SESSION['user'])) {
     header('Location: /login.php');
     exit;
@@ -82,9 +84,22 @@ function formatDateTimeDMY($date)
     }
 
     try {
-        return (new DateTime((string)$date))->format('d/m/Y H:i:s');
+        /*
+          La base de datos normalmente guarda created_at en UTC.
+          Aquí lo mostramos en hora de República Dominicana:
+          UTC-4 / AST (America/Santo_Domingo).
+        */
+        $dt = new DateTime((string)$date, new DateTimeZone('UTC'));
+        $dt->setTimezone(new DateTimeZone('America/Santo_Domingo'));
+        return $dt->format('d/m/Y H:i:s');
     } catch (Throwable $e) {
-        return '';
+        try {
+            $dt = new DateTime((string)$date);
+            $dt->setTimezone(new DateTimeZone('America/Santo_Domingo'));
+            return $dt->format('d/m/Y H:i:s');
+        } catch (Throwable $e2) {
+            return '';
+        }
     }
 }
 
@@ -330,12 +345,12 @@ $today = date('d/m/Y');
     <link rel="stylesheet" href="/assets/css/paciente.css?v=2">
 
     <style>
-        .patients-wrap{max-width:1450px;margin:0 auto;padding:18px 18px 28px;}
+        .patients-wrap{max-width:1380px;margin:0 auto;padding:18px 18px 28px;}
         .patients-header{text-align:center;margin-top:4px;margin-bottom:12px;}
         .patients-header h1{margin:0;font-size:34px;font-weight:900;}
         .patients-header p{margin:8px 0 0;opacity:.78;font-weight:600;}
         .patients-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:14px 0 20px;}
-        .grid-top{display:grid;grid-template-columns:370px minmax(820px,1fr);gap:18px;align-items:start;width:100%;max-width:1320px;margin:0 auto;transform:translateX(-35px);}
+        .grid-top{display:grid;grid-template-columns:380px minmax(760px,1fr);gap:18px;align-items:start;width:100%;max-width:1280px;margin:0 auto;justify-content:center;}
         .card{background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);padding:16px;}
         .card h3{margin:0 0 12px;font-size:20px;font-weight:900;color:#0b2f6b;text-align:center;}
         .kv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
@@ -398,9 +413,9 @@ $today = date('d/m/Y');
             font-size:12px;
         }
         .form-group textarea{min-height:66px;max-height:105px;resize:vertical;}
-        .register-card{height:auto;max-width:370px;margin:0;width:100%;}
-        .history-card{margin-top:0;max-width:none;margin-left:0;margin-right:0;width:100%;min-width:820px;}
-        .history-card .table-wrap{max-height:260px;overflow-y:auto;overflow-x:hidden;}
+        .register-card{height:auto;max-width:380px;margin:0;width:100%;}
+        .history-card{margin-top:0;max-width:none;margin-left:0;margin-right:0;width:100%;min-width:0;}
+        .history-card .table-wrap{max-height:260px;overflow:auto;text-align:center;}
         .history-card .table thead th{position:sticky;top:0;z-index:2;}
         .history-card .table td:nth-child(3){max-width:420px;white-space:normal;word-break:break-word;}
         .history-card .table td{vertical-align:top;}
@@ -443,6 +458,11 @@ $today = date('d/m/Y');
             vertical-align:middle;
             text-align:center;
         }
+
+        .table th:nth-child(1), .table td:nth-child(1){width:28%;text-align:center;}
+        .table th:nth-child(2), .table td:nth-child(2){width:18%;text-align:center;}
+        .table th:nth-child(3), .table td:nth-child(3){width:24%;text-align:center;}
+        .table th:nth-child(4), .table td:nth-child(4){width:30%;text-align:center;}
         .table td:nth-child(3){
             max-width:360px;
             white-space:normal;
@@ -452,10 +472,10 @@ $today = date('d/m/Y');
         .empty-state{text-align:center;padding:24px 10px;font-weight:700;opacity:.75;}
 
         @media (max-width:980px){
-            .grid-top{grid-template-columns:1fr;max-width:520px;transform:none;}
+            .grid-top{grid-template-columns:1fr;max-width:760px;}
             .form-grid,.kv-grid{grid-template-columns:1fr;}
             .register-card{max-width:520px;margin:0 auto;}
-            .history-card{max-height:360px;min-width:0;}
+            .history-card{max-height:360px;}
             .table-wrap{max-height:270px;}
             .full{grid-column:auto;}
         }
