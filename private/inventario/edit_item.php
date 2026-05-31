@@ -317,14 +317,26 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             </div>
 
             <div class="field">
-              <label>Precio compra</label>
-              <input type="number" step="0.01" min="0" name="purchase_price" value="<?= h($item["purchase_price"] ?? 0) ?>">
-            </div>
+  <label>Precio compra</label>
+  <input
+    type="number"
+    step="0.01"
+    value="<?= h($item["purchase_price"] ?? 0) ?>"
+    readonly
+    style="background:#f5f5f5; cursor:not-allowed;"
+  >
+</div>
 
-            <div class="field">
-              <label>Precio venta</label>
-              <input type="number" step="0.01" min="0" name="sale_price" value="<?= h($item["sale_price"] ?? 0) ?>">
-            </div>
+<div class="field">
+  <label>Precio venta</label>
+  <input
+    type="number"
+    step="0.01"
+    value="<?= h($item["sale_price"] ?? 0) ?>"
+    readonly
+    style="background:#f5f5f5; cursor:not-allowed;"
+  >
+</div>
 
           </div>
 
