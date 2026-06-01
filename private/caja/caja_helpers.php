@@ -81,16 +81,29 @@ function caja_get_latest_session(PDO $pdo, int $branchId, string $fecha, int $ca
 function caja_get_open_session(PDO $pdo, int $branchId, ?int $cajaNum = null, ?string $fecha = null): ?array {
   if ($branchId <= 0) return null;
 
-  if ($cajaNum === null) {
-    [$cajaNum] = caja_get_turno();
-  }
-
   $fecha = $fecha ?: caja_current_date();
 
+  // Si se pide una caja específica, buscar esa caja abierta.
+  if ($cajaNum !== null) {
+    $st = $pdo->prepare("\n      SELECT *\n      FROM caja_sesiones\n      WHERE branch_id = ?\n        AND fecha = ?\n        AND caja_num = ?\n        AND estado = 'abierta'\n      ORDER BY id DESC\n      LIMIT 1\n    ");
+    $st->execute([$branchId, $fecha, $cajaNum]);
+    $row = $st->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+  }
+
+  // Para facturas/desembolsos: primero intenta el turno actual.
+  [$turnoActual] = caja_get_turno();
   $st = $pdo->prepare("\n    SELECT *\n    FROM caja_sesiones\n    WHERE branch_id = ?\n      AND fecha = ?\n      AND caja_num = ?\n      AND estado = 'abierta'\n    ORDER BY id DESC\n    LIMIT 1\n  ");
-  $st->execute([$branchId, $fecha, $cajaNum]);
+  $st->execute([$branchId, $fecha, $turnoActual]);
   $row = $st->fetch(PDO::FETCH_ASSOC);
-  return $row ?: null;
+  if ($row) return $row;
+
+  // Si el turno actual no está abierto, usa cualquier caja abierta del día.
+  // Esto evita que una factura se quede fuera si el usuario abrió Caja 1 y todavía está trabajando ahí.
+  $st2 = $pdo->prepare("\n    SELECT *\n    FROM caja_sesiones\n    WHERE branch_id = ?\n      AND fecha = ?\n      AND estado = 'abierta'\n    ORDER BY caja_num ASC, id DESC\n    LIMIT 1\n  ");
+  $st2->execute([$branchId, $fecha]);
+  $row2 = $st2->fetch(PDO::FETCH_ASSOC);
+  return $row2 ?: null;
 }
 
 function caja_get_open_session_id(PDO $pdo, int $branchId, ?int $cajaNum = null, ?string $fecha = null): int {

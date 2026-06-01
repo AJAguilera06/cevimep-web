@@ -4,18 +4,38 @@ declare(strict_types=1);
 
 date_default_timezone_set("America/Santo_Domingo");
 
+// Usamos el sistema nuevo (caja_sesiones + caja_sesion_id)
 require_once __DIR__ . "/caja_helpers.php";
 
+/**
+ * Devuelve el número de caja según horario RD:
+ * Caja 1: 07:00 AM - 12:59 PM
+ * Caja 2: 01:00 PM - 11:59 PM
+ */
 if (!function_exists("caja_get_current_caja_num")) {
   function caja_get_current_caja_num(): int {
-    [$cajaNum] = caja_get_turno();
-    return (int)$cajaNum;
+    $now = date("H:i:s");
+    if ($now >= "07:00:00" && $now <= "12:59:59") return 1;
+    return 2; // 13:00:00 - 23:59:59
   }
 }
 
 /**
- * Registra un ingreso de factura en cash_movements.
- * IMPORTANTE: La caja del turno debe estar abierta manualmente desde /private/caja/index.php.
+ * Horarios por caja (operativo)
+ */
+if (!function_exists("caja_shift_times")) {
+  function caja_shift_times(int $cajaNum): array {
+    if ($cajaNum === 1) return ["07:00:00", "12:59:59"];
+    if ($cajaNum === 2) return ["13:00:00", "23:59:59"];
+    return ["00:00:00", "00:00:00"];
+  }
+}
+
+/**
+ * Registra un ingreso de factura en cash_movements usando caja_sesiones
+ * - type = 'ingreso'
+ * - metodo_pago = efectivo|tarjeta|transferencia|cobertura
+ * - amount = positivo
  */
 if (!function_exists("caja_registrar_ingreso_factura")) {
   function caja_registrar_ingreso_factura(
@@ -27,21 +47,21 @@ if (!function_exists("caja_registrar_ingreso_factura")) {
     string $metodo_pago
   ): void {
 
-    if ($branch_id <= 0) {
-      throw new RuntimeException("Sucursal inválida para registrar ingreso de caja.");
-    }
-
+    if ($branch_id <= 0) return;
     if ($amount <= 0) return;
 
+    // Normalizar método de pago a tus ENUM
     $metodo_pago = strtolower(trim($metodo_pago));
     $allowed = ["efectivo", "tarjeta", "transferencia", "cobertura"];
     if (!in_array($metodo_pago, $allowed, true)) {
       $metodo_pago = "efectivo";
     }
 
-    $caja_sesion_id = (int)caja_get_open_session_id($pdo, $branch_id);
+    // Usar una caja abierta. Si no hay caja abierta, detenemos la factura
+    // para que el ingreso no quede fuera del control de caja.
+    $caja_sesion_id = (int)caja_get_or_create_session_id($pdo, $branch_id);
     if ($caja_sesion_id <= 0) {
-      throw new RuntimeException("La caja del turno actual está cerrada. Debes abrir caja antes de facturar.");
+      throw new RuntimeException("Debe abrir una caja antes de registrar facturas o ingresos.");
     }
 
     $motivo = "Ingreso por factura #{$invoice_id}";
@@ -57,7 +77,7 @@ if (!function_exists("caja_registrar_ingreso_factura")) {
       ":caja_sesion_id" => $caja_sesion_id,
       ":motivo" => $motivo,
       ":metodo_pago" => $metodo_pago,
-      ":amount" => $amount,
+      ":amount" => $amount, // positivo
       ":created_by" => $user_id > 0 ? $user_id : null,
     ]);
   }
