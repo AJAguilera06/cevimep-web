@@ -7,6 +7,16 @@ function h($s){
     return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8");
 }
 
+function firstNonEmpty(...$vals): string {
+    foreach ($vals as $v) {
+        $s = trim((string)$v);
+        if ($s !== '') {
+            return $s;
+        }
+    }
+    return '';
+}
+
 $user = $_SESSION["user"] ?? [];
 $sucursalId = (int)($user["branch_id"] ?? 0);
 
@@ -58,6 +68,11 @@ if (!$invoice) {
     die("Factura no encontrada.");
 }
 
+$facturaCode = trim((string)($invoice["invoice_code"] ?? ""));
+if ($facturaCode === "") {
+    $facturaCode = "#" . (string)((int)$invoice["id"]);
+}
+
 /**
  * ITEMS
  */
@@ -83,15 +98,18 @@ $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 /**
  * REPRESENTANTE
+ * Primero toma la columna representative si existe, luego busca en notes.
  */
-$representante = "";
-
-if (!empty($invoice["notes"])) {
-
-    if (preg_match('/Representante:\s*(.*)/i', $invoice["notes"], $m)) {
-        $representante = trim($m[1]);
-    }
+$representanteFromNotes = "";
+if (!empty($invoice["notes"]) && preg_match('/Representante:\s*([^|\r\n]+)/i', (string)$invoice["notes"], $m)) {
+    $representanteFromNotes = trim($m[1]);
 }
+
+$representante = firstNonEmpty(
+    $invoice["representative"] ?? "",
+    $invoice["representante"] ?? "",
+    $representanteFromNotes
+);
 
 /**
  * PACIENTE
@@ -132,7 +150,7 @@ $logo = "/assets/img/CEVIMEP.png";
 <meta charset="UTF-8">
 
 <title>
-Factura #<?= (int)$invoice["id"] ?>
+Factura <?= h($facturaCode) ?>
 </title>
 
 <style>
@@ -281,7 +299,7 @@ body{
 
         <div>
             <strong>Factura:</strong>
-            #<?= (int)$invoice["id"] ?>
+            <?= h($facturaCode) ?>
         </div>
 
         <div>

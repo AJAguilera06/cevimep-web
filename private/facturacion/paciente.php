@@ -41,6 +41,8 @@ if (!$patient) {
 /** Facturas del paciente en esta sucursal */
 $stmt = $conn->prepare("
     SELECT i.id,
+           i.invoice_code,
+           i.invoice_number,
            DATE(i.created_at) AS invoice_date,
            i.payment_method,
            i.total
@@ -242,7 +244,7 @@ foreach ($invoices as $inv) {
                     <table>
                         <thead>
                             <tr>
-                                <th style="width:110px;">ID</th>
+                                <th style="width:140px;">Factura</th>
                                 <th style="width:150px;">Fecha</th>
                                 <th style="width:170px;">Método</th>
                                 <th style="width:170px;">Total</th>
@@ -257,7 +259,7 @@ foreach ($invoices as $inv) {
                         <?php else: ?>
                             <?php foreach ($invoices as $inv): ?>
                                 <tr>
-                                    <td>#<?= (int)$inv["id"] ?></td>
+                                    <td><?= h($inv["invoice_code"] ?? ("#" . $inv["id"])) ?></td>
                                     <td><?= h($inv["invoice_date"]) ?></td>
                                     <td><?= h($inv["payment_method"]) ?></td>
                                     <td class="money">RD$ <?= number_format((float)$inv["total"], 2) ?></td>
