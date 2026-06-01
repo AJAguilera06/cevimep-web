@@ -64,14 +64,15 @@ $hasInvoiceDate = colExists($pdo, "invoices", "invoice_date");
 $invoiceCodeSql = "COALESCE(NULLIF(i.invoice_code, ''), CONCAT('#', i.id))";
 $subtotalSql = $hasSubtotal ? "i.subtotal" : "i.total";
 $coverageSql = $hasCoverage ? "i.coverage_amount" : "0";
-$dateSelectSql = $hasInvoiceDate ? "i.invoice_date" : ($hasCreatedAt ? "DATE(i.created_at)" : "CURDATE()");
-// ✅ Filtrar por UNA sola fecha para evitar mezclar facturas de otros días.
-// Prioridad: invoice_date (fecha elegida en la factura).
-// Solo si no existe invoice_date, usar created_at.
-if ($hasInvoiceDate) {
+// ✅ Movimiento diario por fecha REAL de creación.
+// Prioridad: created_at (cuándo se creó la factura en el sistema).
+// Solo si no existe created_at, usar invoice_date.
+$dateSelectSql = $hasCreatedAt ? "DATE(i.created_at)" : ($hasInvoiceDate ? "i.invoice_date" : "CURDATE()");
+
+if ($hasCreatedAt) {
+  $dateWhereSql = "DATE(i.created_at) = :date1";
+} elseif ($hasInvoiceDate) {
   $dateWhereSql = "i.invoice_date = :date1";
-} elseif ($hasCreatedAt) {
-  $dateWhereSql = "DATE(i.created_at) = :date2";
 } else {
   $dateWhereSql = "1=1";
 }
@@ -95,7 +96,7 @@ $totDesembolsos = 0.0;
 $neto = 0.0;
 
 try {
-  // Facturas de la sucursal por la fecha seleccionada, sin mezclar invoice_date con created_at.
+  // Facturas de la sucursal por fecha real de creación (created_at).
   $sql = "
     SELECT
       i.id,
@@ -115,10 +116,8 @@ try {
 
   $st = $pdo->prepare($sql);
   $params = [':branch_id' => $branchId];
-  if ($hasInvoiceDate) {
+  if ($hasCreatedAt || $hasInvoiceDate) {
     $params[':date1'] = $date;
-  } elseif ($hasCreatedAt) {
-    $params[':date2'] = $date;
   }
   $st->execute($params);
   $invoices = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
