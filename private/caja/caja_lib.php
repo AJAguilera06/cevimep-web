@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 date_default_timezone_set("America/Santo_Domingo");
 
-// Usamos el sistema nuevo (caja_sesiones + caja_sesion_id)
 require_once __DIR__ . "/caja_helpers.php";
 
 /**
@@ -15,13 +14,15 @@ require_once __DIR__ . "/caja_helpers.php";
 if (!function_exists("caja_get_current_caja_num")) {
   function caja_get_current_caja_num(): int {
     $now = date("H:i:s");
-    if ($now >= "07:00:00" && $now <= "12:59:59") return 1;
-    return 2; // 13:00:00 - 23:59:59
+    if ($now >= "07:00:00" && $now <= "12:59:59") {
+      return 1;
+    }
+    return 2;
   }
 }
 
 /**
- * Horarios por caja (operativo)
+ * Horarios por caja
  */
 if (!function_exists("caja_shift_times")) {
   function caja_shift_times(int $cajaNum): array {
@@ -32,10 +33,7 @@ if (!function_exists("caja_shift_times")) {
 }
 
 /**
- * Registra un ingreso de factura en cash_movements usando caja_sesiones
- * - type = 'ingreso'
- * - metodo_pago = efectivo|tarjeta|transferencia|cobertura
- * - amount = positivo
+ * Registrar ingreso por factura
  */
 if (!function_exists("caja_registrar_ingreso_factura")) {
   function caja_registrar_ingreso_factura(
@@ -50,35 +48,79 @@ if (!function_exists("caja_registrar_ingreso_factura")) {
     if ($branch_id <= 0) return;
     if ($amount <= 0) return;
 
-    // Normalizar método de pago a tus ENUM
     $metodo_pago = strtolower(trim($metodo_pago));
-    $allowed = ["efectivo", "tarjeta", "transferencia", "cobertura"];
+
+    $allowed = [
+      "efectivo",
+      "tarjeta",
+      "transferencia",
+      "cobertura"
+    ];
+
     if (!in_array($metodo_pago, $allowed, true)) {
       $metodo_pago = "efectivo";
     }
 
-    // Usar una caja abierta. Si no hay caja abierta, detenemos la factura
-    // para que el ingreso no quede fuera del control de caja.
+    // Buscar sesión de caja abierta
     $caja_sesion_id = (int)caja_get_or_create_session_id($pdo, $branch_id);
+
     if ($caja_sesion_id <= 0) {
-      throw new RuntimeException("Debe abrir una caja antes de registrar facturas o ingresos.");
+      throw new RuntimeException(
+        "Debe abrir una caja antes de registrar facturas o ingresos."
+      );
     }
 
-    $motivo = "Ingreso por factura #{$invoice_id}";
+    // Obtener código real de factura
+    $stInv = $pdo->prepare("
+      SELECT invoice_code
+      FROM invoices
+      WHERE id = ?
+      LIMIT 1
+    ");
 
-    $sql = "INSERT INTO cash_movements
-            (branch_id, caja_sesion_id, type, motivo, metodo_pago, amount, created_by)
-            VALUES
-            (:branch_id, :caja_sesion_id, 'ingreso', :motivo, :metodo_pago, :amount, :created_by)";
+    $stInv->execute([$invoice_id]);
+
+    $invoice_code = $stInv->fetchColumn();
+
+    if (!$invoice_code) {
+      $invoice_code = "#" . $invoice_id;
+    }
+
+    // Motivo con formato nuevo
+    $motivo = "Ingreso por factura {$invoice_code}";
+
+    $sql = "
+      INSERT INTO cash_movements
+      (
+        branch_id,
+        caja_sesion_id,
+        type,
+        motivo,
+        metodo_pago,
+        amount,
+        created_by
+      )
+      VALUES
+      (
+        :branch_id,
+        :caja_sesion_id,
+        'ingreso',
+        :motivo,
+        :metodo_pago,
+        :amount,
+        :created_by
+      )
+    ";
 
     $st = $pdo->prepare($sql);
+
     $st->execute([
-      ":branch_id" => $branch_id,
+      ":branch_id"      => $branch_id,
       ":caja_sesion_id" => $caja_sesion_id,
-      ":motivo" => $motivo,
-      ":metodo_pago" => $metodo_pago,
-      ":amount" => $amount, // positivo
-      ":created_by" => $user_id > 0 ? $user_id : null,
+      ":motivo"         => $motivo,
+      ":metodo_pago"    => $metodo_pago,
+      ":amount"         => $amount,
+      ":created_by"     => $user_id > 0 ? $user_id : null,
     ]);
   }
 }
