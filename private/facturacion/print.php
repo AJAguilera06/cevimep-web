@@ -53,11 +53,13 @@ if (colExists($conn, 'invoices', 'no_libro')) $selectExtra[] = "i.no_libro";
 if (colExists($conn, 'invoices', 'numero_afiliado')) $selectExtra[] = "i.numero_afiliado";
 if (colExists($conn, 'invoices', 'clinica_referencia')) $selectExtra[] = "i.clinica_referencia";
 if (colExists($conn, 'invoices', 'medico_refiere')) $selectExtra[] = "i.medico_refiere";
+if (colExists($conn, 'invoices', 'representative')) $selectExtra[] = "i.representative";
 if (colExists($conn, 'invoices', 'representante')) $selectExtra[] = "i.representante";
 if (colExists($conn, 'invoices', 'telefono')) $selectExtra[] = "i.telefono";
 if (colExists($conn, 'invoices', 'hora')) $selectExtra[] = "i.hora";
 if (colExists($conn, 'invoices', 'invoice_time')) $selectExtra[] = "i.invoice_time";
 if (colExists($conn, 'invoices', 'created_at')) $selectExtra[] = "i.created_at";
+if (colExists($conn, 'invoices', 'notes')) $selectExtra[] = "i.notes";
 
 $extraSql = $selectExtra ? (", " . implode(", ", $selectExtra)) : "";
 
@@ -122,7 +124,7 @@ $patientId = (int)($inv['patient_id'] ?? 0);
 $pat = [];
 if ($patientId > 0) {
   $patientCols = [];
-  foreach (['ars','no_libro','numero_afiliado','clinica_referencia','medico_refiere','representante','telefono','no_telefono','phone','tel'] as $c) {
+  foreach (['ars','no_libro','numero_afiliado','clinica_referencia','medico_refiere','representante','registrado_por','telefono','no_telefono','phone','tel'] as $c) {
     if (colExists($conn, 'patients', $c)) $patientCols[] = $c;
   }
   if ($patientCols) {
@@ -146,8 +148,21 @@ $clinicaReferencia = firstNonEmpty($inv['clinica_referencia'] ?? '', $pat['clini
 $medicoRefiere     = firstNonEmpty($inv['medico_refiere'] ?? '', $pat['medico_refiere'] ?? '');
 $numeroAfiliado    = firstNonEmpty($inv['numero_afiliado'] ?? '', $pat['numero_afiliado'] ?? '');
 
-// Representante: prioridad a querystring (por compatibilidad con tu flujo actual)
-$representante = firstNonEmpty($rep, $inv['representante'] ?? '', $pat['representante'] ?? '');
+// Representante: prioridad a querystring, luego columna real, luego notes, luego patients
+$representanteFromNotes = '';
+$notesTxt = (string)($inv['notes'] ?? '');
+if ($notesTxt !== '' && preg_match('/Representante:\s*([^|\r\n]+)/i', $notesTxt, $m)) {
+  $representanteFromNotes = trim($m[1]);
+}
+
+$representante = firstNonEmpty(
+  $rep,
+  $inv['representative'] ?? '',
+  $inv['representante'] ?? '',
+  $representanteFromNotes,
+  $pat['representante'] ?? '',
+  $pat['registrado_por'] ?? ''
+);
 
 // Teléfono: soporta distintos nombres comunes en patients
 $telefono = firstNonEmpty(
