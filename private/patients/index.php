@@ -84,7 +84,7 @@ if ($search !== '') {
         OR CONCAT(p.first_name, ' ', p.last_name) LIKE ?
         OR p.cedula LIKE ?
         OR p.phone LIKE ?
-        OR p.email LIKE ?
+        OR p.direccion LIKE ?
     )";
     $like = "%{$search}%";
     $params[] = $like;
@@ -121,7 +121,7 @@ $sql = "
         p.last_name,
         p.cedula,
         p.phone,
-        p.email,
+        p.direccion,
         p.birth_date,
         p.gender,
         p.blood_type
@@ -199,20 +199,12 @@ function buildPageUrl(int $toPage, string $search): string {
             overflow:hidden;
         }
 
-        /* ✅ Centralizar información de la tabla */
-        .patients-card .table{
-            width:100%;
-            border-collapse:collapse;
-        }
         .patients-card .table th,
         .patients-card .table td{
             text-align:center;
             vertical-align:middle;
         }
-        .patients-card .table td:nth-child(2),
-        .patients-card .table th:nth-child(2){
-            text-align:center;
-        }
+
         .td-empty{
             text-align:center;
             padding: 22px 10px;
@@ -291,7 +283,7 @@ function buildPageUrl(int $toPage, string $search): string {
                         type="text"
                         name="q"
                         value="<?= h($search) ?>"
-                        placeholder="Buscar por nombre, No. libro, cédula, teléfono"
+                        placeholder="Buscar por nombre, No. libro, cédula, teléfono, dirección"
                     >
                     <button class="btn btn-primary" type="submit">Buscar</button>
                 </form>
