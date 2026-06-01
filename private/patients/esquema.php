@@ -233,9 +233,41 @@ $availableVaccines = [
 ];
 
 /* ===============================
+   ELIMINAR VACUNA
+   =============================== */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_vaccine_id'])) {
+    $deleteVaccineId = (int)($_POST['delete_vaccine_id'] ?? 0);
+
+    if ($deleteVaccineId <= 0) {
+        $error = 'Vacuna inválida.';
+    } elseif (!$hasPatientId) {
+        $error = 'La tabla patient_vaccines no tiene una estructura válida para eliminar.';
+    } else {
+        try {
+            $del = $pdo->prepare("
+                DELETE FROM patient_vaccines
+                WHERE id = :id
+                  AND patient_id = :patient_id
+                LIMIT 1
+            ");
+
+            $del->execute([
+                'id' => $deleteVaccineId,
+                'patient_id' => $id
+            ]);
+
+            header('Location: /private/patients/esquema.php?id=' . $id . '&deleted=1');
+            exit;
+        } catch (Throwable $e) {
+            $error = 'No se pudo eliminar la vacuna: ' . $e->getMessage();
+        }
+    }
+}
+
+/* ===============================
    GUARDAR VACUNAS
    =============================== */
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['delete_vaccine_id'])) {
     $vaccineNames = $_POST['vaccine_names'] ?? [];
 
     if (!is_array($vaccineNames)) {
@@ -296,6 +328,10 @@ if (isset($_GET['saved']) && (int)$_GET['saved'] > 0) {
     $success = $savedCount === 1
         ? 'Vacuna registrada correctamente.'
         : $savedCount . ' vacunas registradas correctamente.';
+}
+
+if (isset($_GET['deleted']) && (int)$_GET['deleted'] === 1) {
+    $success = 'Vacuna eliminada correctamente.';
 }
 
 /* ===============================
@@ -463,16 +499,31 @@ $today = date('d/m/Y');
             overflow-wrap:anywhere;
         }
 
-        .table th:nth-child(1), .table td:nth-child(1){width:28%;text-align:center;}
-        .table th:nth-child(2), .table td:nth-child(2){width:18%;text-align:center;}
-        .table th:nth-child(3), .table td:nth-child(3){width:24%;text-align:center;}
-        .table th:nth-child(4), .table td:nth-child(4){width:30%;text-align:center;}
+        .table th:nth-child(1), .table td:nth-child(1){width:25%;text-align:center;}
+        .table th:nth-child(2), .table td:nth-child(2){width:15%;text-align:center;}
+        .table th:nth-child(3), .table td:nth-child(3){width:22%;text-align:center;}
+        .table th:nth-child(4), .table td:nth-child(4){width:25%;text-align:center;}
+        .table th:nth-child(5), .table td:nth-child(5){width:13%;text-align:center;}
         .table td:nth-child(3){
             max-width:360px;
             white-space:normal;
             word-break:break-word;
             text-align:center;
         }
+        .delete-form{margin:0;display:inline-block;}
+        .btn-delete{
+            border:0;
+            background:#dc2626;
+            color:#fff;
+            padding:6px 10px;
+            border-radius:8px;
+            font-weight:900;
+            cursor:pointer;
+            font-size:12px;
+            white-space:nowrap;
+        }
+        .btn-delete:hover{background:#b91c1c;}
+
         .empty-state{text-align:center;padding:24px 10px;font-weight:700;opacity:.75;}
 
         @media (max-width:980px){
@@ -601,12 +652,13 @@ $today = date('d/m/Y');
                                 <th>Fecha</th>
                                 <th>Comentario</th>
                                 <th>Registrado</th>
+                                <th>Acción</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($vaccineHistory)): ?>
                                 <tr>
-                                    <td colspan="4" class="empty-state">Este paciente aún no tiene vacunas registradas.</td>
+                                    <td colspan="5" class="empty-state">Este paciente aún no tiene vacunas registradas.</td>
                                 </tr>
                             <?php else: ?>
                                 <?php foreach ($vaccineHistory as $item): ?>
@@ -615,6 +667,12 @@ $today = date('d/m/Y');
                                         <td><?= h(formatDateDMY($item['application_date'] ?? '')) ?></td>
                                         <td><?= h($item['comments'] ?? '') ?></td>
                                         <td><?= h(formatDateTimeDMY($item['created_at'] ?? '')) ?></td>
+                                        <td>
+                                            <form method="post" class="delete-form" onsubmit="return confirm('¿Seguro que deseas eliminar esta vacuna?');">
+                                                <input type="hidden" name="delete_vaccine_id" value="<?= (int)($item['id'] ?? 0) ?>">
+                                                <button type="submit" class="btn-delete">🗑 Eliminar</button>
+                                            </form>
+                                        </td>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
