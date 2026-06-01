@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $caja_sesion_id = (int)caja_get_or_create_session_id($pdo, $branch_id);
 
     if ($caja_sesion_id <= 0) {
-      $mensaje = "⚠️ No se encontró/creó una sesión de caja válida.";
+      $mensaje = "⚠️ La caja del turno actual está cerrada. Debes abrir caja antes de registrar desembolsos.";
       $tipo_mensaje = "warning";
     } else {
 
