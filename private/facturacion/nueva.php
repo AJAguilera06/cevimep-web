@@ -132,7 +132,7 @@ function patientExprs(PDO $pdo): array {
    FALLBACK CAJA (si no hay función)
    =============================== */
 function cajaFallbackInsert(PDO $conn, int $branchId, int $userId, int $invoiceId, float $amount, string $method, string $desc): void {
-  $candidates = ["caja_movimientos", "caja_transacciones", "cash_movements", "cash_transactions", "movimientos_caja"];
+  $candidates = ["cash_movements", "caja_movimientos", "caja_transacciones", "cash_transactions", "movimientos_caja"];
   $table = null;
   foreach ($candidates as $t) {
     if (tableExists($conn, $t)) { $table = $t; break; }
@@ -141,49 +141,70 @@ function cajaFallbackInsert(PDO $conn, int $branchId, int $userId, int $invoiceI
 
   $cols = tableColumns($conn, $table);
 
-  // columnas típicas (intentamos adaptarnos)
-  $map = [
-    "branch_id"   => ["branch_id","sucursal_id","branch","sucursal"],
-    "user_id"     => ["user_id","created_by","usuario_id","user","uid"],
-    "type"        => ["type","tipo","movement_type","movimiento","categoria"],
-    "amount"      => ["amount","monto","total","importe","valor"],
-    "method"      => ["method","metodo","payment_method","forma_pago"],
-    "reference"   => ["reference","ref","invoice_id","factura_id","referencia"],
-    "description" => ["description","descripcion","concepto","detalle","nota","notes"],
-    "created_at"  => ["created_at","fecha","created_on","created"],
-  ];
-
   $pick = function(array $opts) use ($cols) {
     foreach ($opts as $o) if (in_array($o, $cols, true)) return $o;
     return null;
   };
 
-  $cBranch = $pick($map["branch_id"]);
-  $cUser   = $pick($map["user_id"]);
-  $cType   = $pick($map["type"]);
-  $cAmount = $pick($map["amount"]);
-  $cMethod = $pick($map["method"]);
-  $cRef    = $pick($map["reference"]);
-  $cDesc   = $pick($map["description"]);
-  $cAt     = $pick($map["created_at"]);
+  $cBranch = $pick(["branch_id","sucursal_id","branch","sucursal"]);
+  $cSesion = $pick(["caja_sesion_id","session_id","cash_session_id"]);
+  $cUser   = $pick(["created_by","user_id","usuario_id","user","uid"]);
+  $cType   = $pick(["type","tipo","movement_type","movimiento","categoria"]);
+  $cAmount = $pick(["amount","monto","total","importe","valor"]);
+  $cMethod = $pick(["metodo_pago","method","metodo","payment_method","forma_pago"]);
+  $cMotivo = $pick(["motivo","description","descripcion","concepto","detalle","nota","notes"]);
+  $cRef    = $pick(["reference","ref","invoice_id","factura_id","referencia"]);
+  $cAt     = $pick(["created_at","fecha","created_on","created"]);
 
   if ($cAmount === null) return;
+
+  $method = strtolower(trim($method));
+  if ($method === "cash") $method = "efectivo";
+  if ($method === "card") $method = "tarjeta";
+  if ($method === "transfer") $method = "transferencia";
+
+  $cajaSesionId = 0;
+  if ($cSesion !== null) {
+    if (function_exists("caja_get_or_create_session_id")) {
+      $cajaSesionId = (int)caja_get_or_create_session_id($conn, $branchId);
+    }
+
+    if ($cajaSesionId <= 0) {
+      $fecha = date("Y-m-d");
+      $stSesion = $conn->prepare("
+        SELECT id
+        FROM caja_sesiones
+        WHERE branch_id = ?
+          AND fecha = ?
+          AND estado = 'abierta'
+        ORDER BY caja_num ASC, id DESC
+        LIMIT 1
+      ");
+      $stSesion->execute([$branchId, $fecha]);
+      $cajaSesionId = (int)($stSesion->fetchColumn() ?: 0);
+    }
+
+    if ($cajaSesionId <= 0) {
+      throw new RuntimeException("Debe abrir una caja antes de registrar facturas o ingresos.");
+    }
+  }
 
   $fields = [];
   $vals   = [];
 
   if ($cBranch) { $fields[] = $cBranch; $vals[] = $branchId; }
-  if ($cUser)   { $fields[] = $cUser;   $vals[] = $userId; }
+  if ($cSesion) { $fields[] = $cSesion; $vals[] = $cajaSesionId; }
+  if ($cUser)   { $fields[] = $cUser;   $vals[] = $userId > 0 ? $userId : null; }
   if ($cType)   { $fields[] = $cType;   $vals[] = "ingreso"; }
+  if ($cMotivo) { $fields[] = $cMotivo; $vals[] = $desc; }
   $fields[] = $cAmount; $vals[] = $amount;
 
   if ($cMethod) { $fields[] = $cMethod; $vals[] = $method; }
   if ($cRef)    { $fields[] = $cRef;    $vals[] = $invoiceId; }
-  if ($cDesc)   { $fields[] = $cDesc;   $vals[] = $desc; }
   if ($cAt)     { $fields[] = $cAt;     $vals[] = date("Y-m-d H:i:s"); }
 
   $place = implode(",", array_fill(0, count($fields), "?"));
-  $sql = "INSERT INTO `$table` (" . implode(",", $fields) . ") VALUES ($place)";
+  $sql = "INSERT INTO `$table` (`" . implode("`,`", $fields) . "`) VALUES ($place)";
   $st = $conn->prepare($sql);
   $st->execute($vals);
 }
@@ -702,17 +723,27 @@ if (columnExists($conn, "invoices", "invoice_code")) {
     if ($pm === "card") $pm = "tarjeta";
     if ($pm === "transfer") $pm = "transferencia";
 
-    // Registrar ingreso en la caja abierta.
-    // IMPORTANTE: no hacemos fallback si no hay caja abierta, porque eso deja
-    // facturas fuera del cuadre de Caja 1 / Caja 2.
-    if (!function_exists("caja_registrar_ingreso_factura")) {
-      throw new RuntimeException("No se pudo cargar la librería de caja. Verifica /private/caja/caja_lib.php.");
-    }
+    // 1) si existe función oficial, úsala
+    if (function_exists("caja_registrar_ingreso_factura")) {
+      try {
+        caja_registrar_ingreso_factura($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$total, (string)$pm);
 
-    caja_registrar_ingreso_factura($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$total, (string)$pm);
-
-    if ((float)$coverage_amount > 0) {
-      caja_registrar_ingreso_factura($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$coverage_amount, "cobertura");
+        if ((float)$coverage_amount > 0) {
+          caja_registrar_ingreso_factura($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$coverage_amount, "cobertura");
+        }
+      } catch (Throwable $e) {
+        // 2) fallback si falla
+        cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$total, (string)$pm, "Ingreso por factura #{$invoice_id}");
+        if ((float)$coverage_amount > 0) {
+          cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$coverage_amount, "cobertura", "Cobertura factura #{$invoice_id}");
+        }
+      }
+    } else {
+      // 2) fallback directo
+      cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$total, (string)$pm, "Ingreso por factura #{$invoice_id}");
+      if ((float)$coverage_amount > 0) {
+        cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$coverage_amount, "cobertura", "Cobertura factura #{$invoice_id}");
+      }
     }
 
     $conn->commit();
