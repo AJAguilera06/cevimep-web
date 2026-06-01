@@ -198,6 +198,21 @@ function buildPageUrl(int $toPage, string $search): string {
             box-shadow:0 10px 25px rgba(0,0,0,.08);
             overflow:hidden;
         }
+
+        /* ✅ Centralizar información de la tabla */
+        .patients-card .table{
+            width:100%;
+            border-collapse:collapse;
+        }
+        .patients-card .table th,
+        .patients-card .table td{
+            text-align:center;
+            vertical-align:middle;
+        }
+        .patients-card .table td:nth-child(2),
+        .patients-card .table th:nth-child(2){
+            text-align:center;
+        }
         .td-empty{
             text-align:center;
             padding: 22px 10px;
@@ -276,7 +291,7 @@ function buildPageUrl(int $toPage, string $search): string {
                         type="text"
                         name="q"
                         value="<?= h($search) ?>"
-                        placeholder="Buscar por nombre, No. libro, cédula, teléfono, correo"
+                        placeholder="Buscar por nombre, No. libro, cédula, teléfono"
                     >
                     <button class="btn btn-primary" type="submit">Buscar</button>
                 </form>
@@ -292,7 +307,6 @@ function buildPageUrl(int $toPage, string $search): string {
                         <th>Nombre</th>
                         <th>Cédula</th>
                         <th>Teléfono</th>
-                        <th>Correo</th>
                         <th>Edad</th>
                         <th>Género</th>
                         <th>Sangre</th>
@@ -302,7 +316,7 @@ function buildPageUrl(int $toPage, string $search): string {
                     <tbody>
                     <?php if (empty($patients)): ?>
                         <tr>
-                            <td colspan="9" class="td-empty">
+                            <td colspan="8" class="td-empty">
                                 No hay pacientes<?= $search ? " con ese filtro." : "." ?>
                             </td>
                         </tr>
@@ -317,7 +331,6 @@ function buildPageUrl(int $toPage, string $search): string {
                                 <td><?= h($fullName) ?></td>
                                 <td><?= h($row['cedula'] ?? '') ?></td>
                                 <td><?= h($row['phone'] ?? '') ?></td>
-                                <td><?= h($row['email'] ?? '') ?></td>
                                 <td><?= h(calcAge($row['birth_date'] ?? null)) ?></td>
                                 <td><?= h($row['gender'] ?? '') ?></td>
                                 <td><?= h($row['blood_type'] ?? '') ?></td>
