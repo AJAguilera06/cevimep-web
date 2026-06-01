@@ -237,6 +237,7 @@ function renderCajaCard(int $num, string $titulo, array $r, float $ing, float $n
         <div class="pill-links">
           <a class="btn-ghost" href="/private/caja/desembolso.php">💸 Desembolso</a>
           <a class="btn-ghost" href="/private/caja/reporte_diario.php">📄 Reporte diario</a>
+          <a class="btn-ghost" href="/private/caja/movimiento_diario.php">📋 Movimiento diario</a>
           <a class="btn-ghost" href="/private/caja/reporte_mensual.php">📅 Reporte mensual</a>
         </div>
       </div>
