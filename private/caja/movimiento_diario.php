@@ -64,18 +64,11 @@ $hasInvoiceDate = colExists($pdo, "invoices", "invoice_date");
 $invoiceCodeSql = "COALESCE(NULLIF(i.invoice_code, ''), CONCAT('#', i.id))";
 $subtotalSql = $hasSubtotal ? "i.subtotal" : "i.total";
 $coverageSql = $hasCoverage ? "i.coverage_amount" : "0";
-// ✅ Movimiento diario por fecha REAL de creación.
-// Prioridad: created_at (cuándo se creó la factura en el sistema).
-// Solo si no existe created_at, usar invoice_date.
-$dateSelectSql = $hasCreatedAt ? "DATE(i.created_at)" : ($hasInvoiceDate ? "i.invoice_date" : "CURDATE()");
 
-if ($hasCreatedAt) {
-  $dateWhereSql = "DATE(i.created_at) = :date1";
-} elseif ($hasInvoiceDate) {
-  $dateWhereSql = "i.invoice_date = :date1";
-} else {
-  $dateWhereSql = "1=1";
-}
+// ✅ FORZADO: Movimiento diario SIEMPRE por fecha de creación.
+// Esto evita que invoice_date mezcle facturas de otros días.
+$dateSelectSql = "DATE(i.created_at)";
+$dateWhereSql = "DATE(i.created_at) = :date1";
 
 $patientNameExpr = "TRIM(CONCAT(COALESCE(p.first_name,''),' ',COALESCE(p.last_name,'')))";
 if (colExists($pdo, "patients", "full_name")) {
@@ -115,10 +108,10 @@ try {
   ";
 
   $st = $pdo->prepare($sql);
-  $params = [':branch_id' => $branchId];
-  if ($hasCreatedAt || $hasInvoiceDate) {
-    $params[':date1'] = $date;
-  }
+  $params = [
+    ':branch_id' => $branchId,
+    ':date1' => $date
+  ];
   $st->execute($params);
   $invoices = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
@@ -284,7 +277,7 @@ try {
     <div class="page-wrap">
       <div class="head-row">
         <div>
-          <h1 class="title">Movimiento diario</h1>
+          <h1 class="title">Movimiento diario CREACIÓN v5</h1>
           <p class="sub">Sucursal: <?= h($branchName ?: '—') ?> · Fecha: <?= h($date) ?></p>
         </div>
         <div class="actions">
