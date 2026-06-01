@@ -317,7 +317,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             </div>
 
             <div>
-              <label for="email">Correo</label>
+              <label for="email">Dirección</label>
               <input id="email" name="email" type="email" class="input" value="<?= h($email) ?>">
             </div>
 
