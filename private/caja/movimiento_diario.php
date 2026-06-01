@@ -61,11 +61,14 @@ $hasCoverage = colExists($pdo, "invoices", "coverage_amount");
 $hasCreatedAt = colExists($pdo, "invoices", "created_at");
 $hasInvoiceDate = colExists($pdo, "invoices", "invoice_date");
 
-$invoiceCodeSql = $hasInvoiceCode ? "i.invoice_code" : "CAST(i.id AS CHAR)";
+$invoiceCodeSql = $hasInvoiceCode ? "i.invoice_code" : "CONCAT('#', i.id)";
 $subtotalSql = $hasSubtotal ? "i.subtotal" : "i.total";
 $coverageSql = $hasCoverage ? "i.coverage_amount" : "0";
 $dateSelectSql = $hasInvoiceDate ? "i.invoice_date" : ($hasCreatedAt ? "DATE(i.created_at)" : "CURDATE()");
-$dateWhereSql = $hasInvoiceDate ? "i.invoice_date" : ($hasCreatedAt ? "DATE(i.created_at)" : "CURDATE()");
+$dateWhereParts = [];
+if ($hasInvoiceDate) $dateWhereParts[] = "i.invoice_date = :date1";
+if ($hasCreatedAt) $dateWhereParts[] = "DATE(i.created_at) = :date2";
+$dateWhereSql = $dateWhereParts ? "(" . implode(" OR ", $dateWhereParts) . ")" : "1=1";
 
 $patientNameExpr = "TRIM(CONCAT(COALESCE(p.first_name,''),' ',COALESCE(p.last_name,'')))";
 if (colExists($pdo, "patients", "full_name")) {
@@ -82,8 +85,11 @@ $totFacturado = 0.0;
 $totCobertura = 0.0;
 $totGeneral = 0.0;
 $totPagado = 0.0;
+$totDesembolsos = 0.0;
+$neto = 0.0;
 
 try {
+  // Facturas de la sucursal por fecha de factura o fecha de creación.
   $sql = "
     SELECT
       i.id,
@@ -95,27 +101,33 @@ try {
       COALESCE(i.total, 0) AS total
     FROM invoices i
     LEFT JOIN patients p ON p.id = i.patient_id
-    WHERE i.branch_id = ?
-      AND {$dateWhereSql} = ?
+    WHERE i.branch_id = :branch_id
+      AND {$dateWhereSql}
     ORDER BY i.id ASC
   ";
 
   $st = $pdo->prepare($sql);
-  $st->execute([$branchId, $date]);
+  $params = [':branch_id' => $branchId];
+  if ($hasInvoiceDate) $params[':date1'] = $date;
+  if ($hasCreatedAt) $params[':date2'] = $date;
+  $st->execute($params);
   $invoices = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
+  // Pagos/coberturas por factura, según movimientos reales de caja.
   $stMov = $pdo->prepare(" 
     SELECT
       COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago IN ('cobertura','seguro') THEN amount END),0) AS cobertura_mov,
       COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago NOT IN ('cobertura','seguro') THEN amount END),0) AS pagado_mov
     FROM cash_movements
     WHERE branch_id = ?
+      AND type = 'ingreso'
+      AND DATE(created_at) = ?
       AND motivo LIKE ?
   ");
 
   foreach ($invoices as $inv) {
     $invoiceId = (int)$inv["id"];
-    $stMov->execute([$branchId, "%factura #" . $invoiceId . "%"]);
+    $stMov->execute([$branchId, $date, "%factura #" . $invoiceId . "%"]);
     $mov = $stMov->fetch(PDO::FETCH_ASSOC) ?: ["cobertura_mov" => 0, "pagado_mov" => 0];
 
     $coberturaDb = (float)($inv["cobertura_db"] ?? 0);
@@ -127,10 +139,10 @@ try {
 
     $subtotal = (float)($inv["subtotal"] ?? 0);
     $totalGeneral = $subtotal > 0 ? $subtotal : ($pagado + $cobertura);
-
     $montoFacturado = $totalGeneral;
 
     $rows[] = [
+      "tipo" => "FACTURA",
       "factura" => (string)($inv["factura"] ?: ("#" . $invoiceId)),
       "cliente" => trim((string)($inv["cliente"] ?? "")) ?: "—",
       "fecha" => substr((string)($inv["fecha"] ?? $date), 0, 10),
@@ -138,6 +150,7 @@ try {
       "cobertura" => $cobertura,
       "total_general" => $totalGeneral,
       "pagado" => $pagado,
+      "is_desembolso" => false,
     ];
 
     $totFacturado += $montoFacturado;
@@ -145,6 +158,42 @@ try {
     $totGeneral += $totalGeneral;
     $totPagado += $pagado;
   }
+
+  // Desembolsos de la sucursal en la fecha seleccionada.
+  $stDes = $pdo->prepare(" 
+    SELECT id, motivo, amount, created_at
+    FROM cash_movements
+    WHERE branch_id = ?
+      AND type = 'desembolso'
+      AND DATE(created_at) = ?
+    ORDER BY id ASC
+  ");
+  $stDes->execute([$branchId, $date]);
+  $desembolsos = $stDes->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+  foreach ($desembolsos as $d) {
+    $monto = abs((float)($d['amount'] ?? 0));
+    $motivo = trim((string)($d['motivo'] ?? ''));
+    $rows[] = [
+      "tipo" => "DESEMBOLSO",
+      "factura" => "DES-" . (int)$d['id'],
+      "cliente" => $motivo !== '' ? $motivo : 'Desembolso',
+      "fecha" => substr((string)($d['created_at'] ?? $date), 0, 10),
+      "monto_facturado" => 0,
+      "cobertura" => 0,
+      "total_general" => -$monto,
+      "pagado" => -$monto,
+      "is_desembolso" => true,
+    ];
+    $totDesembolsos += $monto;
+  }
+
+  usort($rows, function($a, $b){
+    return strcmp((string)$a['fecha'], (string)$b['fecha']) ?: strcmp((string)$a['factura'], (string)$b['factura']);
+  });
+
+  $neto = $totPagado - $totDesembolsos;
+
 } catch (Throwable $e) {
   $error = "Error generando movimiento diario: " . $e->getMessage();
 }
@@ -155,7 +204,7 @@ try {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Movimiento diario</title>
-  <link rel="stylesheet" href="/assets/css/styles.css?v=120">
+  <link rel="stylesheet" href="/assets/css/styles.css?v=130">
   <style>
     .page-wrap{max-width:1250px;width:100%;margin:0 auto;}
     .report-card{background:#fff;border-radius:22px;box-shadow:0 12px 34px rgba(0,0,0,.08);padding:18px;}
@@ -169,14 +218,20 @@ try {
     .field label{display:block;font-size:12px;font-weight:900;color:#475569;margin-bottom:5px;}
     .field input,.field select{height:38px;border-radius:12px;border:1px solid #dbe3ea;padding:0 10px;font-weight:800;background:#fff;}
     .table-wrap{overflow:auto;border:1px solid #e6eef7;border-radius:18px;}
-    table{width:100%;min-width:980px;border-collapse:collapse;background:#fff;}
+    table{width:100%;min-width:1050px;border-collapse:collapse;background:#fff;}
     th,td{padding:12px 10px;border-bottom:1px solid #eef2f7;text-align:left;font-size:13px;}
     th{background:#f7fbff;color:#0b4d87;font-weight:950;white-space:nowrap;}
     td.money,th.money{text-align:right;white-space:nowrap;font-weight:900;}
+    .badge{display:inline-flex;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:950;border:1px solid #dbeafe;background:#eff6ff;color:#1e40af;}
+    .badge.des{background:#fff7ed;border-color:#fed7aa;color:#9a3412;}
+    .des-row td{background:#fffaf0;}
     tfoot td{background:#f8fafc;font-weight:950;}
     .empty{text-align:center;padding:20px!important;color:#64748b;font-weight:800;}
     .danger{background:#fee2e2;border:1px solid #fecaca;color:#991b1b;border-radius:14px;padding:12px;margin-bottom:12px;font-weight:800;}
-    @media(max-width:900px){.title{font-size:31px}.actions{justify-content:flex-start}.filter{align-items:stretch}.field,.field input,.field select,.btn-local{width:100%;}}
+    .summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px;}
+    .sum-card{background:#f8fafc;border:1px solid #e6eef7;border-radius:16px;padding:12px;font-weight:900;}
+    .sum-card small{display:block;color:#64748b;margin-bottom:5px;font-weight:900;}
+    @media(max-width:900px){.title{font-size:31px}.actions{justify-content:flex-start}.filter{align-items:stretch}.field,.field input,.field select,.btn-local{width:100%;}.summary{grid-template-columns:1fr;}}
     @media print{
       @page{margin:9mm;}
       body{background:#fff!important;}
@@ -184,8 +239,9 @@ try {
       .layout{display:block!important;height:auto!important;}
       .content{padding:0!important;overflow:visible!important;}
       .report-card{box-shadow:none!important;border-radius:0!important;padding:0!important;}
-      table{min-width:0!important;font-size:11px;}
-      th,td{font-size:11px;padding:7px 6px;}
+      table{min-width:0!important;font-size:10px;}
+      th,td{font-size:10px;padding:6px 5px;}
+      .summary{grid-template-columns:repeat(4,1fr);}
     }
   </style>
 </head>
@@ -249,8 +305,9 @@ try {
           <table>
             <thead>
               <tr>
+                <th>Tipo</th>
                 <th>Factura</th>
-                <th>Cliente</th>
+                <th>Cliente / Motivo</th>
                 <th>Fecha</th>
                 <th class="money">Monto Facturado</th>
                 <th class="money">Cobertura</th>
@@ -260,10 +317,11 @@ try {
             </thead>
             <tbody>
               <?php if (!$rows): ?>
-                <tr><td colspan="7" class="empty">No hay facturas registradas para esta fecha.</td></tr>
+                <tr><td colspan="8" class="empty">No hay facturas ni desembolsos registrados para esta fecha.</td></tr>
               <?php else: ?>
                 <?php foreach ($rows as $r): ?>
-                  <tr>
+                  <tr class="<?= !empty($r['is_desembolso']) ? 'des-row' : '' ?>">
+                    <td><span class="badge <?= !empty($r['is_desembolso']) ? 'des' : '' ?>"><?= h($r['tipo']) ?></span></td>
                     <td><?= h($r['factura']) ?></td>
                     <td><?= h($r['cliente']) ?></td>
                     <td><?= h($r['fecha']) ?></td>
@@ -278,16 +336,25 @@ try {
             <?php if ($rows): ?>
             <tfoot>
               <tr>
-                <td colspan="3">Totales</td>
+                <td colspan="4">Totales</td>
                 <td class="money">RD$ <?= money($totFacturado) ?></td>
                 <td class="money">RD$ <?= money($totCobertura) ?></td>
-                <td class="money">RD$ <?= money($totGeneral) ?></td>
-                <td class="money">RD$ <?= money($totPagado) ?></td>
+                <td class="money">RD$ <?= money($totGeneral - $totDesembolsos) ?></td>
+                <td class="money">RD$ <?= money($neto) ?></td>
               </tr>
             </tfoot>
             <?php endif; ?>
           </table>
         </div>
+
+        <?php if ($rows): ?>
+          <div class="summary">
+            <div class="sum-card"><small>Facturado</small>RD$ <?= money($totFacturado) ?></div>
+            <div class="sum-card"><small>Cobertura</small>RD$ <?= money($totCobertura) ?></div>
+            <div class="sum-card"><small>Desembolsos</small>RD$ <?= money($totDesembolsos) ?></div>
+            <div class="sum-card"><small>Neto</small>RD$ <?= money($neto) ?></div>
+          </div>
+        <?php endif; ?>
       </section>
     </div>
   </main>
