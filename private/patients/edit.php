@@ -306,7 +306,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
            <div>
     <label for="direccion">Dirección</label>
-    <input id="direccion" name="direccion" class="input" value="<?= h($direccion ?? '') ?>">
+    <input id="direccion" name="email" class="input" value="<?= h($direccion ?? '') ?>">
 </div>
 
             <div>
