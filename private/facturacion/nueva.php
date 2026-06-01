@@ -149,7 +149,7 @@ function cajaFallbackInsert(PDO $conn, int $branchId, int $userId, int $invoiceI
     "amount"      => ["amount","monto","total","importe","valor"],
     "method"      => ["method","metodo","payment_method","forma_pago"],
     "reference"   => ["reference","ref","invoice_id","factura_id","referencia"],
-    "description" => ["description","descripcion","concepto","detalle","nota","notes"],
+    "description" => ["motivo","description","descripcion","concepto","detalle","nota","notes"],
     "created_at"  => ["created_at","fecha","created_on","created"],
   ];
 
@@ -166,6 +166,7 @@ function cajaFallbackInsert(PDO $conn, int $branchId, int $userId, int $invoiceI
   $cRef    = $pick($map["reference"]);
   $cDesc   = $pick($map["description"]);
   $cAt     = $pick($map["created_at"]);
+  $cSesion = in_array("caja_sesion_id", $cols, true) ? "caja_sesion_id" : null;
 
   if ($cAmount === null) return;
 
@@ -173,6 +174,10 @@ function cajaFallbackInsert(PDO $conn, int $branchId, int $userId, int $invoiceI
   $vals   = [];
 
   if ($cBranch) { $fields[] = $cBranch; $vals[] = $branchId; }
+  if ($cSesion && function_exists("caja_get_or_create_session_id")) {
+    $sid = (int)caja_get_or_create_session_id($conn, $branchId);
+    if ($sid > 0) { $fields[] = $cSesion; $vals[] = $sid; }
+  }
   if ($cUser)   { $fields[] = $cUser;   $vals[] = $userId; }
   if ($cType)   { $fields[] = $cType;   $vals[] = "ingreso"; }
   $fields[] = $cAmount; $vals[] = $amount;

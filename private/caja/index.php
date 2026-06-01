@@ -246,8 +246,8 @@ function renderCajaCard(int $num, string $titulo, array $r, float $ing, float $n
       <?php endif; ?>
 
       <div class="grid-2">
-        <?php renderCajaCard(1, 'Caja 1 (7:00 AM - 12:59 PM)', $r1, $ing1, $net1, $open1, $latest1); ?>
-        <?php renderCajaCard(2, 'Caja 2 (1:00 PM - 11:59 PM)', $r2, $ing2, $net2, $open2, $latest2); ?>
+        <?php renderCajaCard(1, 'Caja 1 ', $r1, $ing1, $net1, $open1, $latest1); ?>
+        <?php renderCajaCard(2, 'Caja 2 ', $r2, $ing2, $net2, $open2, $latest2); ?>
       </div>
 
       <div class="hint-box">
