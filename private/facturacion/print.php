@@ -48,6 +48,8 @@ if (colExists($conn, "patients", "full_name")) {
 $selectExtra = [];
 
 // Campos opcionales en invoices
+if (colExists($conn, 'invoices', 'invoice_code')) $selectExtra[] = "i.invoice_code";
+if (colExists($conn, 'invoices', 'invoice_number')) $selectExtra[] = "i.invoice_number";
 if (colExists($conn, 'invoices', 'ars')) $selectExtra[] = "i.ars";
 if (colExists($conn, 'invoices', 'no_libro')) $selectExtra[] = "i.no_libro";
 if (colExists($conn, 'invoices', 'numero_afiliado')) $selectExtra[] = "i.numero_afiliado";
@@ -115,6 +117,11 @@ $sucursal = (string)($inv["branch_name"] ?? "");
 $pago     = strtoupper((string)($inv["payment_method"] ?? "EFECTIVO"));
 $total    = (float)($inv["total"] ?? 0);
 $year     = date("Y");
+
+$facturaCode = trim((string)($inv["invoice_code"] ?? ""));
+if ($facturaCode === "") {
+  $facturaCode = "#" . (string)((int)$id);
+}
 
 /* =========================
    CAMPOS EXTRA (ticket)
@@ -229,7 +236,7 @@ foreach ($logoCandidates as $path) {
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Factura #<?= (int)$id ?></title>
+<title>Factura <?= h($facturaCode) ?></title>
 
 <style>
   @page{ size:80mm auto; margin:2mm; }
@@ -267,7 +274,7 @@ foreach ($logoCandidates as $path) {
 
   <div class="divider"></div>
 
-  <div><span class="bold">Factura:</span> #<?= (int)$id ?></div>
+  <div><span class="bold">Factura:</span> <?= h($facturaCode) ?></div>
   <div><span class="bold">Fecha:</span> <?= h($fecha) ?></div>
   <div><span class="bold">Hora:</span> <?= h($hora !== '' ? $hora : '—') ?></div>
   <div><span class="bold">Paciente:</span> <?= h($paciente) ?></div>

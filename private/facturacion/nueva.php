@@ -78,6 +78,23 @@ function number0($v): float {
   return (float)$v;
 }
 
+function invoicePrefixByBranch(int $branchId): string {
+  $map = [
+    1 => "M",   // Moca
+    2 => "L",   // La Vega
+    3 => "SC",  // Salcedo
+    4 => "S",   // Santiago
+    5 => "V",   // Mao
+    6 => "P",   // Puerto Plata
+  ];
+
+  return $map[$branchId] ?? "F";
+}
+
+function buildInvoiceCode(int $branchId, int $number): string {
+  return invoicePrefixByBranch($branchId) . "-" . str_pad((string)$number, 7, "0", STR_PAD_LEFT);
+}
+
 /**
  * Devuelve expresiones SQL seguras para nombre/documento/teléfono/nac
  * sin asumir el esquema exacto de `patients`.
@@ -543,28 +560,29 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     if ($hasBranch && $branch_id <= 0) {
       throw new RuntimeException("No se pudo determinar la sucursal del usuario.");
     }
-// ✅ Numeración independiente por sucursal
+// ✅ Numeración independiente por sucursal + serie
 $invoice_number = 1;
+$invoice_code   = buildInvoiceCode($branch_id, $invoice_number);
 
 try {
   if (columnExists($conn, "invoices", "invoice_number")) {
-
     $stNum = $conn->prepare("
       SELECT COALESCE(MAX(invoice_number), 0) + 1
       FROM invoices
       WHERE branch_id = ?
     ");
-
     $stNum->execute([$branch_id]);
 
     $invoice_number = (int)$stNum->fetchColumn();
-
     if ($invoice_number <= 0) {
       $invoice_number = 1;
     }
   }
+
+  $invoice_code = buildInvoiceCode($branch_id, $invoice_number);
 } catch (Throwable $e) {
   $invoice_number = 1;
+  $invoice_code   = buildInvoiceCode($branch_id, $invoice_number);
 }
     $fields = [
   "patient_id",
@@ -586,6 +604,12 @@ $vals = [
 if (columnExists($conn, "invoices", "invoice_number")) {
   $fields[] = "invoice_number";
   $vals[]   = $invoice_number;
+}
+
+// ✅ guardar código de factura con serie de sucursal: M-0000001, S-0000001, etc.
+if (columnExists($conn, "invoices", "invoice_code")) {
+  $fields[] = "invoice_code";
+  $vals[]   = $invoice_code;
 }
 
     if ($hasBranch) { $fields[]="branch_id"; $vals[]=$branch_id; }
@@ -704,7 +728,7 @@ if (columnExists($conn, "invoices", "invoice_number")) {
     $conn->commit();
 
     $last_invoice_id = $invoice_id;
-    $ok = "Factura creada (#{$invoice_id}).";
+    $ok = "Factura creada ({$invoice_code}).";
   } catch (Throwable $e) {
     if ($conn->inTransaction()) $conn->rollBack();
     $err = $e->getMessage();
