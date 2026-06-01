@@ -55,13 +55,13 @@ try {
   if ($bn) $branchName = (string)$bn;
 } catch (Throwable $e) {}
 
-$hasInvoiceCode = colExists($pdo, "invoices", "invoice_code");
+$hasInvoiceCode = true; // columna existente en tu tabla invoices
 $hasSubtotal = colExists($pdo, "invoices", "subtotal");
 $hasCoverage = colExists($pdo, "invoices", "coverage_amount");
 $hasCreatedAt = colExists($pdo, "invoices", "created_at");
 $hasInvoiceDate = colExists($pdo, "invoices", "invoice_date");
 
-$invoiceCodeSql = $hasInvoiceCode ? "COALESCE(NULLIF(i.invoice_code, ''), CONCAT('#', i.id))" : "CONCAT('#', i.id)";
+$invoiceCodeSql = "COALESCE(NULLIF(i.invoice_code, ''), CONCAT('#', i.id))";
 $subtotalSql = $hasSubtotal ? "i.subtotal" : "i.total";
 $coverageSql = $hasCoverage ? "i.coverage_amount" : "0";
 $dateSelectSql = $hasInvoiceDate ? "i.invoice_date" : ($hasCreatedAt ? "DATE(i.created_at)" : "CURDATE()");
@@ -94,6 +94,7 @@ try {
     SELECT
       i.id,
       {$invoiceCodeSql} AS factura,
+      i.invoice_code AS invoice_code,
       {$patientNameExpr} AS cliente,
       {$dateSelectSql} AS fecha,
       COALESCE({$subtotalSql}, 0) AS subtotal,
@@ -127,7 +128,10 @@ try {
 
   foreach ($invoices as $inv) {
     $invoiceId = (int)$inv["id"];
-    $facturaCode = trim((string)($inv["factura"] ?? ""));
+    $facturaCode = trim((string)($inv["invoice_code"] ?? ""));
+    if ($facturaCode === "") {
+      $facturaCode = trim((string)($inv["factura"] ?? ""));
+    }
     $stMov->execute([$branchId, $date, "%factura #" . $invoiceId . "%", $facturaCode !== "" ? "%" . $facturaCode . "%" : "%factura #" . $invoiceId . "%"]);
     $mov = $stMov->fetch(PDO::FETCH_ASSOC) ?: ["cobertura_mov" => 0, "pagado_mov" => 0];
 
