@@ -304,10 +304,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
               <input id="phone" name="phone" class="input" value="<?= h($phone) ?>">
             </div>
 
-            <div>
-              <label for="email">Dirección</label>
-              <input id="email" name="email" type="email" class="input" value="<?= h($email) ?>">
-            </div>
+           <div>
+    <label for="direccion">Dirección</label>
+    <input id="direccion" name="direccion" class="input" value="<?= h($direccion ?? '') ?>">
+</div>
 
             <div>
               <label for="birth_date">Fecha de nacimiento</label>
