@@ -92,7 +92,7 @@ $first_name         = (string)($p['first_name'] ?? '');
 $last_name          = (string)($p['last_name'] ?? '');
 $cedula             = (string)($p['cedula'] ?? '');
 $phone              = (string)($p['phone'] ?? '');
-$email              = (string)($p['email'] ?? '');
+$direccion          = (string)($p['direccion'] ?? '');
 $birth_date         = (string)($p['birth_date'] ?? '');
 $gender             = (string)($p['gender'] ?? '');
 $blood_type         = (string)($p['blood_type'] ?? '');
@@ -114,7 +114,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
   $last_name          = trim((string)($_POST['last_name'] ?? ''));
   $cedula             = trim((string)($_POST['cedula'] ?? ''));
   $phone              = trim((string)($_POST['phone'] ?? ''));
-  $email              = trim((string)($_POST['email'] ?? ''));
+  $direccion          = trim((string)($_POST['direccion'] ?? ''));
   $birth_date         = trim((string)($_POST['birth_date'] ?? ''));
   $gender             = trim((string)($_POST['gender'] ?? ''));
   $blood_type         = trim((string)($_POST['blood_type'] ?? ''));
@@ -147,7 +147,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
       } else {
         $up = $pdo->prepare("
           UPDATE patients SET
-            no_libro=:nl, first_name=:fn, last_name=:ln, cedula=:ced, phone=:ph, email=:em,
+            no_libro=:nl, first_name=:fn, last_name=:ln, cedula=:ced, phone=:ph, direccion=:dir,
             birth_date=:bd, gender=:ge, blood_type=:bt, branch_id=:bid,
             medico_refiere=:mr, clinica_referencia=:cr, ars=:ars, numero_afiliado=:na, registrado_por=:rp
           WHERE id=:id
@@ -159,7 +159,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
           'ln'  => $last_name,
           'ced' => $cedula !== '' ? $cedula : null,
           'ph'  => $phone !== '' ? $phone : null,
-          'em'  => $email !== '' ? $email : null,
+          'dir' => $direccion !== '' ? $direccion : null,
           'bd'  => $birth_date !== '' ? $birth_date : null,
           'ge'  => $gender !== '' ? $gender : null,
           'bt'  => $blood_type !== '' ? $blood_type : null,
@@ -306,7 +306,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
            <div>
     <label for="direccion">Dirección</label>
-    <input id="direccion" name="email" class="input" value="<?= h($direccion ?? '') ?>">
+    <input id="direccion" name="direccion" class="input" value="<?= h($direccion) ?>">
 </div>
 
             <div>

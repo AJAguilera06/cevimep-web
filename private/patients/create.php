@@ -108,7 +108,7 @@ $first_name = "";
 $last_name = "";
 $cedula = "";
 $phone = "";
-$email = "";
+$direccion = "";
 $birth_date = "";
 $gender = "";
 $blood_type = "";
@@ -127,7 +127,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
   $last_name          = trim((string)($_POST['last_name'] ?? ''));
   $cedula             = trim((string)($_POST['cedula'] ?? ''));
   $phone              = trim((string)($_POST['phone'] ?? ''));
-  $email              = trim((string)($_POST['email'] ?? ''));
+  $direccion          = trim((string)($_POST['direccion'] ?? ''));
   $birth_date         = normalize_date_to_mysql((string)($_POST['birth_date'] ?? ''));
   $gender             = trim((string)($_POST['gender'] ?? ''));
   $blood_type         = trim((string)($_POST['blood_type'] ?? ''));
@@ -161,10 +161,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
       } else {
         $st = $pdo->prepare("
           INSERT INTO patients
-            (no_libro, first_name, last_name, cedula, phone, email, birth_date, gender, blood_type, branch_id,
+            (no_libro, first_name, last_name, cedula, phone, direccion, birth_date, gender, blood_type, branch_id,
              medico_refiere, clinica_referencia, ars, numero_afiliado, registrado_por)
           VALUES
-            (:nl, :fn, :ln, :ced, :ph, :em, :bd, :ge, :bt, :bid,
+            (:nl, :fn, :ln, :ced, :ph, :dir, :bd, :ge, :bt, :bid,
              :mr, :cr, :ars, :na, :rp)
         ");
 
@@ -174,7 +174,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
           'ln'  => $last_name,
           'ced' => $cedula !== '' ? $cedula : null,
           'ph'  => $phone !== '' ? $phone : null,
-          'em'  => $email !== '' ? $email : null,
+          'dir' => $direccion !== '' ? $direccion : null,
           'bd'  => $birth_date !== '' ? $birth_date : null,
           'ge'  => $gender !== '' ? $gender : null,
           'bt'  => $blood_type !== '' ? $blood_type : null,
@@ -318,7 +318,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
            <div>
     <label for="direccion">Dirección</label>
-    <input id="direccion" name="email" class="input" value="<?= h($direccion ?? '') ?>">
+    <input id="direccion" name="direccion" class="input" value="<?= h($direccion) ?>">
 </div>
 
             <div>
