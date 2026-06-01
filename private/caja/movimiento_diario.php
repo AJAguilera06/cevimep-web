@@ -61,7 +61,7 @@ $hasCoverage = colExists($pdo, "invoices", "coverage_amount");
 $hasCreatedAt = colExists($pdo, "invoices", "created_at");
 $hasInvoiceDate = colExists($pdo, "invoices", "invoice_date");
 
-$invoiceCodeSql = $hasInvoiceCode ? "i.invoice_code" : "CONCAT('#', i.id)";
+$invoiceCodeSql = $hasInvoiceCode ? "COALESCE(NULLIF(i.invoice_code, ''), CONCAT('#', i.id))" : "CONCAT('#', i.id)";
 $subtotalSql = $hasSubtotal ? "i.subtotal" : "i.total";
 $coverageSql = $hasCoverage ? "i.coverage_amount" : "0";
 $dateSelectSql = $hasInvoiceDate ? "i.invoice_date" : ($hasCreatedAt ? "DATE(i.created_at)" : "CURDATE()");
@@ -122,12 +122,13 @@ try {
     WHERE branch_id = ?
       AND type = 'ingreso'
       AND DATE(created_at) = ?
-      AND motivo LIKE ?
+      AND (motivo LIKE ? OR motivo LIKE ?)
   ");
 
   foreach ($invoices as $inv) {
     $invoiceId = (int)$inv["id"];
-    $stMov->execute([$branchId, $date, "%factura #" . $invoiceId . "%"]);
+    $facturaCode = trim((string)($inv["factura"] ?? ""));
+    $stMov->execute([$branchId, $date, "%factura #" . $invoiceId . "%", $facturaCode !== "" ? "%" . $facturaCode . "%" : "%factura #" . $invoiceId . "%"]);
     $mov = $stMov->fetch(PDO::FETCH_ASSOC) ?: ["cobertura_mov" => 0, "pagado_mov" => 0];
 
     $coberturaDb = (float)($inv["cobertura_db"] ?? 0);
@@ -143,7 +144,7 @@ try {
 
     $rows[] = [
       "tipo" => "FACTURA",
-      "factura" => (string)($inv["factura"] ?: ("#" . $invoiceId)),
+      "factura" => $facturaCode !== "" ? $facturaCode : ("#" . $invoiceId),
       "cliente" => trim((string)($inv["cliente"] ?? "")) ?: "—",
       "fecha" => substr((string)($inv["fecha"] ?? $date), 0, 10),
       "monto_facturado" => $montoFacturado,
