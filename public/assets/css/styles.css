@@ -14,7 +14,8 @@ body{
   font-family:system-ui,Segoe UI,Roboto,Arial;
   background:var(--bg);
   color:var(--text);
-  overflow:hidden;
+  overflow-x:hidden;
+  overflow-y:auto;
 }
 
 /* TOPBAR */
@@ -58,7 +59,7 @@ body{
 /* LAYOUT */
 .layout{
   display:flex;
-  height:calc(100vh - 64px - 56px);
+  min-height:calc(100vh - 64px - 56px);
 }
 
 /* SIDEBAR */
@@ -94,12 +95,11 @@ body{
 /* CONTENT */
 .content{
   flex:1;
+  min-width:0;
+  overflow:auto;
+  padding:20px;
   background:
     radial-gradient(800px 400px at 30% 0%, rgba(20,184,166,.15), transparent 60%);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  text-align:center;
 }
 .welcome-center h1{
   font-size:40px;
@@ -119,4 +119,123 @@ body{
   align-items:center;
   justify-content:center;
   font-size:12px;
+}
+
+
+/* ==========================
+   RESPONSIVE GLOBAL
+   Ajuste para monitores pequeños, laptops y pantallas grandes
+========================== */
+
+img, svg, video, canvas{
+  max-width:100%;
+  height:auto;
+}
+
+main, section, article, aside, header, footer{
+  min-width:0;
+}
+
+input, select, textarea, button{
+  max-width:100%;
+}
+
+.table-wrap,
+.card-table,
+.patients-card,
+.table-scroll{
+  width:100%;
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+}
+
+table{
+  max-width:100%;
+}
+
+@media (max-width: 1366px){
+  .sidebar{
+    width:220px;
+  }
+
+  .content{
+    padding:15px;
+  }
+
+  .menu a{
+    padding:10px 12px;
+    font-size:14px;
+  }
+}
+
+@media (max-width: 1024px){
+  body{
+    overflow-y:auto;
+  }
+
+  .layout{
+    flex-direction:column;
+    height:auto;
+    min-height:calc(100vh - 64px - 56px);
+  }
+
+  .sidebar{
+    width:100%;
+    padding:10px;
+  }
+
+  .menu-title{
+    margin-bottom:10px;
+  }
+
+  .menu{
+    flex-direction:row;
+    flex-wrap:wrap;
+    justify-content:center;
+  }
+
+  .menu a{
+    min-width:170px;
+    text-align:center;
+    justify-content:center;
+  }
+}
+
+@media (max-width: 768px){
+  .navbar .inner{
+    padding:0 10px;
+    justify-content:space-between;
+  }
+
+  .brand{
+    position:static;
+    transform:none;
+  }
+
+  .content{
+    padding:10px;
+  }
+
+  table{
+    min-width:700px;
+  }
+
+  .footer{
+    min-height:56px;
+    height:auto;
+    padding:10px;
+    text-align:center;
+  }
+}
+
+@media (max-width: 480px){
+  .menu a{
+    width:100%;
+    min-width:0;
+  }
+
+  .btn,
+  .btn-pill{
+    width:100%;
+  }
 }

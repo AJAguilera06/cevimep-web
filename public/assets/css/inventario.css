@@ -404,3 +404,49 @@
 /* Historial colapsable */
 .inv-entrada .hist-body{ display:none; }
 .inv-entrada .hist-body.show{ display:block; }
+
+
+/* ==========================
+   RESPONSIVE EXTRA INVENTARIO
+========================== */
+.content.inv-root{
+  min-width:0;
+}
+
+.content.inv-root .inv-wrap{
+  max-width:min(1120px, 100%);
+}
+
+.content.inv-root .inv-card{
+  overflow-x:auto;
+}
+
+@media (max-width: 1366px){
+  .content.inv-root{
+    padding:16px;
+  }
+
+  .content.inv-root .inv-head h1{
+    font-size:clamp(28px, 3vw, 40px);
+  }
+}
+
+@media (max-width: 768px){
+  .content.inv-root{
+    padding:10px;
+  }
+
+  .content.inv-root .section-head,
+  .inv-root .acuse .row{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .inv-root .btn-action{
+    width:100%;
+  }
+
+  .inv-entrada .row-3{
+    grid-template-columns:1fr;
+  }
+}

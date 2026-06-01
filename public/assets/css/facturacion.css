@@ -457,3 +457,61 @@
   width: 100%;
   flex-wrap: wrap;
 }
+
+
+/* ==========================
+   RESPONSIVE EXTRA FACTURACIÓN
+========================== */
+.fact-wrap,
+.fact-center{
+  width:100%;
+  max-width:min(1100px, 96vw);
+}
+
+.fact-card,
+.fact-card-wide,
+.fact-center-card{
+  width:100%;
+  overflow-x:auto;
+}
+
+.fact-table,
+.fact-table-center{
+  min-width:700px;
+}
+
+@media (max-width: 1366px){
+  .fact-head h1{
+    font-size:clamp(28px, 3vw, 34px);
+  }
+}
+
+@media (max-width: 768px){
+  .fact-wrap,
+  .fact-center{
+    max-width:100%;
+    padding:16px 10px;
+  }
+
+  .fact-card-head,
+  .fact-card-wide .head,
+  .fact-center-card-title{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .fact-row{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .fact-patient-stats{
+    grid-template-columns:1fr;
+  }
+
+  .fact-btn,
+  .fact-badge,
+  .fact-pill{
+    width:100%;
+  }
+}

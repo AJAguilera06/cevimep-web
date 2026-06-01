@@ -121,7 +121,7 @@
   border-collapse: separate;
   border-spacing: 0;
   font-size: 14px;             /* MÁS LEGIBLE */
-  min-width: 980px;            /* para que no se apriete */
+  min-width: 700px;            /* evita que se corte en pantallas pequeñas */
 }
 
 .table thead th {
@@ -186,4 +186,48 @@
   .module-head-right { width: 100%; justify-content: flex-start; }
   .searchbar { width: 100%; }
   .searchbar-input { width: 100%; max-width: 100%; }
+}
+
+
+/* ==========================
+   RESPONSIVE EXTRA PACIENTES
+========================== */
+.patients-card,
+.card-table{
+  width:100%;
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+}
+
+@media (max-width: 1366px){
+  .patients-wrap{
+    max-width: min(1100px, 96vw);
+  }
+
+  .patients-header h1,
+  .module-title{
+    font-size: clamp(28px, 3vw, 42px);
+  }
+}
+
+@media (max-width: 768px){
+  .patients-wrap{
+    max-width:100%;
+  }
+
+  .patients-actions,
+  .module-head-right{
+    width:100%;
+  }
+
+  .patients-actions form{
+    width:100%;
+  }
+
+  .patients-actions input[type="text"],
+  .searchbar-input{
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+  }
 }

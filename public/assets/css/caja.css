@@ -19,7 +19,8 @@ body{
   font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
   background:var(--bg);
   color:var(--text);
-  overflow:hidden;
+  overflow-x:hidden;
+  overflow-y:auto;
 }
 
 /* TOPBAR */
@@ -218,4 +219,66 @@ body{
 .footer__inner{
   width:100%;max-width:1400px;margin:0 auto;padding:0 18px;
   font-weight:900;text-align:center;
+}
+
+
+/* ==========================
+   RESPONSIVE EXTRA CAJA
+========================== */
+.content{
+  min-width:0;
+}
+
+.card{
+  max-width:100%;
+}
+
+@media(max-width:1366px){
+  .sidebar{
+    width:230px;
+  }
+
+  .content{
+    padding:16px;
+  }
+}
+
+@media(max-width:980px){
+  .layout{
+    height:auto;
+    min-height:calc(100vh - 64px - 56px);
+    flex-direction:column;
+  }
+
+  .sidebar{
+    display:flex;
+    width:100%;
+  }
+
+  .menu{
+    flex-direction:row;
+    flex-wrap:wrap;
+    justify-content:center;
+  }
+
+  .menu a{
+    min-width:170px;
+    justify-content:center;
+  }
+}
+
+@media(max-width:640px){
+  .menu a,
+  .btn{
+    width:100%;
+  }
+
+  .topbar__inner{
+    grid-template-columns:1fr;
+    text-align:center;
+  }
+
+  .topbar__link{
+    justify-self:center;
+  }
 }
