@@ -88,19 +88,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Numeración independiente por sucursal, igual que facturación.
         // Si tu tabla tiene columnas desembolso_number/desembolso_code, se guardan.
         // Si no existen, el acuse lo calcula por sucursal al imprimir.
-        $stNum = $pdo->prepare("
-          SELECT COALESCE(MAX(desembolso_number), 0) + 1
-          FROM cash_movements
-          WHERE branch_id = ?
-            AND type = 'desembolso'
-        ");
-
         $movementCols = tableColumns($pdo, "cash_movements");
         $hasDesembolsoNumber = in_array("desembolso_number", $movementCols, true);
         $hasDesembolsoCode   = in_array("desembolso_code", $movementCols, true);
 
         $desembolso_number = 1;
+
         if ($hasDesembolsoNumber) {
+          $stNum = $pdo->prepare("
+            SELECT COALESCE(MAX(desembolso_number), 0) + 1
+            FROM cash_movements
+            WHERE branch_id = ?
+              AND type = 'desembolso'
+          ");
+          $stNum->execute([$branch_id]);
+          $desembolso_number = (int)($stNum->fetchColumn() ?: 1);
+          if ($desembolso_number <= 0) $desembolso_number = 1;
+        } else {
+          // Si no existe la columna, calculamos el próximo número por conteo de esta sucursal.
+          // No se guarda en BD, pero el acuse lo podrá calcular por branch_id + id.
+          $stNum = $pdo->prepare("
+            SELECT COUNT(*) + 1
+            FROM cash_movements
+            WHERE branch_id = ?
+              AND type = 'desembolso'
+          ");
           $stNum->execute([$branch_id]);
           $desembolso_number = (int)($stNum->fetchColumn() ?: 1);
           if ($desembolso_number <= 0) $desembolso_number = 1;
