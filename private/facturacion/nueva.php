@@ -407,9 +407,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     if ($branch_id <= 0) throw new Exception("Sucursal inválida (branch_id).");
 
     $invoice_date    = trim((string)($_POST["invoice_date"] ?? date("Y-m-d")));
-    $payment_method  = trim((string)($_POST["payment_method"] ?? "EFECTIVO"));
+    $payment_method  = mb_strtoupper(trim((string)($_POST["payment_method"] ?? "EFECTIVO")));
     $cash_received   = ($_POST["cash_received"] ?? null);
     $coverage_amount = number0($_POST["coverage_amount"] ?? 0);
+
+    // Pago mixto: permite dividir el total entre efectivo, tarjeta y transferencia.
+    $mixed_cash     = number0($_POST["mixed_cash_amount"] ?? 0);
+    $mixed_card     = number0($_POST["mixed_card_amount"] ?? 0);
+    $mixed_transfer = number0($_POST["mixed_transfer_amount"] ?? 0);
+
     $cash_received   = ($cash_received === "" || $cash_received === null) ? null : number0($cash_received);
     $representative  = trim((string)($_POST["representative"] ?? ""));
 
@@ -548,8 +554,22 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
     $total = max(0.0, $subtotal - $coverage_amount);
 
     $change_due = null;
-    if (mb_strtoupper($payment_method) === "EFECTIVO") {
+    if ($payment_method === "EFECTIVO") {
       $change_due = (float)number0($cash_received ?? 0) - $total;
+    } elseif ($payment_method === "MIXTO") {
+      $mixed_total = $mixed_cash + $mixed_card + $mixed_transfer;
+
+      if ($mixed_total <= 0) {
+        throw new Exception("Debe ingresar los montos del pago mixto.");
+      }
+
+      // Se permite una diferencia pequeña por redondeo.
+      if (abs($mixed_total - $total) > 0.01) {
+        throw new Exception("En pago mixto, la suma de efectivo, tarjeta y transferencia debe ser igual al total a pagar.");
+      }
+
+      $cash_received = $mixed_cash > 0 ? $mixed_cash : null;
+      $change_due = null;
     } else {
       $cash_received = null;
       $change_due = null;
@@ -723,24 +743,40 @@ if (columnExists($conn, "invoices", "invoice_code")) {
     if ($pm === "card") $pm = "tarjeta";
     if ($pm === "transfer") $pm = "transferencia";
 
+    $paymentsToCaja = [];
+
+    if ($payment_method === "MIXTO") {
+      if ($mixed_cash > 0)     $paymentsToCaja[] = ["efectivo", $mixed_cash];
+      if ($mixed_card > 0)     $paymentsToCaja[] = ["tarjeta", $mixed_card];
+      if ($mixed_transfer > 0) $paymentsToCaja[] = ["transferencia", $mixed_transfer];
+    } else {
+      $paymentsToCaja[] = [$pm, (float)$total];
+    }
+
     // 1) si existe función oficial, úsala
     if (function_exists("caja_registrar_ingreso_factura")) {
       try {
-        caja_registrar_ingreso_factura($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$total, (string)$pm);
+        foreach ($paymentsToCaja as $pay) {
+          caja_registrar_ingreso_factura($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$pay[1], (string)$pay[0]);
+        }
 
         if ((float)$coverage_amount > 0) {
           caja_registrar_ingreso_factura($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$coverage_amount, "cobertura");
         }
       } catch (Throwable $e) {
         // 2) fallback si falla
-        cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$total, (string)$pm, "Ingreso por factura #{$invoice_id}");
+        foreach ($paymentsToCaja as $pay) {
+          cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$pay[1], (string)$pay[0], "Ingreso por factura #{$invoice_id}");
+        }
         if ((float)$coverage_amount > 0) {
           cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$coverage_amount, "cobertura", "Cobertura factura #{$invoice_id}");
         }
       }
     } else {
       // 2) fallback directo
-      cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$total, (string)$pm, "Ingreso por factura #{$invoice_id}");
+      foreach ($paymentsToCaja as $pay) {
+        cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$pay[1], (string)$pay[0], "Ingreso por factura #{$invoice_id}");
+      }
       if ((float)$coverage_amount > 0) {
         cajaFallbackInsert($conn, (int)$branch_id, $uid, (int)$invoice_id, (float)$coverage_amount, "cobertura", "Cobertura factura #{$invoice_id}");
       }
@@ -869,6 +905,7 @@ $today = date("Y-m-d");
                   <option value="EFECTIVO">EFECTIVO</option>
                   <option value="TARJETA">TARJETA</option>
                   <option value="TRANSFERENCIA">TRANSFERENCIA</option>
+                  <option value="MIXTO">MIXTO</option>
                 </select>
               </div>
 
@@ -880,6 +917,26 @@ $today = date("Y-m-d");
               <div>
                 <label>Cobertura (RD$)</label>
                 <input type="number" step="0.01" name="coverage_amount" id="coverage_amount" value="0.00">
+              </div>
+
+              <div id="mixed_box" style="grid-column:1 / -1; display:none;">
+                <div class="grid3">
+                  <div>
+                    <label>Efectivo (pago mixto)</label>
+                    <input type="number" step="0.01" min="0" name="mixed_cash_amount" id="mixed_cash_amount" value="0.00">
+                  </div>
+                  <div>
+                    <label>Tarjeta (pago mixto)</label>
+                    <input type="number" step="0.01" min="0" name="mixed_card_amount" id="mixed_card_amount" value="0.00">
+                  </div>
+                  <div>
+                    <label>Transferencia (pago mixto)</label>
+                    <input type="number" step="0.01" min="0" name="mixed_transfer_amount" id="mixed_transfer_amount" value="0.00">
+                  </div>
+                </div>
+                <div class="mini" id="mixed_note" style="margin-top:6px;">
+                  La suma del pago mixto debe ser igual al total a pagar.
+                </div>
               </div>
 
               <div style="grid-column:1 / -1;">
@@ -984,6 +1041,12 @@ $today = date("Y-m-d");
   const cashInp = document.getElementById("cash_received");
   const covInp  = document.getElementById("coverage_amount");
 
+  const mixedBox = document.getElementById("mixed_box");
+  const mixedCash = document.getElementById("mixed_cash_amount");
+  const mixedCard = document.getElementById("mixed_card_amount");
+  const mixedTransfer = document.getElementById("mixed_transfer_amount");
+  const mixedNote = document.getElementById("mixed_note");
+
   const catFilter = document.getElementById("cat_filter");
   const itemSel   = document.getElementById("item_select");
   const qtyInp    = document.getElementById("qty");
@@ -1002,8 +1065,18 @@ $today = date("Y-m-d");
   function syncPaymentUI(){
     const m = (payment.value || "").toUpperCase();
     const isCash = (m === "EFECTIVO");
+    const isMixed = (m === "MIXTO");
+
     cashBox.style.display = isCash ? "block" : "none";
+    mixedBox.style.display = isMixed ? "block" : "none";
+
     if (!isCash) cashInp.value = "";
+    if (!isMixed) {
+      mixedCash.value = "0.00";
+      mixedCard.value = "0.00";
+      mixedTransfer.value = "0.00";
+    }
+
     recalc();
   }
 
@@ -1029,11 +1102,18 @@ $today = date("Y-m-d");
 
     const method = (payment.value||"").toUpperCase();
     let change = 0;
+
     if (method === "EFECTIVO") {
       const cash = Number(cashInp.value||0);
       change = cash - total;
     } else {
       change = 0;
+    }
+
+    if (method === "MIXTO") {
+      const mixedTotal = Number(mixedCash.value||0) + Number(mixedCard.value||0) + Number(mixedTransfer.value||0);
+      const diff = mixedTotal - total;
+      mixedNote.textContent = "Total mixto: " + money(mixedTotal) + " | Diferencia: " + money(diff);
     }
 
     tSub.textContent = money(sub);
@@ -1106,6 +1186,9 @@ $today = date("Y-m-d");
   payment.addEventListener("change", syncPaymentUI);
   cashInp.addEventListener("input", recalc);
   covInp.addEventListener("input", recalc);
+  mixedCash.addEventListener("input", recalc);
+  mixedCard.addEventListener("input", recalc);
+  mixedTransfer.addEventListener("input", recalc);
 
   filterItems();
   syncPaymentUI();
