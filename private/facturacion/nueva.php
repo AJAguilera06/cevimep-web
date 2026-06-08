@@ -823,6 +823,7 @@ $today = date("Y-m-d");
     .btn{height:40px;border-radius:12px;border:1px solid transparent;padding:0 14px;font-weight:900;cursor:pointer}
     .btn.primary{background:#0b4d87;color:#fff}
     .btn.light{background:#eef2ff;color:#1e3a8a;border-color:#dbeafe;text-decoration:none;display:inline-flex;align-items:center}
+    .btn.delete{height:32px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;padding:0 10px;border-radius:10px;font-weight:900;cursor:pointer}
     .lines{width:100%;border-collapse:separate;border-spacing:0;margin-top:10px}
     .lines th,.lines td{padding:10px 10px;border-bottom:1px solid #eef2f6;font-size:13px}
     .lines th{color:#0b4d87;text-align:left;font-weight:900;font-size:12px}
@@ -998,10 +999,11 @@ $today = date("Y-m-d");
             <table class="lines" id="linesTable">
               <thead>
                 <tr>
-                  <th style="width:55%;">Producto</th>
-                  <th style="width:15%;">Cantidad</th>
-                  <th style="width:15%;">Precio</th>
-                  <th style="width:15%;">Total</th>
+                  <th style="width:50%;">Producto</th>
+                  <th style="width:13%;">Cantidad</th>
+                  <th style="width:14%;">Precio</th>
+                  <th style="width:14%;">Total</th>
+                  <th style="width:9%;">Acción</th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -1011,7 +1013,6 @@ $today = date("Y-m-d");
               <div class="row"><span>Subtotal</span><span class="money" id="t_sub">RD$ 0.00</span></div>
               <div class="row"><span>Cobertura</span><span class="money" id="t_cov">RD$ 0.00</span></div>
               <div class="row"><span>Total a pagar</span><span class="money" id="t_total">RD$ 0.00</span></div>
-              <div class="row"><span>Restante</span><span class="money" id="t_remaining">RD$ 0.00</span></div>
               <div class="row"><span>Cambio</span><span class="money" id="t_change">RD$ 0.00</span></div>
               <div class="mini" id="totals_note">* El cambio solo aplica en EFECTIVO.</div>
             </div>
@@ -1058,7 +1059,6 @@ $today = date("Y-m-d");
   const tSub       = document.getElementById("t_sub");
   const tCov       = document.getElementById("t_cov");
   const tTotal     = document.getElementById("t_total");
-  const tRemaining = document.getElementById("t_remaining");
   const tChange    = document.getElementById("t_change");
   const totalsNote = document.getElementById("totals_note");
 
@@ -1129,7 +1129,6 @@ $today = date("Y-m-d");
     tSub.textContent = money(sub);
     tCov.textContent = money(cov);
     tTotal.textContent = money(remaining);
-    tRemaining.textContent = money(remaining);
     tChange.textContent = money(change);
   }
 
@@ -1154,10 +1153,22 @@ $today = date("Y-m-d");
       const tdTotal = document.createElement("td");
       tdTotal.textContent = money(Number(ln.price) * Number(ln.qty));
 
+      const tdAction = document.createElement("td");
+      const btnDel = document.createElement("button");
+      btnDel.type = "button";
+      btnDel.className = "btn delete";
+      btnDel.textContent = "Eliminar";
+      btnDel.addEventListener("click", ()=>{
+        delete lines[id];
+        render();
+      });
+      tdAction.appendChild(btnDel);
+
       tr.appendChild(tdName);
       tr.appendChild(tdQty);
       tr.appendChild(tdPrice);
       tr.appendChild(tdTotal);
+      tr.appendChild(tdAction);
       tbody.appendChild(tr);
 
       // hidden inputs para el POST
