@@ -320,7 +320,89 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       }
     }
 
-</style>
+
+    .print-inventory-compact{
+      display:none;
+    }
+
+    @media print {
+      @page{
+        size: letter portrait;
+        margin: 8mm;
+      }
+
+      html, body{
+        background:#fff !important;
+        color:#000 !important;
+        font-family: Arial, Helvetica, sans-serif !important;
+        font-size: 10px !important;
+      }
+
+      .navbar,
+      .sidebar,
+      .inv-controls,
+      .actions,
+      .footer,
+      .card,
+      .flash-ok,
+      .flash-err,
+      .btn-main,
+      .btn-filter {
+        display:none !important;
+      }
+
+      .layout,
+      .content,
+      .page-wrap{
+        display:block !important;
+        width:100% !important;
+        max-width:100% !important;
+        margin:0 !important;
+        padding:0 !important;
+        overflow:visible !important;
+      }
+
+      .inv-title{
+        font-size:18px !important;
+        margin:0 0 6mm 0 !important;
+        text-align:center !important;
+        font-weight:900 !important;
+      }
+
+      .print-inventory-compact{
+        display:block !important;
+        width:100% !important;
+      }
+
+      .print-compact-table{
+        width:100% !important;
+        border-collapse:collapse !important;
+        table-layout:fixed !important;
+      }
+
+      .print-compact-table td{
+        border-bottom:1px solid #ddd !important;
+        padding:4px 5px !important;
+        vertical-align:middle !important;
+        font-size:10px !important;
+        line-height:1.15 !important;
+      }
+
+      .print-compact-table .p-name{
+        width:38% !important;
+        font-weight:800 !important;
+        text-transform:uppercase !important;
+      }
+
+      .print-compact-table .p-stock{
+        width:12% !important;
+        text-align:right !important;
+        font-weight:900 !important;
+        white-space:nowrap !important;
+      }
+    }
+
+  </style>
 </head>
 
 <body>
@@ -392,6 +474,36 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
             <button class="btn-filter" type="submit">Filtrar</button>
           </form>
         </div>
+      </div>
+
+
+      <div class="print-inventory-compact">
+        <table class="print-compact-table">
+          <tbody>
+            <?php
+              $chunks = array_chunk($items, 2);
+              foreach ($chunks as $pair):
+                $left = $pair[0] ?? null;
+                $right = $pair[1] ?? null;
+            ?>
+              <tr>
+                <?php if ($left): ?>
+                  <td class="p-name"><?= h($left["name"] ?? "") ?></td>
+                  <td class="p-stock"><?= number_format((float)($left["stock"] ?? 0), 2) ?></td>
+                <?php else: ?>
+                  <td></td><td></td>
+                <?php endif; ?>
+
+                <?php if ($right): ?>
+                  <td class="p-name"><?= h($right["name"] ?? "") ?></td>
+                  <td class="p-stock"><?= number_format((float)($right["stock"] ?? 0), 2) ?></td>
+                <?php else: ?>
+                  <td></td><td></td>
+                <?php endif; ?>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
       </div>
 
       <div class="card">
