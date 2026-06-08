@@ -16,6 +16,39 @@ function h($s){
   return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); 
 }
 
+function desembolsoPrefixByBranch(int $branchId): string {
+  $map = [
+    1 => "M",   // Moca
+    2 => "L",   // La Vega
+    3 => "SC",  // Salcedo
+    4 => "S",   // Santiago
+    5 => "V",   // Mao
+    6 => "P",   // Puerto Plata
+  ];
+
+  return $map[$branchId] ?? "D";
+}
+
+function buildDesembolsoCode(int $branchId, int $number): string {
+  return desembolsoPrefixByBranch($branchId) . "-D-" . str_pad((string)$number, 7, "0", STR_PAD_LEFT);
+}
+
+function tableColumns(PDO $pdo, string $table): array {
+  try {
+    $rows = $pdo->query("SHOW COLUMNS FROM `$table`")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    return array_map(fn($r) => $r["Field"], $rows);
+  } catch (Throwable $e) {
+    try {
+      $st = $pdo->prepare("SELECT column_name FROM information_schema.columns WHERE table_name = ? ORDER BY ordinal_position");
+      $st->execute([$table]);
+      return $st->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    } catch (Throwable $e2) {
+      return [];
+    }
+  }
+}
+
+
 // Usar SIEMPRE la sucursal del usuario logueado.
 // Antes estaba forzando Santiago, por eso los desembolsos no se reflejaban
 // en la sucursal correcta.
@@ -52,19 +85,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           ? "Hecho por: {$hechoPor} | {$motivo}"
           : $motivo;
 
-        $sql = "INSERT INTO cash_movements
-                (branch_id, caja_sesion_id, type, motivo, metodo_pago, amount, created_by)
-                VALUES
-                (:branch_id, :caja_sesion_id, 'desembolso', :motivo, 'efectivo', :amount, :created_by)";
+        // Numeración independiente por sucursal, igual que facturación.
+        // Si tu tabla tiene columnas desembolso_number/desembolso_code, se guardan.
+        // Si no existen, el acuse lo calcula por sucursal al imprimir.
+        $stNum = $pdo->prepare("
+          SELECT COALESCE(MAX(desembolso_number), 0) + 1
+          FROM cash_movements
+          WHERE branch_id = ?
+            AND type = 'desembolso'
+        ");
 
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([
+        $movementCols = tableColumns($pdo, "cash_movements");
+        $hasDesembolsoNumber = in_array("desembolso_number", $movementCols, true);
+        $hasDesembolsoCode   = in_array("desembolso_code", $movementCols, true);
+
+        $desembolso_number = 1;
+        if ($hasDesembolsoNumber) {
+          $stNum->execute([$branch_id]);
+          $desembolso_number = (int)($stNum->fetchColumn() ?: 1);
+          if ($desembolso_number <= 0) $desembolso_number = 1;
+        }
+
+        $desembolso_code = buildDesembolsoCode($branch_id, $desembolso_number);
+
+        $fields = ["branch_id", "caja_sesion_id", "type", "motivo", "metodo_pago", "amount", "created_by"];
+        $values = [":branch_id", ":caja_sesion_id", "'desembolso'", ":motivo", "'efectivo'", ":amount", ":created_by"];
+
+        $paramsIns = [
           ':branch_id' => $branch_id,
           ':caja_sesion_id' => $caja_sesion_id,
           ':motivo' => $motivo_db,
           ':amount' => $amount,
           ':created_by' => $created_by,
-        ]);
+        ];
+
+        if ($hasDesembolsoNumber) {
+          $fields[] = "desembolso_number";
+          $values[] = ":desembolso_number";
+          $paramsIns[':desembolso_number'] = $desembolso_number;
+        }
+
+        if ($hasDesembolsoCode) {
+          $fields[] = "desembolso_code";
+          $values[] = ":desembolso_code";
+          $paramsIns[':desembolso_code'] = $desembolso_code;
+        }
+
+        $sql = "INSERT INTO cash_movements (" . implode(",", $fields) . ")
+                VALUES (" . implode(",", $values) . ")";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($paramsIns);
 
         $id = (int)$pdo->lastInsertId();
 
