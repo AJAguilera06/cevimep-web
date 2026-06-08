@@ -277,7 +277,50 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       .inv-controls__right{ grid-column:auto; justify-self:center; }
       table{ min-width: 860px; }
     }
-  </style>
+  
+    @media print {
+
+      .navbar,
+      .sidebar,
+      .inv-controls,
+      .actions,
+      .footer {
+        display:none !important;
+      }
+
+      .page-wrap{
+        width:100% !important;
+        max-width:100% !important;
+        padding:0 !important;
+      }
+
+      .card{
+        box-shadow:none !important;
+        border:none !important;
+      }
+
+      .table-wrap{
+        overflow:visible !important;
+        max-height:none !important;
+        border:none !important;
+      }
+
+      table{
+        min-width:100% !important;
+      }
+
+      th:last-child,
+      td:last-child{
+        display:none !important;
+      }
+
+      .inv-title{
+        font-size:28px !important;
+        margin-bottom:20px !important;
+      }
+    }
+
+</style>
 </head>
 
 <body>
@@ -330,7 +373,10 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
         <div></div>
 
         <div class="inv-controls__center">
-          <a class="btn-main" href="<?= h($new_product_url) ?>">➕ Nuevo Producto</a>
+          <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+            <a class="btn-main" href="<?= h($new_product_url) ?>">➕ Nuevo Producto</a>
+            <button type="button" class="btn-main" onclick="window.print()">🖨️ Imprimir Inventario</button>
+          </div>
         </div>
 
         <div class="inv-controls__right">
