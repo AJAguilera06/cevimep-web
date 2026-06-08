@@ -563,13 +563,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
         throw new Exception("Debe ingresar los montos del pago mixto.");
       }
 
-      // Se permite una diferencia pequeña por redondeo.
-      if (abs($mixed_total - $total) > 0.01) {
-        throw new Exception("En pago mixto, la suma de efectivo, tarjeta y transferencia debe ser igual al total a pagar.");
+      // Debe cubrir el total. Si paga de más, se registra como cambio.
+      if ($mixed_total + 0.01 < $total) {
+        throw new Exception("En pago mixto, la suma de efectivo, tarjeta y transferencia debe cubrir el total a pagar.");
       }
 
       $cash_received = $mixed_cash > 0 ? $mixed_cash : null;
-      $change_due = null;
+      $change_due = max(0.0, $mixed_total - $total);
     } else {
       $cash_received = null;
       $change_due = null;
@@ -935,7 +935,7 @@ $today = date("Y-m-d");
                   </div>
                 </div>
                 <div class="mini" id="mixed_note" style="margin-top:6px;">
-                  La suma del pago mixto debe ser igual al total a pagar.
+                  Escribe los montos y abajo verás cuánto falta por pagar.
                 </div>
               </div>
 
@@ -1012,8 +1012,10 @@ $today = date("Y-m-d");
               <div class="row"><span>Subtotal</span><span class="money" id="t_sub">RD$ 0.00</span></div>
               <div class="row"><span>Cobertura</span><span class="money" id="t_cov">RD$ 0.00</span></div>
               <div class="row"><span>Total a pagar</span><span class="money" id="t_total">RD$ 0.00</span></div>
+              <div class="row"><span>Pagado</span><span class="money" id="t_paid">RD$ 0.00</span></div>
+              <div class="row"><span>Restante</span><span class="money" id="t_remaining">RD$ 0.00</span></div>
               <div class="row"><span>Cambio</span><span class="money" id="t_change">RD$ 0.00</span></div>
-              <div class="mini">* El cambio solo aplica en EFECTIVO.</div>
+              <div class="mini" id="totals_note">* El cambio solo aplica en EFECTIVO.</div>
             </div>
 
             <div class="btnrow">
@@ -1055,10 +1057,13 @@ $today = date("Y-m-d");
   const tbody     = document.querySelector("#linesTable tbody");
   const hidden    = document.getElementById("hiddenLines");
 
-  const tSub    = document.getElementById("t_sub");
-  const tCov    = document.getElementById("t_cov");
-  const tTotal  = document.getElementById("t_total");
-  const tChange = document.getElementById("t_change");
+  const tSub       = document.getElementById("t_sub");
+  const tCov       = document.getElementById("t_cov");
+  const tTotal     = document.getElementById("t_total");
+  const tPaid      = document.getElementById("t_paid");
+  const tRemaining = document.getElementById("t_remaining");
+  const tChange    = document.getElementById("t_change");
+  const totalsNote = document.getElementById("totals_note");
 
   let lines = {}; // {line_key: {name, price, qty, cat, itemId, priceId, stockDiscount}}
 
@@ -1102,23 +1107,36 @@ $today = date("Y-m-d");
 
     const method = (payment.value||"").toUpperCase();
     let change = 0;
+    let paid = 0;
+    let remaining = 0;
 
     if (method === "EFECTIVO") {
       const cash = Number(cashInp.value||0);
-      change = cash - total;
-    } else {
-      change = 0;
-    }
+      paid = cash;
+      remaining = Math.max(0, total - paid);
+      change = Math.max(0, cash - total);
+      if (totalsNote) totalsNote.textContent = "* El cambio solo aplica en EFECTIVO.";
+    } else if (method === "MIXTO") {
+      paid = Number(mixedCash.value||0) + Number(mixedCard.value||0) + Number(mixedTransfer.value||0);
+      remaining = Math.max(0, total - paid);
+      change = Math.max(0, paid - total);
 
-    if (method === "MIXTO") {
-      const mixedTotal = Number(mixedCash.value||0) + Number(mixedCard.value||0) + Number(mixedTransfer.value||0);
-      const diff = mixedTotal - total;
-      mixedNote.textContent = "Total mixto: " + money(mixedTotal) + " | Diferencia: " + money(diff);
+      if (mixedNote) {
+        mixedNote.textContent = "Pagado: " + money(paid) + " | Restante: " + money(remaining);
+      }
+      if (totalsNote) totalsNote.textContent = "* En pago mixto, el restante baja mientras escribes los montos.";
+    } else {
+      paid = total;
+      remaining = 0;
+      change = 0;
+      if (totalsNote) totalsNote.textContent = "* Para tarjeta o transferencia se asume pago completo.";
     }
 
     tSub.textContent = money(sub);
     tCov.textContent = money(cov);
     tTotal.textContent = money(total);
+    tPaid.textContent = money(paid);
+    tRemaining.textContent = money(remaining);
     tChange.textContent = money(change);
   }
 
