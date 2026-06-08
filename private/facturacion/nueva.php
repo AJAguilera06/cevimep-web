@@ -746,12 +746,18 @@ if (columnExists($conn, "invoices", "invoice_code")) {
     $paymentsToCaja = [];
 
     if ($payment_method === "MIXTO") {
-      if ($mixed_cash > 0)     $paymentsToCaja[] = ["efectivo", $mixed_cash];
-      if ($mixed_card > 0)     $paymentsToCaja[] = ["tarjeta", $mixed_card];
-      if ($mixed_transfer > 0) $paymentsToCaja[] = ["transferencia", $mixed_transfer];
-    } else {
-      $paymentsToCaja[] = [$pm, (float)$total];
+    $mixed_total = $mixed_cash + $mixed_card + $mixed_transfer;
+
+    // Solo valida que haya algún monto digitado
+    if ($mixed_total <= 0) {
+        throw new Exception("Debe ingresar al menos un monto para el pago mixto.");
     }
+
+    $cash_received = $mixed_cash > 0 ? $mixed_cash : null;
+
+    // Si paga de más se calcula cambio, si paga menos queda restante
+    $change_due = max(0.0, $mixed_total - $total);
+}
 
     // 1) si existe función oficial, úsala
     if (function_exists("caja_registrar_ingreso_factura")) {
