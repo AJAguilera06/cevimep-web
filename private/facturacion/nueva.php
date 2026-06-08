@@ -551,9 +551,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
       $subtotal += ($price * (int)$q);
     }
 
-    // Monto luego de cobertura.
-    // En pago mixto, el campo total de la factura guardará el RESTANTE pendiente,
-    // para que en la impresión salga descontado lo ya pagado.
+    // Total de la factura: SOLO descuenta cobertura.
+    // Los pagos en efectivo/tarjeta/transferencia NO reducen el total impreso,
+    // porque son métodos de pago, no descuentos.
     $amount_due = max(0.0, $subtotal - $coverage_amount);
     $mixed_total = $mixed_cash + $mixed_card + $mixed_transfer;
     $total = $amount_due;
@@ -568,7 +568,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
 
       $cash_received = $mixed_cash > 0 ? $mixed_cash : null;
       $change_due = max(0.0, $mixed_total - $amount_due);
-      $total = max(0.0, $amount_due - $mixed_total);
     } else {
       $cash_received = null;
       $change_due = null;
@@ -1104,31 +1103,27 @@ $today = date("Y-m-d");
 
     const method = (payment.value||"").toUpperCase();
     let change = 0;
-    let remaining = total;
 
     if (method === "EFECTIVO") {
       const cash = Number(cashInp.value||0);
-      remaining = total;
       change = Math.max(0, cash - total);
-      if (totalsNote) totalsNote.textContent = "* El cambio solo aplica en EFECTIVO.";
+      if (totalsNote) totalsNote.textContent = "* El total a pagar solo descuenta cobertura.";
     } else if (method === "MIXTO") {
       const mixedPaid = Number(mixedCash.value||0) + Number(mixedCard.value||0) + Number(mixedTransfer.value||0);
-      remaining = Math.max(0, total - mixedPaid);
       change = Math.max(0, mixedPaid - total);
 
       if (mixedNote) {
-        mixedNote.textContent = "Restante: " + money(remaining);
+        mixedNote.textContent = "Total recibido: " + money(mixedPaid) + " | Total factura: " + money(total);
       }
-      if (totalsNote) totalsNote.textContent = "* El total a pagar baja mientras escribes los montos.";
+      if (totalsNote) totalsNote.textContent = "* Efectivo, tarjeta y transferencia no descuentan el total; solo la cobertura.";
     } else {
-      remaining = 0;
       change = 0;
-      if (totalsNote) totalsNote.textContent = "* Para tarjeta o transferencia se asume pago completo.";
+      if (totalsNote) totalsNote.textContent = "* El total a pagar solo descuenta cobertura.";
     }
 
     tSub.textContent = money(sub);
     tCov.textContent = money(cov);
-    tTotal.textContent = money(remaining);
+    tTotal.textContent = money(total);
     tChange.textContent = money(change);
   }
 

@@ -402,6 +402,126 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       }
     }
 
+  
+    /* ===== IMPRESIÓN COMPACTA: 2 BLOQUES PRODUCTO/STOCK ===== */
+    @media print {
+      @page{
+        size: letter portrait;
+        margin: 6mm 5mm;
+      }
+
+      html, body{
+        background:#fff !important;
+        color:#000 !important;
+        font-family: Arial, Helvetica, sans-serif !important;
+        font-size: 9px !important;
+      }
+
+      .navbar,
+      .sidebar,
+      .inv-controls,
+      .actions,
+      .footer,
+      .card,
+      .flash-ok,
+      .flash-err,
+      .btn-main,
+      .btn-filter {
+        display:none !important;
+      }
+
+      .layout,
+      .content,
+      .page-wrap{
+        display:block !important;
+        width:100% !important;
+        max-width:100% !important;
+        margin:0 !important;
+        padding:0 !important;
+        overflow:visible !important;
+      }
+
+      .inv-title{
+        font-size:15px !important;
+        margin:0 0 4mm 0 !important;
+        text-align:center !important;
+        font-weight:900 !important;
+      }
+
+      .print-inventory-compact{
+        display:block !important;
+        width:100% !important;
+      }
+
+      .print-compact-table{
+        width:100% !important;
+        border-collapse:collapse !important;
+        table-layout:fixed !important;
+      }
+
+      .print-compact-table th{
+        position:static !important;
+        top:auto !important;
+        background:#fff !important;
+        color:#000 !important;
+        border-bottom:1px solid #000 !important;
+        padding:2px 4px !important;
+        font-size:8px !important;
+        line-height:1 !important;
+        text-align:left !important;
+        font-weight:900 !important;
+      }
+
+      .print-compact-table td{
+        border-bottom:1px solid #d8d8d8 !important;
+        padding:2px 4px !important;
+        vertical-align:middle !important;
+        font-size:8px !important;
+        line-height:1.05 !important;
+      }
+
+      .print-compact-table .p-name{
+        width:38% !important;
+        font-weight:900 !important;
+        text-transform:uppercase !important;
+        white-space:nowrap !important;
+        overflow:hidden !important;
+        text-overflow:ellipsis !important;
+      }
+
+      .print-compact-table .p-stock{
+        width:9% !important;
+        text-align:right !important;
+        font-weight:900 !important;
+        white-space:nowrap !important;
+      }
+
+      .print-compact-table .gap{
+        width:6% !important;
+        border-bottom:none !important;
+      }
+
+      .print-compact-table tr{
+        height:12px !important;
+        page-break-inside:avoid !important;
+      }
+
+      .print-compact-table th:nth-child(1),
+      .print-compact-table td:nth-child(1){ width:38% !important; }
+
+      .print-compact-table th:nth-child(2),
+      .print-compact-table td:nth-child(2){ width:9% !important; text-align:right !important; }
+
+      .print-compact-table th:nth-child(3),
+      .print-compact-table td:nth-child(3){ width:6% !important; }
+
+      .print-compact-table th:nth-child(4),
+      .print-compact-table td:nth-child(4){ width:38% !important; }
+
+      .print-compact-table th:nth-child(5),
+      .print-compact-table td:nth-child(5){ width:9% !important; text-align:right !important; }
+    }
+
   </style>
 </head>
 
@@ -476,9 +596,17 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
         </div>
       </div>
 
-
       <div class="print-inventory-compact">
         <table class="print-compact-table">
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Stock</th>
+              <th class="gap"></th>
+              <th>Producto</th>
+              <th>Stock</th>
+            </tr>
+          </thead>
           <tbody>
             <?php
               $chunks = array_chunk($items, 2);
@@ -494,6 +622,8 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
                   <td></td><td></td>
                 <?php endif; ?>
 
+                <td class="gap"></td>
+
                 <?php if ($right): ?>
                   <td class="p-name"><?= h($right["name"] ?? "") ?></td>
                   <td class="p-stock"><?= number_format((float)($right["stock"] ?? 0), 2) ?></td>
@@ -505,6 +635,7 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
           </tbody>
         </table>
       </div>
+
 
       <div class="card">
         <div class="table-wrap">
