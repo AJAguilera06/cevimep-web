@@ -551,25 +551,24 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_
       $subtotal += ($price * (int)$q);
     }
 
-    $total = max(0.0, $subtotal - $coverage_amount);
+    // Monto luego de cobertura.
+    // En pago mixto, el campo total de la factura guardará el RESTANTE pendiente,
+    // para que en la impresión salga descontado lo ya pagado.
+    $amount_due = max(0.0, $subtotal - $coverage_amount);
+    $mixed_total = $mixed_cash + $mixed_card + $mixed_transfer;
+    $total = $amount_due;
 
     $change_due = null;
     if ($payment_method === "EFECTIVO") {
-      $change_due = (float)number0($cash_received ?? 0) - $total;
+      $change_due = max(0.0, (float)number0($cash_received ?? 0) - $amount_due);
     } elseif ($payment_method === "MIXTO") {
-      $mixed_total = $mixed_cash + $mixed_card + $mixed_transfer;
-
       if ($mixed_total <= 0) {
-        throw new Exception("Debe ingresar los montos del pago mixto.");
-      }
-
-      // Debe cubrir el total. Si paga de más, se registra como cambio.
-      if ($mixed_total + 0.01 < $total) {
-        throw new Exception("En pago mixto, la suma de efectivo, tarjeta y transferencia debe cubrir el total a pagar.");
+        throw new Exception("Debe ingresar al menos un monto para el pago mixto.");
       }
 
       $cash_received = $mixed_cash > 0 ? $mixed_cash : null;
-      $change_due = max(0.0, $mixed_total - $total);
+      $change_due = max(0.0, $mixed_total - $amount_due);
+      $total = max(0.0, $amount_due - $mixed_total);
     } else {
       $cash_received = null;
       $change_due = null;
@@ -746,18 +745,12 @@ if (columnExists($conn, "invoices", "invoice_code")) {
     $paymentsToCaja = [];
 
     if ($payment_method === "MIXTO") {
-    $mixed_total = $mixed_cash + $mixed_card + $mixed_transfer;
-
-    // Solo valida que haya algún monto digitado
-    if ($mixed_total <= 0) {
-        throw new Exception("Debe ingresar al menos un monto para el pago mixto.");
+      if ($mixed_cash > 0)     $paymentsToCaja[] = ["efectivo", $mixed_cash];
+      if ($mixed_card > 0)     $paymentsToCaja[] = ["tarjeta", $mixed_card];
+      if ($mixed_transfer > 0) $paymentsToCaja[] = ["transferencia", $mixed_transfer];
+    } else {
+      $paymentsToCaja[] = [$pm, (float)$amount_due];
     }
-
-    $cash_received = $mixed_cash > 0 ? $mixed_cash : null;
-
-    // Si paga de más se calcula cambio, si paga menos queda restante
-    $change_due = max(0.0, $mixed_total - $total);
-}
 
     // 1) si existe función oficial, úsala
     if (function_exists("caja_registrar_ingreso_factura")) {
@@ -1018,7 +1011,6 @@ $today = date("Y-m-d");
               <div class="row"><span>Subtotal</span><span class="money" id="t_sub">RD$ 0.00</span></div>
               <div class="row"><span>Cobertura</span><span class="money" id="t_cov">RD$ 0.00</span></div>
               <div class="row"><span>Total a pagar</span><span class="money" id="t_total">RD$ 0.00</span></div>
-              <div class="row"><span>Pagado</span><span class="money" id="t_paid">RD$ 0.00</span></div>
               <div class="row"><span>Restante</span><span class="money" id="t_remaining">RD$ 0.00</span></div>
               <div class="row"><span>Cambio</span><span class="money" id="t_change">RD$ 0.00</span></div>
               <div class="mini" id="totals_note">* El cambio solo aplica en EFECTIVO.</div>
@@ -1066,7 +1058,6 @@ $today = date("Y-m-d");
   const tSub       = document.getElementById("t_sub");
   const tCov       = document.getElementById("t_cov");
   const tTotal     = document.getElementById("t_total");
-  const tPaid      = document.getElementById("t_paid");
   const tRemaining = document.getElementById("t_remaining");
   const tChange    = document.getElementById("t_change");
   const totalsNote = document.getElementById("totals_note");
@@ -1113,26 +1104,23 @@ $today = date("Y-m-d");
 
     const method = (payment.value||"").toUpperCase();
     let change = 0;
-    let paid = 0;
-    let remaining = 0;
+    let remaining = total;
 
     if (method === "EFECTIVO") {
       const cash = Number(cashInp.value||0);
-      paid = cash;
-      remaining = Math.max(0, total - paid);
+      remaining = total;
       change = Math.max(0, cash - total);
       if (totalsNote) totalsNote.textContent = "* El cambio solo aplica en EFECTIVO.";
     } else if (method === "MIXTO") {
-      paid = Number(mixedCash.value||0) + Number(mixedCard.value||0) + Number(mixedTransfer.value||0);
-      remaining = Math.max(0, total - paid);
-      change = Math.max(0, paid - total);
+      const mixedPaid = Number(mixedCash.value||0) + Number(mixedCard.value||0) + Number(mixedTransfer.value||0);
+      remaining = Math.max(0, total - mixedPaid);
+      change = Math.max(0, mixedPaid - total);
 
       if (mixedNote) {
-        mixedNote.textContent = "Pagado: " + money(paid) + " | Restante: " + money(remaining);
+        mixedNote.textContent = "Restante: " + money(remaining);
       }
-      if (totalsNote) totalsNote.textContent = "* En pago mixto, el restante baja mientras escribes los montos.";
+      if (totalsNote) totalsNote.textContent = "* El total a pagar baja mientras escribes los montos.";
     } else {
-      paid = total;
       remaining = 0;
       change = 0;
       if (totalsNote) totalsNote.textContent = "* Para tarjeta o transferencia se asume pago completo.";
@@ -1140,8 +1128,7 @@ $today = date("Y-m-d");
 
     tSub.textContent = money(sub);
     tCov.textContent = money(cov);
-    tTotal.textContent = money(total);
-    tPaid.textContent = money(paid);
+    tTotal.textContent = money(remaining);
     tRemaining.textContent = money(remaining);
     tChange.textContent = money(change);
   }
