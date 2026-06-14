@@ -84,9 +84,21 @@ $flash_error = "";
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
   $expiration_date = trim((string)($_POST["expiration_date"] ?? ""));
 
-  if ($expiration_date !== "" && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $expiration_date)) {
-    $flash_error = "Fecha de vencimiento inválida. Usa el formato DD/MM/AAAA.";
-  } else {
+  if ($expiration_date !== "") {
+    if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $expiration_date, $m)) {
+      $flash_error = "Fecha de vencimiento inválida. Usa el formato DD/MM/AAAA.";
+    } else {
+      $yearDate = (int)$m[1];
+      $monthDate = (int)$m[2];
+      $dayDate = (int)$m[3];
+
+      if (!checkdate($monthDate, $dayDate, $yearDate)) {
+        $flash_error = "La fecha de vencimiento no existe. Revisa el día, mes y año.";
+      }
+    }
+  }
+
+  if ($flash_error === "") {
     $up = $conn->prepare("
       UPDATE inventory_items
       SET expiration_date = ?
