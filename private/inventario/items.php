@@ -537,6 +537,110 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       .print-compact-table td:nth-child(5){ width:9% !important; text-align:right !important; }
     }
 
+  
+    /* ===== IMPRESIÓN INVENTARIO: PRODUCTO | STOCK | VENCIMIENTO ===== */
+    @media print {
+      @page{
+        size: letter portrait;
+        margin: 8mm;
+      }
+
+      html, body{
+        background:#fff !important;
+        color:#000 !important;
+        font-family: Arial, Helvetica, sans-serif !important;
+        font-size: 10px !important;
+      }
+
+      .navbar,
+      .sidebar,
+      .inv-controls,
+      .actions,
+      .footer,
+      .card,
+      .flash-ok,
+      .flash-err,
+      .btn-main,
+      .btn-filter {
+        display:none !important;
+      }
+
+      .layout,
+      .content,
+      .page-wrap{
+        display:block !important;
+        width:100% !important;
+        max-width:100% !important;
+        margin:0 !important;
+        padding:0 !important;
+        overflow:visible !important;
+      }
+
+      .inv-title{
+        font-size:18px !important;
+        margin:0 0 6mm 0 !important;
+        text-align:center !important;
+        font-weight:900 !important;
+      }
+
+      .print-inventory-compact{
+        display:block !important;
+        width:100% !important;
+      }
+
+      .print-compact-table{
+        width:100% !important;
+        border-collapse:collapse !important;
+        table-layout:fixed !important;
+      }
+
+      .print-compact-table th{
+        position:static !important;
+        background:#fff !important;
+        color:#000 !important;
+        border-bottom:1px solid #000 !important;
+        padding:4px 5px !important;
+        font-size:10px !important;
+        text-align:left !important;
+        font-weight:900 !important;
+      }
+
+      .print-compact-table td{
+        border-bottom:1px solid #d8d8d8 !important;
+        padding:3px 5px !important;
+        vertical-align:middle !important;
+        font-size:9px !important;
+        line-height:1.15 !important;
+      }
+
+      .print-compact-table .p-name{
+        width:62% !important;
+        font-weight:900 !important;
+        text-transform:uppercase !important;
+        white-space:nowrap !important;
+        overflow:hidden !important;
+        text-overflow:ellipsis !important;
+      }
+
+      .print-compact-table .p-stock{
+        width:16% !important;
+        text-align:right !important;
+        font-weight:900 !important;
+        white-space:nowrap !important;
+      }
+
+      .print-compact-table .p-exp{
+        width:22% !important;
+        text-align:right !important;
+        font-weight:900 !important;
+        white-space:nowrap !important;
+      }
+
+      .print-compact-table tr{
+        page-break-inside:avoid !important;
+      }
+    }
+
   </style>
 </head>
 
@@ -617,40 +721,24 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
             <tr>
               <th>Producto</th>
               <th>Stock</th>
-              <th class="gap"></th>
-              <th>Producto</th>
-              <th>Stock</th>
+              <th>Vencimiento</th>
             </tr>
           </thead>
           <tbody>
-            <?php
-              $chunks = array_chunk($items, 2);
-              foreach ($chunks as $pair):
-                $left = $pair[0] ?? null;
-                $right = $pair[1] ?? null;
-            ?>
+            <?php foreach ($items as $it): ?>
+              <?php
+                $expirationDatePrint = trim((string)($it["expiration_date"] ?? ""));
+                $expirationTextPrint = formatDateDmy($expirationDatePrint);
+              ?>
               <tr>
-                <?php if ($left): ?>
-                  <td class="p-name"><?= h($left["name"] ?? "") ?></td>
-                  <td class="p-stock"><?= number_format((float)($left["stock"] ?? 0), 2) ?></td>
-                <?php else: ?>
-                  <td></td><td></td>
-                <?php endif; ?>
-
-                <td class="gap"></td>
-
-                <?php if ($right): ?>
-                  <td class="p-name"><?= h($right["name"] ?? "") ?></td>
-                  <td class="p-stock"><?= number_format((float)($right["stock"] ?? 0), 2) ?></td>
-                <?php else: ?>
-                  <td></td><td></td>
-                <?php endif; ?>
+                <td class="p-name"><?= h($it["name"] ?? "") ?></td>
+                <td class="p-stock"><?= number_format((float)($it["stock"] ?? 0), 2) ?></td>
+                <td class="p-exp"><?= h($expirationTextPrint) ?></td>
               </tr>
             <?php endforeach; ?>
           </tbody>
         </table>
       </div>
-
 
       <div class="card">
         <div class="table-wrap">
