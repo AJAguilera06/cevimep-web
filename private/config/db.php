@@ -41,6 +41,9 @@ try {
         PDO::ATTR_EMULATE_PREPARES   => false,
     ]);
 
+    // Zona horaria República Dominicana (AST / GMT-4)
+    $pdo->exec("SET time_zone = '-04:00'");
+
 } catch (Throwable $e) {
     http_response_code(500);
     echo "Error de conexión a la base de datos.";
