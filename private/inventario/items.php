@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+date_default_timezone_set('America/Santo_Domingo');
+
 require_once __DIR__ . "/../_guard.php";
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
@@ -14,7 +16,7 @@ header('Expires: 0');
 if (function_exists('opcache_invalidate')) { @opcache_invalidate(__FILE__, true); }
 if (function_exists('opcache_reset')) { /* opcional: no lo llamamos para no afectar todo el sitio */ }
 
-$__BUILD_MARK = 'items.php@2026-02-14-railway-01';
+$__BUILD_MARK = 'items.php@2026-06-14-print-3cols';
 
 $conn = $pdo;
 $user = $_SESSION["user"] ?? [];
@@ -59,6 +61,18 @@ ensureExpirationColumn($conn);
 if ($branch_id <= 0) {
   http_response_code(400);
   die("Sucursal inválida (branch_id).");
+}
+
+/* Nombre sucursal */
+$branch_name = "";
+try {
+  $stB = $conn->prepare("SELECT name FROM branches WHERE id=? LIMIT 1");
+  $stB->execute([$branch_id]);
+  $branch_name = (string)($stB->fetchColumn() ?: "");
+} catch (Throwable $e) {}
+
+if ($branch_name === "") {
+  $branch_name = "Sucursal #" . $branch_id;
 }
 
 /* Categorías */
@@ -641,6 +655,142 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       }
     }
 
+  
+    /* ===== IMPRESIÓN FINAL INVENTARIO: PRODUCTO | STOCK | VENCIMIENTO ===== */
+    @media print {
+      @page{
+        size: letter portrait;
+        margin: 7mm;
+      }
+
+      html, body{
+        background:#fff !important;
+        color:#000 !important;
+        font-family: Arial, Helvetica, sans-serif !important;
+        font-size: 9px !important;
+      }
+
+      .navbar,
+      .sidebar,
+      .inv-controls,
+      .actions,
+      .footer,
+      .card,
+      .flash-ok,
+      .flash-err,
+      .btn-main,
+      .btn-filter{
+        display:none !important;
+      }
+
+      .layout,
+      .content,
+      .page-wrap{
+        display:block !important;
+        width:100% !important;
+        max-width:100% !important;
+        margin:0 !important;
+        padding:0 !important;
+        overflow:visible !important;
+      }
+
+      .inv-title{
+        display:none !important;
+      }
+
+      .print-inventory-compact{
+        display:block !important;
+        width:100% !important;
+      }
+
+      .print-header{
+        display:flex !important;
+        align-items:flex-start !important;
+        justify-content:space-between !important;
+        gap:10px !important;
+        margin:0 0 6mm 0 !important;
+        width:100% !important;
+      }
+
+      .print-title{
+        font-size:16px !important;
+        font-weight:900 !important;
+        text-align:left !important;
+      }
+
+      .print-date{
+        font-size:10px !important;
+        font-weight:800 !important;
+        text-align:right !important;
+        white-space:nowrap !important;
+      }
+
+      .print-compact-table{
+        width:100% !important;
+        border-collapse:collapse !important;
+        table-layout:fixed !important;
+      }
+
+      .print-compact-table th,
+      .print-compact-table td{
+        border-bottom:1px solid #d8d8d8 !important;
+        padding:3px 5px !important;
+        vertical-align:middle !important;
+        line-height:1.1 !important;
+      }
+
+      .print-compact-table th{
+        position:static !important;
+        top:auto !important;
+        background:#fff !important;
+        color:#000 !important;
+        border-bottom:1px solid #000 !important;
+        font-size:9px !important;
+        font-weight:900 !important;
+        text-align:left !important;
+      }
+
+      .print-compact-table td{
+        font-size:8px !important;
+      }
+
+      .print-compact-table th:nth-child(1),
+      .print-compact-table td:nth-child(1){
+        width:62% !important;
+        text-align:left !important;
+      }
+
+      .print-compact-table th:nth-child(2),
+      .print-compact-table td:nth-child(2){
+        width:14% !important;
+        text-align:right !important;
+      }
+
+      .print-compact-table th:nth-child(3),
+      .print-compact-table td:nth-child(3){
+        width:24% !important;
+        text-align:right !important;
+      }
+
+      .print-compact-table .p-name{
+        font-weight:900 !important;
+        text-transform:uppercase !important;
+        white-space:nowrap !important;
+        overflow:hidden !important;
+        text-overflow:ellipsis !important;
+      }
+
+      .print-compact-table .p-stock,
+      .print-compact-table .p-exp{
+        font-weight:900 !important;
+        white-space:nowrap !important;
+      }
+
+      .print-compact-table tr{
+        page-break-inside:avoid !important;
+      }
+    }
+
   </style>
 </head>
 
@@ -716,6 +866,15 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       </div>
 
       <div class="print-inventory-compact">
+        <div class="print-header">
+          <div class="print-title">
+            Inventario - <?= h($branch_name) ?>
+          </div>
+          <div class="print-date">
+            <?= date('d/m/Y h:i A') ?>
+          </div>
+        </div>
+
         <table class="print-compact-table">
           <thead>
             <tr>
