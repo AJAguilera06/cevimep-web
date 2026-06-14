@@ -85,7 +85,6 @@ try {
       i.category_id,
       c.name AS category_name,
       COALESCE(s.quantity, 0) AS stock,
-      i.purchase_price,
       i.sale_price,
       " . ($hasExpirationColumn ? "i.expiration_date" : "NULL AS expiration_date") . "
     FROM inventory_items i
@@ -130,7 +129,7 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
   <style>
     .page-wrap{
       width: 100%;
-      max-width: 1040px;
+      max-width: 1240px;
       margin: 0 auto;
       padding: 24px 18px 18px;
     }
@@ -216,13 +215,14 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
     }
     .table-wrap{
       width:100%;
-      overflow:auto;
+      overflow-y:auto;
+      overflow-x:hidden;
       max-height: 460px;
       border-radius:14px;
       border:1px solid rgba(2,21,44,.06);
       -webkit-overflow-scrolling: touch;
     }
-    table{ width:100%; border-collapse:separate; border-spacing:0; min-width: 1040px; }
+    table{ width:100%; border-collapse:separate; border-spacing:0; min-width:0; table-layout:auto; }
     th, td{ padding:12px 10px; border-bottom:1px solid #eef2f6; font-size:13px; }
     th{
       color:#0b4d87;
@@ -287,7 +287,7 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       .inv-controls{ grid-template-columns: 1fr; }
       .inv-controls__center{ grid-column:auto; justify-self:center; }
       .inv-controls__right{ grid-column:auto; justify-self:center; }
-      table{ min-width: 860px; }
+      table{ min-width:0; }
     }
   
     @media print {
@@ -656,7 +656,6 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
               <tr>
                 <th>Producto</th>
                 <th>Categoría</th>
-                <th class="right">Compra</th>
                 <th class="right">Venta</th>
                 <th class="right">Stock</th>
                 <th class="right">Vencimiento</th>
@@ -667,7 +666,7 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
             <tbody>
               <?php if (!$items): ?>
                 <tr>
-                  <td colspan="7" style="padding:18px; text-align:center; font-weight:900; color:#6b7a88;">
+                  <td colspan="6" style="padding:18px; text-align:center; font-weight:900; color:#6b7a88;">
                     No hay productos registrados para esta sucursal.
                   </td>
                 </tr>
@@ -708,7 +707,6 @@ if ($expirationDate !== "" && $expirationDate !== "0000-00-00") {
                   <tr>
                     <td style="font-weight:950;"><?= h($it["name"] ?? "") ?></td>
                     <td><?= h($it["category_name"] ?? "—") ?></td>
-                    <td class="right money"><?= number_format((float)($it["purchase_price"] ?? 0), 2) ?></td>
                     <td class="right money"><?= number_format((float)($it["sale_price"] ?? 0), 2) ?></td>
                     <td class="right">
                       <span class="pill <?= h($pillClass) ?>"><?= h($pillText) ?></span>
@@ -728,12 +726,7 @@ if ($expirationDate !== "" && $expirationDate !== "0000-00-00") {
           </table>
         </div>
       </div>
-
-      <div style="text-align:center; margin-top: 14px; font-weight: 850; color:#6b7a88;">
-        © <?= h($year) ?> CEVIMEP
-      </div>
-
-    </div>
+</div>
   </main>
 
 </div>

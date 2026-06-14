@@ -6,6 +6,29 @@ $conn = $pdo;
 
 function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8"); }
 
+function colExists(PDO $conn, string $table, string $col): bool {
+  try {
+    $st = $conn->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
+    $st->execute([$col]);
+    return (bool)$st->fetch(PDO::FETCH_ASSOC);
+  } catch (Throwable $e) {
+    return false;
+  }
+}
+
+function ensureExpirationColumn(PDO $conn): void {
+  try {
+    if (!colExists($conn, "inventory_items", "expiration_date")) {
+      $conn->exec("ALTER TABLE inventory_items ADD COLUMN expiration_date DATE NULL AFTER sale_price");
+    }
+  } catch (Throwable $e) {
+    // Si no hay permiso para ALTER, la página sigue funcionando.
+  }
+}
+
+ensureExpirationColumn($conn);
+$hasExpirationColumn = colExists($conn, "inventory_items", "expiration_date");
+
 $user = $_SESSION["user"] ?? [];
 $year = (int)date("Y");
 $branch_id = (int)($user["branch_id"] ?? 0);
@@ -33,7 +56,8 @@ try {
 
 /* Cargar item SOLO si existe en esta sucursal */
 $st = $conn->prepare("
-  SELECT i.id, i.name, i.category_id, i.purchase_price, i.sale_price, i.min_stock
+  SELECT i.id, i.name, i.category_id, i.purchase_price, i.sale_price, i.min_stock,
+         " . ($hasExpirationColumn ? "i.expiration_date" : "NULL AS expiration_date") . "
   FROM inventory_items i
   INNER JOIN inventory_stock s
     ON s.item_id = i.id AND s.branch_id = ?
@@ -47,54 +71,36 @@ if (!$item) { die("Producto no encontrado en esta sucursal."); }
 
 $flash_error = "";
 
-/* Guardar cambios */
+/* Guardar cambios: solo fecha de vencimiento */
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
-  $name = trim($_POST["name"] ?? "");
-  $category_id = (int)($_POST["category_id"] ?? 0);
-  $purchase_price = (float)($_POST["purchase_price"] ?? 0);
-  $sale_price = (float)($_POST["sale_price"] ?? 0);
+  $expiration_date = trim((string)($_POST["expiration_date"] ?? ""));
 
-  /* ✅ Min stock SIEMPRE 3 */
-  $min_stock = 3;
-
-  if ($name === "") {
-    $flash_error = "El nombre del producto es obligatorio.";
-  } elseif ($purchase_price < 0 || $sale_price < 0) {
-    $flash_error = "Los precios no pueden ser negativos.";
+  if ($expiration_date !== "" && !preg_match('/^\\d{4}-\\d{2}-\\d{2}$/', $expiration_date)) {
+    $flash_error = "Fecha de vencimiento inválida.";
+  } elseif (!$hasExpirationColumn) {
+    $flash_error = "No existe la columna expiration_date en inventory_items.";
   } else {
-    if ($category_id > 0) {
-      $stc = $conn->prepare("SELECT id FROM inventory_categories WHERE id=? LIMIT 1");
-      $stc->execute([$category_id]);
-      if (!$stc->fetchColumn()) $flash_error = "Categoría inválida.";
-    }
+    $up = $conn->prepare("
+      UPDATE inventory_items
+      SET expiration_date = ?
+      WHERE id = ? AND (is_active = 1 OR is_active IS NULL)
+    ");
 
-    if ($flash_error === "") {
-      $up = $conn->prepare("
-        UPDATE inventory_items
-        SET name = ?, category_id = ?, purchase_price = ?, sale_price = ?, min_stock = ?
-        WHERE id = ? AND (is_active = 1 OR is_active IS NULL)
-      ");
+    $ok = $up->execute([
+      $expiration_date !== "" ? $expiration_date : null,
+      $id
+    ]);
 
-      $cat_val = ($category_id > 0) ? $category_id : null;
-
-      $ok = $up->execute([$name, $cat_val, $purchase_price, $sale_price, $min_stock, $id]);
-
-      if ($ok) {
-        $_SESSION["flash_success"] = "✅ Producto actualizado correctamente";
-        header("Location: /private/inventario/items.php");
-        exit;
-      } else {
-        $flash_error = "No se pudo guardar. Intenta de nuevo.";
-      }
+    if ($ok) {
+      $_SESSION["flash_success"] = "✅ Fecha de vencimiento actualizada correctamente";
+      header("Location: /private/inventario/items.php");
+      exit;
+    } else {
+      $flash_error = "No se pudo guardar. Intenta de nuevo.";
     }
   }
 
-  /* repintar form */
-  $item["name"] = $name;
-  $item["category_id"] = $category_id ?: null;
-  $item["purchase_price"] = $purchase_price;
-  $item["sale_price"] = $sale_price;
-  $item["min_stock"] = 3;
+  $item["expiration_date"] = $expiration_date !== "" ? $expiration_date : null;
 }
 ?>
 <!doctype html>
@@ -286,7 +292,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         <div class="cardHead">
           <div>
             <h3>Editar producto</h3>
-            <p class="muted">Actualiza la información del producto seleccionado.</p>
+            <p class="muted">Solo puedes actualizar la fecha de vencimiento del producto seleccionado.</p>
           </div>
           <a class="btnx btnGhost" href="/private/inventario/items.php">← Volver</a>
         </div>
@@ -296,12 +302,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             <div class="field spanAll">
               <label>Nombre</label>
-              <input name="name" value="<?= h($item["name"] ?? "") ?>" required>
+              <input value="<?= h($item["name"] ?? "") ?>" readonly style="background:#f5f5f5; cursor:not-allowed;">
             </div>
 
             <div class="field">
               <label>Categoría</label>
-              <select name="category_id">
+              <select disabled style="background:#f5f5f5; cursor:not-allowed;">
                 <option value="0">— Sin categoría —</option>
                 <?php foreach ($categories as $c): ?>
                   <option value="<?= (int)$c["id"] ?>" <?= ((int)($item["category_id"] ?? 0) === (int)$c["id"]) ? "selected" : "" ?>>
@@ -313,30 +319,28 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             <div class="field">
               <label>Min Stock</label>
-              <input type="number" value="3" readonly>
+              <input type="number" value="3" readonly style="background:#f5f5f5; cursor:not-allowed;">
             </div>
 
             <div class="field">
-  <label>Precio compra</label>
-  <input
-    type="number"
-    step="0.01"
-    value="<?= h($item["purchase_price"] ?? 0) ?>"
-    readonly
-    style="background:#f5f5f5; cursor:not-allowed;"
-  >
-</div>
+              <label>Precio venta</label>
+              <input
+                type="number"
+                step="0.01"
+                value="<?= h($item["sale_price"] ?? 0) ?>"
+                readonly
+                style="background:#f5f5f5; cursor:not-allowed;"
+              >
+            </div>
 
-<div class="field">
-  <label>Precio venta</label>
-  <input
-    type="number"
-    step="0.01"
-    value="<?= h($item["sale_price"] ?? 0) ?>"
-    readonly
-    style="background:#f5f5f5; cursor:not-allowed;"
-  >
-</div>
+            <div class="field">
+              <label>Fecha de vencimiento</label>
+              <input
+                type="date"
+                name="expiration_date"
+                value="<?= h($item["expiration_date"] ?? "") ?>"
+              >
+            </div>
 
           </div>
 
