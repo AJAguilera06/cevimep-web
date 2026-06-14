@@ -16,6 +16,15 @@ function colExists(PDO $conn, string $table, string $col): bool {
   }
 }
 
+function mysqlDateToDmy(?string $date): string {
+  $date = trim((string)$date);
+  if ($date === "" || $date === "0000-00-00") return "";
+  if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $m)) {
+    return $m[3] . "/" . $m[2] . "/" . $m[1];
+  }
+  return $date;
+}
+
 function ensureExpirationColumn(PDO $conn): void {
   try {
     if (!colExists($conn, "inventory_items", "expiration_date")) {
@@ -56,7 +65,7 @@ try {
 
 /* Cargar item SOLO si existe en esta sucursal */
 $st = $conn->prepare("
-  SELECT i.id, i.name, i.category_id, i.purchase_price, i.sale_price, i.min_stock,
+  SELECT i.id, i.name, i.category_id, i.sale_price, i.min_stock,
          " . ($hasExpirationColumn ? "i.expiration_date" : "NULL AS expiration_date") . "
   FROM inventory_items i
   INNER JOIN inventory_stock s
@@ -75,10 +84,10 @@ $flash_error = "";
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
   $expiration_date = trim((string)($_POST["expiration_date"] ?? ""));
 
-  if ($expiration_date !== "" && !preg_match('/^\\d{4}-\\d{2}-\\d{2}$/', $expiration_date)) {
-    $flash_error = "Fecha de vencimiento inválida.";
+  if ($expiration_date !== "" && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $expiration_date)) {
+    $flash_error = "Fecha de vencimiento inválida. Usa el formato DD/MM/AAAA.";
   } elseif (!$hasExpirationColumn) {
-    $flash_error = "No existe la columna expiration_date en inventory_items.";
+    $flash_error = "No existe la columna expiration_date en inventory_items. Ejecuta el SQL indicado para crearla.";
   } else {
     $up = $conn->prepare("
       UPDATE inventory_items
@@ -336,7 +345,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             <div class="field">
               <label>Fecha de vencimiento</label>
               <input
-                type="date"
+                id="expiration_date_view"
+                type="text"
+                placeholder="DD/MM/AAAA"
+                maxlength="10"
+                inputmode="numeric"
+                value="<?= h(mysqlDateToDmy($item["expiration_date"] ?? "")) ?>"
+              >
+              <input
+                id="expiration_date"
+                type="hidden"
                 name="expiration_date"
                 value="<?= h($item["expiration_date"] ?? "") ?>"
               >
@@ -360,6 +378,42 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     © <?= $year ?> CEVIMEP. Todos los derechos reservados.
   </div>
 </div>
+
+
+<script>
+(function () {
+  const view = document.getElementById('expiration_date_view');
+  const hidden = document.getElementById('expiration_date');
+
+  if (!view || !hidden) return;
+
+  function formatExpirationDate() {
+    let v = view.value.replace(/\D/g, '').slice(0, 8);
+
+    if (v.length >= 5) {
+      view.value = v.slice(0, 2) + '/' + v.slice(2, 4) + '/' + v.slice(4);
+    } else if (v.length >= 3) {
+      view.value = v.slice(0, 2) + '/' + v.slice(2);
+    } else {
+      view.value = v;
+    }
+
+    const parts = view.value.split('/');
+    if (parts.length === 3 && parts[0].length === 2 && parts[1].length === 2 && parts[2].length === 4) {
+      hidden.value = parts[2] + '-' + parts[1] + '-' + parts[0];
+    } else {
+      hidden.value = '';
+    }
+  }
+
+  view.addEventListener('input', formatExpirationDate);
+
+  const form = view.closest('form');
+  if (form) {
+    form.addEventListener('submit', formatExpirationDate);
+  }
+})();
+</script>
 
 </body>
 </html>

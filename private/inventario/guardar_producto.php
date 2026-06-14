@@ -290,20 +290,25 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
                   <label>Min Stock</label>
                   <input value="3" disabled>
                 </div>
-
-                <div class="field">
-                  <label>Precio compra (RD$)</label>
-                  <input type="number" step="0.01" min="0" name="precio_compra" placeholder="0.00">
-                </div>
-
-                <div class="field">
+<div class="field">
                   <label>Precio venta (RD$)</label>
                   <input type="number" step="0.01" min="0" name="precio_venta" placeholder="0.00">
                 </div>
 
                 <div class="field">
                   <label>Fecha de vencimiento</label>
-                  <input type="date" name="expiration_date">
+                  <input
+                    id="expiration_date_view"
+                    type="text"
+                    placeholder="DD/MM/AAAA"
+                    maxlength="10"
+                    inputmode="numeric"
+                  >
+                  <input
+                    id="expiration_date"
+                    type="hidden"
+                    name="expiration_date"
+                  >
                 </div>
 
                 <div class="note">
@@ -327,6 +332,42 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
       <div class="inner">© <?= h($year) ?> CEVIMEP. Todos los derechos reservados.</div>
     </div>
 
+
+<script>
+(function () {
+  const view = document.getElementById('expiration_date_view');
+  const hidden = document.getElementById('expiration_date');
+
+  if (!view || !hidden) return;
+
+  function formatExpirationDate() {
+    let v = view.value.replace(/\D/g, '').slice(0, 8);
+
+    if (v.length >= 5) {
+      view.value = v.slice(0, 2) + '/' + v.slice(2, 4) + '/' + v.slice(4);
+    } else if (v.length >= 3) {
+      view.value = v.slice(0, 2) + '/' + v.slice(2);
+    } else {
+      view.value = v;
+    }
+
+    const parts = view.value.split('/');
+    if (parts.length === 3 && parts[0].length === 2 && parts[1].length === 2 && parts[2].length === 4) {
+      hidden.value = parts[2] + '-' + parts[1] + '-' + parts[0];
+    } else {
+      hidden.value = '';
+    }
+  }
+
+  view.addEventListener('input', formatExpirationDate);
+
+  const form = view.closest('form');
+  if (form) {
+    form.addEventListener('submit', formatExpirationDate);
+  }
+})();
+</script>
+
   </body>
   </html>
   <?php
@@ -338,7 +379,7 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 ========================== */
 $nombre        = trim($_POST["nombre"] ?? "");
 $category_id   = (int)($_POST["category_id"] ?? 0);
-$precio_compra   = (float)($_POST["precio_compra"] ?? 0);
+
 $precio_venta    = (float)($_POST["precio_venta"] ?? 0);
 $expiration_date = trim((string)($_POST["expiration_date"] ?? ""));
 
@@ -368,16 +409,16 @@ try {
 
   $conn->beginTransaction();
 
-  // Insert item con fecha de vencimiento si la columna existe
+  // Insert item ajustado a la base de datos actual:
+  // Sin sku y sin purchase_price. Con fecha de vencimiento si la columna existe.
   if (colExists($conn, "inventory_items", "expiration_date")) {
     $st = $conn->prepare("
-      INSERT INTO inventory_items (category_id, name, sku, unit, purchase_price, sale_price, expiration_date, min_stock, branch_id, is_active)
-      VALUES (?, ?, NULL, 'dosis', ?, ?, ?, ?, ?, 1)
+      INSERT INTO inventory_items (category_id, name, unit, sale_price, expiration_date, min_stock, branch_id, is_active)
+      VALUES (?, ?, 'dosis', ?, ?, ?, ?, 1)
     ");
     $st->execute([
       $category_id,
       $nombre,
-      $precio_compra,
       $precio_venta,
       $expiration_date !== "" ? $expiration_date : null,
       $min_stock,
@@ -385,10 +426,10 @@ try {
     ]);
   } else {
     $st = $conn->prepare("
-      INSERT INTO inventory_items (category_id, name, sku, unit, purchase_price, sale_price, min_stock, branch_id, is_active)
-      VALUES (?, ?, NULL, 'dosis', ?, ?, ?, ?, 1)
+      INSERT INTO inventory_items (category_id, name, unit, sale_price, min_stock, branch_id, is_active)
+      VALUES (?, ?, 'dosis', ?, ?, ?, 1)
     ");
-    $st->execute([$category_id, $nombre, $precio_compra, $precio_venta, $min_stock, $userBranchId]);
+    $st->execute([$category_id, $nombre, $precio_venta, $min_stock, $userBranchId]);
   }
 
   $newItemId = (int)$conn->lastInsertId();
