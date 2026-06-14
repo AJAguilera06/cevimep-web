@@ -46,12 +46,15 @@ function ensureExpirationColumn(PDO $conn): void {
 function formatDateDmy(?string $date): string {
   $date = trim((string)$date);
   if ($date === "" || $date === "0000-00-00") return "—";
-  $ts = strtotime($date);
-  return $ts ? date("d/m/Y", $ts) : $date;
+
+  if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $m)) {
+    return $m[3] . "/" . $m[2] . "/" . $m[1];
+  }
+
+  return $date;
 }
 
 ensureExpirationColumn($conn);
-$hasExpirationColumn = colExists($conn, "inventory_items", "expiration_date");
 
 if ($branch_id <= 0) {
   http_response_code(400);
@@ -86,7 +89,7 @@ try {
       c.name AS category_name,
       COALESCE(s.quantity, 0) AS stock,
       i.sale_price,
-      " . ($hasExpirationColumn ? "i.expiration_date" : "NULL AS expiration_date") . "
+      i.expiration_date
     FROM inventory_items i
     LEFT JOIN inventory_stock s
       ON s.item_id = i.id AND s.branch_id = ?
