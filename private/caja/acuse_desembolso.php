@@ -141,6 +141,18 @@ if ($desembolso_code === "") {
     <div class="row"><div class="label">Monto</div><div><strong>RD$ <?= number_format($monto, 2) ?></strong></div></div>
     <div class="motivo"><span class="label">Motivo:</span> <?= htmlspecialchars($motivo) ?></div>
     <div class="small">Documento interno • Impresión automática</div>
+
+    <div style="margin-top:40px;text-align:center;">
+      <div style="font-weight:bold;margin-bottom:25px;">
+        Recibido por:
+      </div>
+
+      <div style="width:240px;margin:0 auto;border-bottom:1px solid #000;height:20px;"></div>
+
+      <div style="margin-top:6px;font-size:12px;color:#555;">
+        Firma
+      </div>
+    </div>
   </div>
 
   <script>
