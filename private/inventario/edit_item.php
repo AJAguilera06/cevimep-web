@@ -86,8 +86,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
   if ($expiration_date !== "" && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $expiration_date)) {
     $flash_error = "Fecha de vencimiento inválida. Usa el formato DD/MM/AAAA.";
-  } elseif (!$hasExpirationColumn) {
-    $flash_error = "No existe la columna expiration_date en inventory_items. Ejecuta el SQL indicado para crearla.";
   } else {
     $up = $conn->prepare("
       UPDATE inventory_items
