@@ -24,6 +24,28 @@ function wants_json(): bool {
 }
 function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8"); }
 
+function colExists(PDO $conn, string $table, string $col): bool {
+  try {
+    $st = $conn->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
+    $st->execute([$col]);
+    return (bool)$st->fetch(PDO::FETCH_ASSOC);
+  } catch (Throwable $e) {
+    return false;
+  }
+}
+
+function ensureExpirationColumn(PDO $conn): void {
+  try {
+    if (!colExists($conn, "inventory_items", "expiration_date")) {
+      $conn->exec("ALTER TABLE inventory_items ADD COLUMN expiration_date DATE NULL AFTER sale_price");
+    }
+  } catch (Throwable $e) {
+    // Si el usuario de BD no tiene permiso para ALTER, el sistema seguirá funcionando sin tumbar la página.
+  }
+}
+
+ensureExpirationColumn($conn);
+
 $user = $_SESSION["user"] ?? [];
 $userBranchId = (int)($user["branch_id"] ?? 0);
 
@@ -279,6 +301,11 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
                   <input type="number" step="0.01" min="0" name="precio_venta" placeholder="0.00">
                 </div>
 
+                <div class="field">
+                  <label>Fecha de vencimiento</label>
+                  <input type="date" name="expiration_date">
+                </div>
+
                 <div class="note">
                   Nota: este producto se registra y se vincula automáticamente a tu sucursal. El stock inicial dependerá de entradas/salidas.
                 </div>
@@ -311,8 +338,13 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 ========================== */
 $nombre        = trim($_POST["nombre"] ?? "");
 $category_id   = (int)($_POST["category_id"] ?? 0);
-$precio_compra = (float)($_POST["precio_compra"] ?? 0);
-$precio_venta  = (float)($_POST["precio_venta"] ?? 0);
+$precio_compra   = (float)($_POST["precio_compra"] ?? 0);
+$precio_venta    = (float)($_POST["precio_venta"] ?? 0);
+$expiration_date = trim((string)($_POST["expiration_date"] ?? ""));
+
+if ($expiration_date !== "" && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $expiration_date)) {
+  $expiration_date = "";
+}
 
 /* ✅ Min stock SIEMPRE 3 */
 $min_stock     = 3;
@@ -336,12 +368,28 @@ try {
 
   $conn->beginTransaction();
 
-  // Insert item
-  $st = $conn->prepare("
-    INSERT INTO inventory_items (category_id, name, sku, unit, purchase_price, sale_price, min_stock, branch_id, is_active)
-    VALUES (?, ?, NULL, 'dosis', ?, ?, ?, ?, 1)
-  ");
-  $st->execute([$category_id, $nombre, $precio_compra, $precio_venta, $min_stock, $userBranchId]);
+  // Insert item con fecha de vencimiento si la columna existe
+  if (colExists($conn, "inventory_items", "expiration_date")) {
+    $st = $conn->prepare("
+      INSERT INTO inventory_items (category_id, name, sku, unit, purchase_price, sale_price, expiration_date, min_stock, branch_id, is_active)
+      VALUES (?, ?, NULL, 'dosis', ?, ?, ?, ?, ?, 1)
+    ");
+    $st->execute([
+      $category_id,
+      $nombre,
+      $precio_compra,
+      $precio_venta,
+      $expiration_date !== "" ? $expiration_date : null,
+      $min_stock,
+      $userBranchId
+    ]);
+  } else {
+    $st = $conn->prepare("
+      INSERT INTO inventory_items (category_id, name, sku, unit, purchase_price, sale_price, min_stock, branch_id, is_active)
+      VALUES (?, ?, NULL, 'dosis', ?, ?, ?, ?, 1)
+    ");
+    $st->execute([$category_id, $nombre, $precio_compra, $precio_venta, $min_stock, $userBranchId]);
+  }
 
   $newItemId = (int)$conn->lastInsertId();
 

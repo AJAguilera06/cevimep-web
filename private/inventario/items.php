@@ -23,6 +23,36 @@ $branch_id = (int)($user["branch_id"] ?? 0);
 
 function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8"); }
 
+function colExists(PDO $conn, string $table, string $col): bool {
+  try {
+    $st = $conn->prepare("SHOW COLUMNS FROM `$table` LIKE ?");
+    $st->execute([$col]);
+    return (bool)$st->fetch(PDO::FETCH_ASSOC);
+  } catch (Throwable $e) {
+    return false;
+  }
+}
+
+function ensureExpirationColumn(PDO $conn): void {
+  try {
+    if (!colExists($conn, "inventory_items", "expiration_date")) {
+      $conn->exec("ALTER TABLE inventory_items ADD COLUMN expiration_date DATE NULL AFTER sale_price");
+    }
+  } catch (Throwable $e) {
+    // Si no hay permiso para ALTER, la página continúa sin tumbarse.
+  }
+}
+
+function formatDateDmy(?string $date): string {
+  $date = trim((string)$date);
+  if ($date === "" || $date === "0000-00-00") return "—";
+  $ts = strtotime($date);
+  return $ts ? date("d/m/Y", $ts) : $date;
+}
+
+ensureExpirationColumn($conn);
+$hasExpirationColumn = colExists($conn, "inventory_items", "expiration_date");
+
 if ($branch_id <= 0) {
   http_response_code(400);
   die("Sucursal inválida (branch_id).");
@@ -44,25 +74,6 @@ $flash_ok  = $_SESSION["flash_success"] ?? "";
 $flash_err = $_SESSION["flash_error"] ?? "";
 unset($_SESSION["flash_success"], $_SESSION["flash_error"]);
 
-/* ===== ELIMINAR (solo de ESTA sucursal) ===== */
-if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "delete_from_branch") {
-  $item_id = (int)($_POST["item_id"] ?? 0);
-
-  if ($item_id > 0) {
-    try {
-      $stD = $conn->prepare("DELETE FROM inventory_stock WHERE branch_id=? AND item_id=?");
-      $stD->execute([$branch_id, $item_id]);
-      $_SESSION["flash_success"] = "Producto removido de esta sucursal.";
-    } catch (Throwable $e) {
-      $_SESSION["flash_error"] = "No se pudo eliminar el producto de la sucursal.";
-    }
-
-    $q = $filter_category_id > 0 ? ("?category_id=" . $filter_category_id) : "";
-    header("Location: /private/inventario/items.php{$q}");
-    exit;
-  }
-}
-
 /* ===== LISTADO POR SUCURSAL ===== */
 $items = [];
 try {
@@ -75,7 +86,8 @@ try {
       c.name AS category_name,
       COALESCE(s.quantity, 0) AS stock,
       i.purchase_price,
-      i.sale_price
+      i.sale_price,
+      " . ($hasExpirationColumn ? "i.expiration_date" : "NULL AS expiration_date") . "
     FROM inventory_items i
     LEFT JOIN inventory_stock s
       ON s.item_id = i.id AND s.branch_id = ?
@@ -210,7 +222,7 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       border:1px solid rgba(2,21,44,.06);
       -webkit-overflow-scrolling: touch;
     }
-    table{ width:100%; border-collapse:separate; border-spacing:0; min-width: 980px; }
+    table{ width:100%; border-collapse:separate; border-spacing:0; min-width: 1040px; }
     th, td{ padding:12px 10px; border-bottom:1px solid #eef2f6; font-size:13px; }
     th{
       color:#0b4d87;
@@ -263,11 +275,11 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
       gap:8px;
       white-space:nowrap;
     }
-    .btn-danger{
-      background:#ffecec;
-      border-color:#ffb6b6;
-      color:#a40000;
-    }
+
+    .vencimiento-ok{ color:#0a7a33; font-weight:950; white-space:nowrap; }
+    .vencimiento-alerta{ color:#a40000; font-weight:950; white-space:nowrap; }
+    .vencimiento-vacio{ color:#6b7a88; font-weight:850; white-space:nowrap; }
+
 
     @media (max-width: 980px){
       .page-wrap{ max-width: 100%; padding: 18px 14px 14px; }
@@ -647,6 +659,7 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
                 <th class="right">Compra</th>
                 <th class="right">Venta</th>
                 <th class="right">Stock</th>
+                <th class="right">Vencimiento</th>
                 <th class="right">Acciones</th>
               </tr>
             </thead>
@@ -654,7 +667,7 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
             <tbody>
               <?php if (!$items): ?>
                 <tr>
-                  <td colspan="6" style="padding:18px; text-align:center; font-weight:900; color:#6b7a88;">
+                  <td colspan="7" style="padding:18px; text-align:center; font-weight:900; color:#6b7a88;">
                     No hay productos registrados para esta sucursal.
                   </td>
                 </tr>
@@ -675,6 +688,22 @@ else {
   $pillClass = "pill-ok";
   $pillText = number_format($stock, 2) . " · OK";
 }
+
+$expirationDate = trim((string)($it["expiration_date"] ?? ""));
+$expirationText = formatDateDmy($expirationDate);
+$expirationClass = "vencimiento-vacio";
+
+if ($expirationDate !== "" && $expirationDate !== "0000-00-00") {
+  $today = new DateTime("today");
+  $limit = (clone $today)->modify("+1 month");
+  $exp = DateTime::createFromFormat("Y-m-d", $expirationDate);
+
+  if ($exp && $exp <= $limit) {
+    $expirationClass = "vencimiento-alerta";
+  } else {
+    $expirationClass = "vencimiento-ok";
+  }
+}
                   ?>
                   <tr>
                     <td style="font-weight:950;"><?= h($it["name"] ?? "") ?></td>
@@ -685,16 +714,11 @@ else {
                       <span class="pill <?= h($pillClass) ?>"><?= h($pillText) ?></span>
                     </td>
                     <td class="right">
+                      <span class="<?= h($expirationClass) ?>"><?= h($expirationText) ?></span>
+                    </td>
+                    <td class="right">
                       <div class="actions">
                         <a class="btn-sm" href="<?= h($edit_url_base . (int)$it["id"]) ?>">✏️ Editar</a>
-
-                        <form method="post" action="/private/inventario/items.php<?= $filter_category_id > 0 ? ("?category_id=" . $filter_category_id) : "" ?>"
-                              onsubmit="return confirm('¿Seguro que deseas remover este producto de esta sucursal?');"
-                              style="margin:0;">
-                          <input type="hidden" name="action" value="delete_from_branch">
-                          <input type="hidden" name="item_id" value="<?= (int)$it["id"] ?>">
-                          <button class="btn-sm btn-danger" type="submit">🗑️ Remover</button>
-                        </form>
                       </div>
                     </td>
                   </tr>
