@@ -146,19 +146,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
   if ($branch_id <= 0) {
     $error = "Sucursal inválida.";
-  } elseif ($no_libro === '') {
-    $error = "El No. Libro es obligatorio.";
   } elseif ($first_name === '' || $last_name === '') {
     $error = "Nombre y apellido son obligatorios.";
   } elseif (trim((string)($_POST['birth_date'] ?? '')) !== '' && $birth_date === '') {
     $error = "Fecha de nacimiento inválida. Usa el formato DD/MM/AAAA.";
   } else {
     try {
-      $chk = $pdo->prepare("SELECT id FROM patients WHERE branch_id = :bid AND no_libro = :nl LIMIT 1");
-      $chk->execute(['bid' => $branch_id, 'nl' => $no_libro]);
-      if ($chk->fetchColumn()) {
-        $error = "Ya existe un paciente con ese No. Libro en esta sucursal.";
-      } else {
+      if ($no_libro !== '') {
+        $chk = $pdo->prepare("SELECT id FROM patients WHERE branch_id = :bid AND no_libro = :nl LIMIT 1");
+        $chk->execute(['bid' => $branch_id, 'nl' => $no_libro]);
+        if ($chk->fetchColumn()) {
+          $error = "Ya existe un paciente con ese No. Libro en esta sucursal.";
+        }
+      }
+
+      if ($error === '') {
         $st = $pdo->prepare("
           INSERT INTO patients
             (no_libro, first_name, last_name, cedula, phone, direccion, birth_date, gender, blood_type, branch_id,
@@ -169,7 +171,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         ");
 
         $st->execute([
-          'nl'  => $no_libro,
+          'nl'  => $no_libro !== '' ? $no_libro : null,
           'fn'  => $first_name,
           'ln'  => $last_name,
           'ced' => $cedula !== '' ? $cedula : null,
@@ -292,8 +294,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
           <div class="grid">
             <div>
-              <label for="no_libro">No. Libro <span class="muted">(obligatorio)</span></label>
-              <input id="no_libro" name="no_libro" class="input" value="<?= h($no_libro) ?>" required>
+              <label for="no_libro">No. Libro</label>
+              <input id="no_libro" name="no_libro" class="input" value="<?= h($no_libro) ?>">
             </div>
 
             <div>
