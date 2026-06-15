@@ -16,7 +16,7 @@ header('Expires: 0');
 if (function_exists('opcache_invalidate')) { @opcache_invalidate(__FILE__, true); }
 if (function_exists('opcache_reset')) { /* opcional: no lo llamamos para no afectar todo el sitio */ }
 
-$__BUILD_MARK = 'items.php@2026-06-14-print-3cols';
+$__BUILD_MARK = 'items.php@2026-06-14-print-3cols-v2';
 
 $conn = $pdo;
 $user = $_SESSION["user"] ?? [];
@@ -788,6 +788,45 @@ $edit_url_base   = "/private/inventario/edit_item.php?id=";
 
       .print-compact-table tr{
         page-break-inside:avoid !important;
+      }
+    }
+
+  
+    /* ===== CORRECCIÓN FINAL: mostrar columna Vencimiento en impresión ===== */
+    @media print {
+      .print-compact-table th,
+      .print-compact-table td{
+        display:table-cell !important;
+      }
+
+      .print-compact-table th:last-child,
+      .print-compact-table td:last-child{
+        display:table-cell !important;
+      }
+
+      .print-compact-table th:nth-child(1),
+      .print-compact-table td:nth-child(1){
+        width:58% !important;
+        text-align:left !important;
+      }
+
+      .print-compact-table th:nth-child(2),
+      .print-compact-table td:nth-child(2){
+        width:16% !important;
+        text-align:right !important;
+      }
+
+      .print-compact-table th:nth-child(3),
+      .print-compact-table td:nth-child(3){
+        width:26% !important;
+        text-align:right !important;
+      }
+
+      .print-compact-table .p-exp{
+        display:table-cell !important;
+        text-align:right !important;
+        font-weight:900 !important;
+        white-space:nowrap !important;
       }
     }
 
