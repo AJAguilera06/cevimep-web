@@ -68,6 +68,11 @@ if (!$invoice) {
     die("Factura no encontrada.");
 }
 
+$invoiceStatus = strtoupper((string)($invoice["status"] ?? "ACTIVE"));
+$isCancelled = ($invoiceStatus === "CANCELLED" || $invoiceStatus === "ANULADA");
+$cancelReason = trim((string)($invoice["cancel_reason"] ?? ""));
+$cancelledAt = trim((string)($invoice["cancelled_at"] ?? ""));
+
 $facturaCode = trim((string)($invoice["invoice_code"] ?? ""));
 if ($facturaCode === "") {
     $facturaCode = "#" . (string)((int)$invoice["id"]);
@@ -233,6 +238,24 @@ body{
     color:#444;
 }
 
+.cancelled-banner{
+    border:3px solid #a00000;
+    color:#a00000;
+    background:#fff1f1;
+    padding:10px;
+    text-align:center;
+    font-weight:900;
+    font-size:18px;
+    margin:10px 0;
+}
+
+.cancelled-note{
+    font-size:12px;
+    margin-top:5px;
+    color:#7a0000;
+    line-height:1.4;
+}
+
 .print-btn{
     position:fixed;
     top:10px;
@@ -295,6 +318,24 @@ body{
 
     <div class="line"></div>
 
+    <?php if ($isCancelled): ?>
+        <div class="cancelled-banner">
+            FACTURA ANULADA
+            <?php if ($cancelReason !== "" || $cancelledAt !== ""): ?>
+                <div class="cancelled-note">
+                    <?php if ($cancelledAt !== ""): ?>
+                        Fecha de anulación: <?= h($cancelledAt) ?><br>
+                    <?php endif; ?>
+                    <?php if ($cancelReason !== ""): ?>
+                        Motivo: <?= h($cancelReason) ?>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <div class="line"></div>
+    <?php endif; ?>
+
     <div class="info">
 
         <div>
@@ -329,6 +370,11 @@ body{
         <div>
             <strong>Pago:</strong>
             <?= h($invoice["payment_method"]) ?>
+        </div>
+
+        <div>
+            <strong>Estado:</strong>
+            <?= $isCancelled ? "ANULADA" : "ACTIVA" ?>
         </div>
 
     </div>

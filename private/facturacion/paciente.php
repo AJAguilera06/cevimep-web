@@ -6,9 +6,35 @@ $conn = $pdo;
 
 function h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8"); }
 
+function colExists(PDO $conn, string $table, string $col): bool {
+    try {
+        $db = (string)$conn->query("SELECT DATABASE()")->fetchColumn();
+        $st = $conn->prepare("
+            SELECT COUNT(*) FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA=? AND TABLE_NAME=? AND COLUMN_NAME=?
+        ");
+        $st->execute([$db, $table, $col]);
+        return (int)$st->fetchColumn() > 0;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+function isAdminRole(string $role): bool {
+    $r = mb_strtolower(trim($role));
+    return in_array($r, ['administrador', 'admin', 'superadmin'], true);
+}
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+$csrfToken = $_SESSION['csrf_token'];
+
 $user = $_SESSION['user'] ?? [];
 $nombreSucursal = $user['full_name'] ?? 'CEVIMEP';
 $rol = $user['role'] ?? '';
+$isAdmin = isAdminRole((string)$rol);
 $sucursalId = (int)($user['branch_id'] ?? 0);
 
 if ($sucursalId <= 0) {
@@ -39,6 +65,21 @@ if (!$patient) {
 }
 
 /** Facturas del paciente en esta sucursal */
+$hasStatus = colExists($conn, 'invoices', 'status');
+$hasCancelReason = colExists($conn, 'invoices', 'cancel_reason');
+$hasCancelledAt = colExists($conn, 'invoices', 'cancelled_at');
+
+$extraInvoiceCols = "";
+if ($hasStatus) {
+    $extraInvoiceCols .= ", i.status";
+}
+if ($hasCancelReason) {
+    $extraInvoiceCols .= ", i.cancel_reason";
+}
+if ($hasCancelledAt) {
+    $extraInvoiceCols .= ", i.cancelled_at";
+}
+
 $stmt = $conn->prepare("
     SELECT i.id,
            i.invoice_code,
@@ -46,6 +87,7 @@ $stmt = $conn->prepare("
            DATE(i.created_at) AS invoice_date,
            i.payment_method,
            i.total
+           {$extraInvoiceCols}
     FROM invoices i
     WHERE i.patient_id = :pid
       AND i.branch_id  = :bid
@@ -56,8 +98,18 @@ $invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 /** Totales */
 $total_count = count($invoices);
+$total_active_count = 0;
+$total_cancelled_count = 0;
 $total_amount = 0.0;
+
 foreach ($invoices as $inv) {
+    $status = strtoupper((string)($inv["status"] ?? "ACTIVE"));
+    if ($status === "CANCELLED" || $status === "ANULADA") {
+        $total_cancelled_count++;
+        continue;
+    }
+
+    $total_active_count++;
     $total_amount += (float)$inv["total"];
 }
 ?>
@@ -168,6 +220,34 @@ foreach ($invoices as $inv) {
             text-decoration:none;
         }
 
+        .mini-btn.danger{
+            background:#fff1f1;
+            color:#a40000;
+            border-color:#ffc4c4;
+        }
+
+        .status-badge{
+            display:inline-flex;
+            padding:5px 9px;
+            border-radius:999px;
+            font-weight:900;
+            font-size:11px;
+            border:1px solid #cfe8d6;
+            background:#effff3;
+            color:#0a7a33;
+        }
+
+        .status-badge.cancelled{
+            border-color:#ffc4c4;
+            background:#fff1f1;
+            color:#a40000;
+        }
+
+        .cancel-form{
+            display:inline;
+            margin-left:6px;
+        }
+
         .muted{
             text-align:center;
             opacity:.7;
@@ -233,8 +313,9 @@ foreach ($invoices as $inv) {
                     <p class="branch">Sucursal: <?= h($patient["branch_name"] ?? "") ?></p>
 
                     <div class="chips">
-                        <div class="chip">Total facturas: <strong><?= (int)$total_count ?></strong></div>
-                        <div class="chip">Monto total: <strong>RD$ <?= number_format((float)$total_amount, 2) ?></strong></div>
+                        <div class="chip">Facturas activas: <strong><?= (int)$total_active_count ?></strong></div>
+                        <div class="chip">Anuladas: <strong><?= (int)$total_cancelled_count ?></strong></div>
+                        <div class="chip">Monto activo: <strong>RD$ <?= number_format((float)$total_amount, 2) ?></strong></div>
                     </div>
                 </div>
 
@@ -248,23 +329,46 @@ foreach ($invoices as $inv) {
                                 <th style="width:150px;">Fecha</th>
                                 <th style="width:170px;">Método</th>
                                 <th style="width:170px;">Total</th>
-                                <th style="width:160px;">Detalle</th>
+                                <th style="width:130px;">Estado</th>
+                                <th style="width:260px;">Detalle</th>
                             </tr>
                         </thead>
                         <tbody>
                         <?php if (empty($invoices)): ?>
                             <tr>
-                                <td colspan="5" class="muted">Este paciente no tiene facturas en esta sucursal.</td>
+                                <td colspan="6" class="muted">Este paciente no tiene facturas en esta sucursal.</td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($invoices as $inv): ?>
+                                <?php
+                                    $status = strtoupper((string)($inv["status"] ?? "ACTIVE"));
+                                    $isCancelled = ($status === "CANCELLED" || $status === "ANULADA");
+                                    $invoiceLabel = $inv["invoice_code"] ?? ("#" . $inv["id"]);
+                                ?>
                                 <tr>
-                                    <td><?= h($inv["invoice_code"] ?? ("#" . $inv["id"])) ?></td>
+                                    <td><?= h($invoiceLabel) ?></td>
                                     <td><?= h($inv["invoice_date"]) ?></td>
                                     <td><?= h($inv["payment_method"]) ?></td>
                                     <td class="money">RD$ <?= number_format((float)$inv["total"], 2) ?></td>
                                     <td>
+                                        <?php if ($isCancelled): ?>
+                                            <span class="status-badge cancelled" title="<?= h($inv["cancel_reason"] ?? "") ?>">ANULADA</span>
+                                        <?php else: ?>
+                                            <span class="status-badge">ACTIVA</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
                                         <a class="mini-btn" href="/private/facturacion/ver.php?id=<?= (int)$inv["id"] ?>">📄 Ver</a>
+
+                                        <?php if ($isAdmin && !$isCancelled): ?>
+                                            <form class="cancel-form" method="post" action="/private/facturacion/anular.php" onsubmit="return pedirMotivoAnulacion(this, '<?= h($invoiceLabel) ?>');">
+                                                <input type="hidden" name="csrf_token" value="<?= h($csrfToken) ?>">
+                                                <input type="hidden" name="invoice_id" value="<?= (int)$inv["id"] ?>">
+                                                <input type="hidden" name="patient_id" value="<?= (int)$patient_id ?>">
+                                                <input type="hidden" name="reason" value="">
+                                                <button type="submit" class="mini-btn danger">🚫 Anular</button>
+                                            </form>
+                                        <?php endif; ?>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -284,6 +388,26 @@ foreach ($invoices as $inv) {
 <footer class="footer">
     © <?= date('Y') ?> CEVIMEP — Todos los derechos reservados.
 </footer>
+
+<script>
+function pedirMotivoAnulacion(form, factura) {
+    const motivo = prompt("Motivo de anulación para la factura " + factura + ":");
+
+    if (motivo === null) {
+        return false;
+    }
+
+    const limpio = motivo.trim();
+
+    if (limpio.length < 5) {
+        alert("Debe escribir un motivo de al menos 5 caracteres.");
+        return false;
+    }
+
+    form.querySelector('input[name="reason"]').value = limpio;
+    return confirm("¿Seguro que deseas anular esta factura? Esta acción no borrará la factura, solo la marcará como ANULADA.");
+}
+</script>
 
 </body>
 </html>
