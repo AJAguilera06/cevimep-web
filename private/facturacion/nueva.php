@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . "/../_guard.php";
+require_once __DIR__ . "/../csrf.php";
 
 // si existe tu librería de caja, la mantenemos
 $maybeCajaLib = __DIR__ . "/../caja/caja_lib.php";
@@ -402,6 +403,8 @@ try {
    POST: guardar factura
    =============================== */
 if ($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST["action"] ?? "") === "save_invoice") {
+  csrf_validate_post();
+
   try {
     if ($patient_id <= 0) throw new Exception("Paciente inválido.");
     if ($branch_id <= 0) throw new Exception("Sucursal inválida (branch_id).");
@@ -888,6 +891,7 @@ $today = date("Y-m-d");
         <?php endif; ?>
 
         <form method="post" id="invoiceForm" autocomplete="off">
+          <?= csrf_field() ?>
           <input type="hidden" name="action" value="save_invoice">
 
           <div class="section">

@@ -7,6 +7,7 @@ declare(strict_types=1);
  * - Usar _guard.php (ahí ya está el $pdo y seguridad)
  */
 require_once __DIR__ . "/../_guard.php";
+require_once __DIR__ . "/../csrf.php";
 
 if (isset($_GET["edit_id"])) {
   $id = (int)$_GET["edit_id"];
@@ -269,6 +270,7 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
             </div>
 
             <form method="post" action="/private/inventario/guardar_producto.php" autocomplete="off">
+          <?= csrf_field() ?>
               <div class="formGrid">
 
                 <div class="field" style="grid-column:1 / -1;">
@@ -377,6 +379,8 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 /* ==========================
    POST => GUARDAR
 ========================== */
+csrf_validate_post();
+
 $nombre        = trim($_POST["nombre"] ?? "");
 $category_id   = (int)($_POST["category_id"] ?? 0);
 

@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . "/../_guard.php";
+require_once __DIR__ . "/../csrf.php";
 
 $conn = $pdo;
 
@@ -140,6 +141,8 @@ foreach ($products as $p) {
 $action = $_POST["action"] ?? "";
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
+  csrf_validate_post();
+
 
   /* Añadir */
   if ($action === "add") {
@@ -554,11 +557,13 @@ $printData = $_SESSION["salida_last_print"] ?? null;
 
         <!-- save -->
         <form method="post" id="saveForm">
+          <?= csrf_field() ?>
           <input type="hidden" name="action" value="save_print">
         </form>
 
         <!-- add -->
         <form method="post" id="addForm">
+          <?= csrf_field() ?>
           <input type="hidden" name="action" value="add">
         </form>
 
@@ -646,6 +651,7 @@ $printData = $_SESSION["salida_last_print"] ?? null;
                     <td><?= (int)$row["qty"] ?></td>
                     <td>
                       <form method="post" style="display:inline;">
+          <?= csrf_field() ?>
                         <input type="hidden" name="action" value="remove">
                         <input type="hidden" name="remove_id" value="<?= (int)$row["item_id"] ?>">
                         <button class="btn-action btn-ghost" type="submit">Quitar</button>
@@ -660,6 +666,7 @@ $printData = $_SESSION["salida_last_print"] ?? null;
 
         <div class="save-row" style="gap:10px;">
           <form method="post" style="margin:0;">
+          <?= csrf_field() ?>
             <input type="hidden" name="action" value="clear">
             <button class="btn-action btn-ghost" type="submit">Vaciar</button>
           </form>

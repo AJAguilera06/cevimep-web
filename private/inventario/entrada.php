@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . "/../_guard.php";
+require_once __DIR__ . "/../csrf.php";
 
 $conn = $pdo;
 
@@ -107,6 +108,8 @@ try {
 $action = $_POST["action"] ?? "";
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
+  csrf_validate_post();
+
 
   /* Añadir */
   if ($action === "add") {
@@ -479,6 +482,7 @@ $printData = $_SESSION["entrada_last_print"] ?? null;
 
         <!-- save -->
         <form method="post" id="saveForm">
+          <?= csrf_field() ?>
           <input type="hidden" name="action" value="save_print">
           <input type="hidden" name="destino" value="<?= h($branch_name) ?>">
           <input type="hidden" name="made_by" value="">
@@ -486,6 +490,7 @@ $printData = $_SESSION["entrada_last_print"] ?? null;
 
         <!-- add -->
         <form method="post" id="addForm">
+          <?= csrf_field() ?>
           <input type="hidden" name="action" value="add">
         </form>
 
@@ -571,6 +576,7 @@ $printData = $_SESSION["entrada_last_print"] ?? null;
                     <td><?= (int)$row["qty"] ?></td>
                     <td>
                       <form method="post" style="display:inline;">
+          <?= csrf_field() ?>
                         <input type="hidden" name="action" value="remove">
                         <input type="hidden" name="remove_id" value="<?= (int)$row["item_id"] ?>">
                         <button class="btn-action btn-ghost" type="submit">Quitar</button>
@@ -585,6 +591,7 @@ $printData = $_SESSION["entrada_last_print"] ?? null;
 
         <div class="save-row" style="gap:10px;">
           <form method="post" style="margin:0;">
+          <?= csrf_field() ?>
             <input type="hidden" name="action" value="clear">
             <button class="btn-action btn-ghost" type="submit">Vaciar</button>
           </form>
