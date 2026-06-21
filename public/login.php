@@ -2,6 +2,14 @@
 declare(strict_types=1);
 
 if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path'     => '/',
+        'secure'   => !empty($_SERVER['HTTPS']),
+        'httponly' => true,
+        'samesite' => 'Strict',
+    ]);
+
     session_start();
 }
 
@@ -23,35 +31,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $email    = trim($_POST['email'] ?? '');
     $password = (string)($_POST['password'] ?? '');
+    $ip       = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 
     if ($email === '' || $password === '') {
         $error = 'Debe completar todos los campos.';
     } else {
 
-        $stmt = $pdo->prepare("
-            SELECT id, full_name, email, password_hash, role, branch_id
-            FROM users
+        $limitStmt = $pdo->prepare("
+            SELECT COUNT(*)
+            FROM login_attempts
             WHERE email = ?
-            LIMIT 1
+              AND ip_address = ?
+              AND success = 0
+              AND attempted_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)
         ");
-        $stmt->execute([$email]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        $limitStmt->execute([$email, $ip]);
+        $failedAttempts = (int)$limitStmt->fetchColumn();
 
-        if (!$user || !password_verify($password, $user['password_hash'])) {
-            $error = 'Credenciales incorrectas.';
+        if ($failedAttempts >= 5) {
+            $error = 'Demasiados intentos fallidos. Intente nuevamente en 15 minutos.';
         } else {
-            session_regenerate_id(true);
 
-            $_SESSION['user'] = [
-                'id'        => (int)$user['id'],
-                'full_name' => (string)$user['full_name'],
-                'email'     => (string)$user['email'],
-                'role'      => (string)$user['role'],
-                'branch_id' => (int)$user['branch_id'],
-            ];
+            $stmt = $pdo->prepare("
+                SELECT id, full_name, email, password_hash, role, branch_id
+                FROM users
+                WHERE email = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$email]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            header("Location: /private/dashboard.php");
-            exit;
+            if (!$user || !password_verify($password, $user['password_hash'])) {
+
+                $logStmt = $pdo->prepare("
+                    INSERT INTO login_attempts (email, ip_address, success)
+                    VALUES (?, ?, 0)
+                ");
+                $logStmt->execute([$email, $ip]);
+
+                $error = 'Credenciales incorrectas.';
+
+            } else {
+
+                $logStmt = $pdo->prepare("
+                    INSERT INTO login_attempts (email, ip_address, success)
+                    VALUES (?, ?, 1)
+                ");
+                $logStmt->execute([$email, $ip]);
+
+                session_regenerate_id(true);
+
+                $_SESSION['user'] = [
+                    'id'        => (int)$user['id'],
+                    'full_name' => (string)$user['full_name'],
+                    'email'     => (string)$user['email'],
+                    'role'      => (string)$user['role'],
+                    'branch_id' => (int)$user['branch_id'],
+                ];
+
+                $_SESSION['branch_id'] = (int)$user['branch_id'];
+                $_SESSION['user_id']   = (int)$user['id'];
+                $_SESSION['last_activity'] = time();
+
+                header("Location: /private/dashboard.php");
+                exit;
+            }
         }
     }
 }
@@ -117,11 +161,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
 
                 <div class="check-row">
-    <label style="font-weight:700; opacity:.85;">
-        <input type="checkbox" id="rememberEmail">
-        Recordar correo
-    </label>
-</div>
+                    <label style="font-weight:700; opacity:.85;">
+                        <input type="checkbox" id="rememberEmail">
+                        Recordar correo
+                    </label>
+                </div>
             </div>
 
             <button type="submit" class="btn btn-primary">
@@ -143,7 +187,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   const pass = document.getElementById('password');
   const toggle = document.getElementById('togglePass');
   const rememberEmail = document.getElementById('rememberEmail');
-  
 
   // ===== Mostrar/Ocultar =====
   toggle.addEventListener('click', () => {
