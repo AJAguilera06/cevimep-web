@@ -117,16 +117,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
 
                 <div class="check-row">
-                    <label>
-                        <input type="checkbox" id="rememberPass">
-                        Recordar contraseña (esta pestaña)
-                    </label>
-
-                    <label style="font-weight:700; opacity:.85;">
-                        <input type="checkbox" id="rememberEmail">
-                        Recordar correo
-                    </label>
-                </div>
+    <label style="font-weight:700; opacity:.85;">
+        <input type="checkbox" id="rememberEmail">
+        Recordar correo
+    </label>
+</div>
             </div>
 
             <button type="submit" class="btn btn-primary">
@@ -147,9 +142,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   const email = document.getElementById('email');
   const pass = document.getElementById('password');
   const toggle = document.getElementById('togglePass');
-  const rememberPass = document.getElementById('rememberPass');
   const rememberEmail = document.getElementById('rememberEmail');
-  const form = document.getElementById('loginForm');
+  
 
   // ===== Mostrar/Ocultar =====
   toggle.addEventListener('click', () => {
@@ -180,45 +174,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
   });
 
-  // ===== Recordar CONTRASEÑA (sessionStorage: solo esta pestaña) =====
-  // Por seguridad: solo si el usuario marca la casilla
-  const savedPass = sessionStorage.getItem('cevimep_login_pass');
-  const savedFlag = sessionStorage.getItem('cevimep_login_pass_enabled');
-
-  if (savedFlag === '1') {
-    rememberPass.checked = true;
-    if (savedPass) pass.value = savedPass;
-  }
-
-  rememberPass.addEventListener('change', () => {
-    if (rememberPass.checked) {
-      sessionStorage.setItem('cevimep_login_pass_enabled', '1');
-      sessionStorage.setItem('cevimep_login_pass', pass.value || '');
-    } else {
-      sessionStorage.removeItem('cevimep_login_pass_enabled');
-      sessionStorage.removeItem('cevimep_login_pass');
-    }
-  });
-
-  pass.addEventListener('input', () => {
-    if (rememberPass.checked) {
-      sessionStorage.setItem('cevimep_login_pass', pass.value || '');
-    }
-  });
-
-  // Si el usuario NO quiere recordar, limpiamos siempre al recargar
-  if (!rememberPass.checked) {
-    sessionStorage.removeItem('cevimep_login_pass');
-    sessionStorage.removeItem('cevimep_login_pass_enabled');
-  }
-
-  // Si se envía el form y el usuario NO quiere recordar, limpia
-  form.addEventListener('submit', () => {
-    if (!rememberPass.checked) {
-      sessionStorage.removeItem('cevimep_login_pass');
-      sessionStorage.removeItem('cevimep_login_pass_enabled');
-    }
-  });
 })();
 </script>
 
