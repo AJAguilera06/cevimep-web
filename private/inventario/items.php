@@ -968,7 +968,7 @@ if ($stock <= 0) {
   $pillClass = "pill-out";
   $pillText = number_format($stock, 2) . " · Agotado";
 }
-elseif ($stock <= 1) {
+elseif ($stock <= 3) {
   $pillClass = "pill-low";
   $pillText = number_format($stock, 2) . " · Bajo";
 }
