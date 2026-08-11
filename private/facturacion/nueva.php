@@ -683,10 +683,13 @@ if (columnExists($conn, "invoices", "invoice_code")) {
     $hasLineTotal = in_array("line_total", $lineCols, true) || in_array("total", $lineCols, true);
     $colLineTotal = in_array("line_total", $lineCols, true) ? "line_total" : (in_array("total", $lineCols, true) ? "total" : "line_total");
 
+    $hasStockDiscounted = columnExists($conn, $linesTable, "stock_qty_discounted");
+
     $sqlLine = "INSERT INTO {$linesTable} (invoice_id, {$colItem}, {$colQty}"
       . ($hasUnit ? ", {$colUnit}" : "")
       . ($hasLineTotal ? ", {$colLineTotal}" : "")
-      . ") VALUES (?" . ", ?" . ", ?" . ($hasUnit ? ", ?" : "") . ($hasLineTotal ? ", ?" : "") . ")";
+      . ($hasStockDiscounted ? ", stock_qty_discounted" : "")
+      . ") VALUES (?" . ", ?" . ", ?" . ($hasUnit ? ", ?" : "") . ($hasLineTotal ? ", ?" : "") . ($hasStockDiscounted ? ", ?" : "") . ")";
     $stLine = $conn->prepare($sqlLine);
 
     foreach ($cleanLines as $lineKey => $q) {
@@ -695,10 +698,13 @@ if (columnExists($conn, "invoices", "invoice_code")) {
       $unit = (float)$row["sale_price"];
       $lt   = $unit * (int)$q;
       $iid  = (int)$row["item_id"];
+      $stockDiscount = (float)($row["stock_discount"] ?? 1.00);
+      $qtyDiscounted = $stockDiscount * (int)$q;
 
       $args = [$invoice_id, $iid, (int)$q];
       if ($hasUnit) $args[] = $unit;
       if ($hasLineTotal) $args[] = $lt;
+      if ($hasStockDiscounted) $args[] = $qtyDiscounted;
 
       $stLine->execute($args);
     }
