@@ -30,12 +30,15 @@ function colExists(PDO $conn, string $table, string $col): bool {
 $user = $_SESSION["user"] ?? [];
 $role = (string)($user["role"] ?? "");
 $userId = (int)($user["id"] ?? 0);
-$branchId = (int)($user["branch_id"] ?? 0);
 
 if (!isAdminRole($role)) {
     http_response_code(403);
     die("No tienes permiso para anular facturas.");
 }
+
+$branchId = isAdminRole($role)
+    ? (int)($_SESSION['selected_branch_id'] ?? 0)
+    : (int)($user["branch_id"] ?? 0);
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     http_response_code(405);
@@ -54,7 +57,7 @@ $reason = trim((string)($_POST["reason"] ?? ""));
 
 if ($branchId <= 0) {
     http_response_code(400);
-    die("Sucursal inválida.");
+    die("Sucursal inválida. Selecciona una sucursal en Facturación primero.");
 }
 
 if ($invoiceId <= 0) {

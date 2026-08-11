@@ -34,8 +34,31 @@ if (!isset($_SESSION["user"])) {
     exit;
 }
 
+function isAdminRole(string $role): bool {
+    $r = mb_strtolower(trim($role));
+    return in_array($r, ['administrador', 'admin', 'superadmin'], true);
+}
+
 $user = $_SESSION["user"];
 $yearNow = date("Y");
+$isAdmin = isAdminRole((string)($user['role'] ?? ''));
+
+/* =======================
+   Sucursal actual
+   ======================= */
+if ($isAdmin) {
+    if (isset($_GET['branch_id']) && $_GET['branch_id'] !== '') {
+        $_SESSION['selected_branch_id'] = (int)$_GET['branch_id'];
+    }
+    $branchId = (int)($_SESSION['selected_branch_id'] ?? 0);
+} else {
+    $branchId = (int)($user['branch_id'] ?? 0);
+}
+
+$branches = [];
+if ($isAdmin) {
+    $branches = $pdo->query("SELECT id, name FROM branches ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+}
 
 /* =======================
    Protección (password)
@@ -105,7 +128,10 @@ $top = [];
 $historial = [];
 $ventasPorDia = [];
 
-if ($estadistica_ok) {
+// Solo consultamos si hay una sucursal válida seleccionada
+$puedeConsultar = $estadistica_ok && $branchId > 0;
+
+if ($puedeConsultar) {
     $joinInv = table_exists($pdo, "inventory_items")
         ? "LEFT JOIN inventory_items it ON it.id = ii.item_id"
         : "";
@@ -149,11 +175,12 @@ if ($estadistica_ok) {
         $joinInv
         $joinVac
         WHERE i.created_at >= ? AND i.created_at < ?
+          AND i.branch_id = ?
         GROUP BY ii.item_id
         ORDER BY cantidad DESC, vacuna ASC
     ";
     $st = $pdo->prepare($sqlTop);
-    $st->execute([$startStr, $endStr]);
+    $st->execute([$startStr, $endStr, $branchId]);
     $top = $st->fetchAll(PDO::FETCH_ASSOC);
 
     $sqlHist = "
@@ -163,11 +190,12 @@ if ($estadistica_ok) {
         $joinInv
         $joinVac
         WHERE i.created_at >= ? AND i.created_at < ?
+          AND i.branch_id = ?
         GROUP BY DATE(i.created_at), ii.item_id
         ORDER BY fecha DESC, vacuna ASC
     ";
     $st2 = $pdo->prepare($sqlHist);
-    $st2->execute([$startStr, $endStr]);
+    $st2->execute([$startStr, $endStr, $branchId]);
     $historial = $st2->fetchAll(PDO::FETCH_ASSOC);
 
     $sqlDia = "
@@ -175,11 +203,12 @@ if ($estadistica_ok) {
         FROM invoice_items ii
         INNER JOIN invoices i ON i.id = ii.invoice_id
         WHERE i.created_at >= ? AND i.created_at < ?
+          AND i.branch_id = ?
         GROUP BY DATE(i.created_at)
         ORDER BY fecha ASC
     ";
     $st3 = $pdo->prepare($sqlDia);
-    $st3->execute([$startStr, $endStr]);
+    $st3->execute([$startStr, $endStr, $branchId]);
     $ventasPorDia = $st3->fetchAll(PDO::FETCH_ASSOC);
 }
 
@@ -378,6 +407,19 @@ $monthName = $start->format("F");
 
                 <div class="filter-wrap">
                     <form method="GET" class="d-flex gap-2 flex-wrap align-items-end">
+                        <?php if ($isAdmin): ?>
+                        <div>
+                            <div class="mini-muted">Sucursal</div>
+                            <select name="branch_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                                <option value="">— Selecciona —</option>
+                                <?php foreach ($branches as $b): ?>
+                                    <option value="<?php echo (int)$b['id']; ?>" <?php echo ($branchId === (int)$b['id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($b['name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php endif; ?>
                         <div>
                             <div class="mini-muted">Mes</div>
                             <select name="month" class="form-select form-select-sm">
@@ -417,6 +459,8 @@ $monthName = $start->format("F");
 
         <?php if (!$estadistica_ok): ?>
             <div class="alert alert-warning">Sección protegida. Ingresa contraseña.</div>
+        <?php elseif ($isAdmin && $branchId <= 0): ?>
+            <div class="alert alert-info">Selecciona una sucursal arriba para ver su estadística.</div>
         <?php else: ?>
 
             <div class="row g-3">

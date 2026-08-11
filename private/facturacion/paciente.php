@@ -35,11 +35,16 @@ $user = $_SESSION['user'] ?? [];
 $nombreSucursal = $user['full_name'] ?? 'CEVIMEP';
 $rol = $user['role'] ?? '';
 $isAdmin = isAdminRole((string)$rol);
-$sucursalId = (int)($user['branch_id'] ?? 0);
+
+if ($isAdmin) {
+    $sucursalId = (int)($_SESSION['selected_branch_id'] ?? 0);
+} else {
+    $sucursalId = (int)($user['branch_id'] ?? 0);
+}
 
 if ($sucursalId <= 0) {
     http_response_code(400);
-    die("Sucursal inválida (branch_id).");
+    die("Sucursal inválida. Selecciona una sucursal en Facturación primero.");
 }
 
 $patient_id = (int)($_GET["patient_id"] ?? 0);

@@ -11,12 +11,25 @@ if (empty($_SESSION['user'])) {
   exit;
 }
 
-$user = $_SESSION['user'];
-$branchId = (int)($user['branch_id'] ?? 0);
+function isAdminRole(string $role): bool {
+  $r = mb_strtolower(trim($role));
+  return in_array($r, ['administrador', 'admin', 'superadmin'], true);
+}
 
-if ($branchId <= 0) {
-  header("Location: /private/dashboard.php");
-  exit;
+$user = $_SESSION['user'];
+$isAdmin = isAdminRole((string)($user['role'] ?? ''));
+
+if ($isAdmin) {
+  if (isset($_GET['branch_id']) && $_GET['branch_id'] !== '') {
+    $_SESSION['selected_branch_id'] = (int)$_GET['branch_id'];
+  }
+  $branchId = (int)($_SESSION['selected_branch_id'] ?? 0);
+} else {
+  $branchId = (int)($user['branch_id'] ?? 0);
+  if ($branchId <= 0) {
+    header("Location: /private/dashboard.php");
+    exit;
+  }
 }
 
 /* ===============================
@@ -49,6 +62,14 @@ function h($v): string {
 }
 
 /* ===============================
+   SUCURSALES (solo admin)
+   =============================== */
+$branches = [];
+if ($isAdmin) {
+  $branches = $pdo->query("SELECT id, name FROM branches ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/* ===============================
    BUSCADOR + PAGINACIÓN
    =============================== */
 $q = trim((string)($_GET['q'] ?? ''));
@@ -58,41 +79,47 @@ $page = (int)($_GET['page'] ?? 1);
 if ($page < 1) $page = 1;
 $offset = ($page - 1) * $perPage;
 
-$where = " WHERE branch_id = ? ";
-$params = [$branchId];
+$patients = [];
+$totalRows = 0;
+$totalPages = 1;
 
-if ($q !== '') {
-  $where .= " AND (
-    CONCAT(first_name, ' ', last_name) LIKE ?
-    OR no_libro LIKE ?
-    OR cedula LIKE ?
-  )";
-  $like = "%{$q}%";
-  $params[] = $like;
-  $params[] = $like;
-  $params[] = $like;
+if ($branchId > 0) {
+  $where = " WHERE branch_id = ? ";
+  $params = [$branchId];
+
+  if ($q !== '') {
+    $where .= " AND (
+      CONCAT(first_name, ' ', last_name) LIKE ?
+      OR no_libro LIKE ?
+      OR cedula LIKE ?
+    )";
+    $like = "%{$q}%";
+    $params[] = $like;
+    $params[] = $like;
+    $params[] = $like;
+  }
+
+  $countStmt = $pdo->prepare("SELECT COUNT(*) FROM patients {$where}");
+  $countStmt->execute($params);
+  $totalRows = (int)$countStmt->fetchColumn();
+  $totalPages = (int)ceil($totalRows / $perPage);
+  if ($totalPages < 1) $totalPages = 1;
+
+  if ($page > $totalPages) {
+    $page = $totalPages;
+    $offset = ($page - 1) * $perPage;
+  }
+
+  $listStmt = $pdo->prepare("
+    SELECT id, first_name, last_name
+    FROM patients
+    {$where}
+    ORDER BY id DESC
+    LIMIT {$perPage} OFFSET {$offset}
+  ");
+  $listStmt->execute($params);
+  $patients = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 }
-
-$countStmt = $pdo->prepare("SELECT COUNT(*) FROM patients {$where}");
-$countStmt->execute($params);
-$totalRows = (int)$countStmt->fetchColumn();
-$totalPages = (int)ceil($totalRows / $perPage);
-if ($totalPages < 1) $totalPages = 1;
-
-if ($page > $totalPages) {
-  $page = $totalPages;
-  $offset = ($page - 1) * $perPage;
-}
-
-$listStmt = $pdo->prepare("
-  SELECT id, first_name, last_name
-  FROM patients
-  {$where}
-  ORDER BY id DESC
-  LIMIT {$perPage} OFFSET {$offset}
-");
-$listStmt->execute($params);
-$patients = $listStmt->fetchAll(PDO::FETCH_ASSOC);
 
 function factPageUrl(int $toPage, string $q): string {
   $query = ['page' => $toPage];
@@ -193,6 +220,21 @@ function factPageUrl(int $toPage, string $q): string {
       margin: 4px 0 0;
       font-weight: 800;
       opacity: .7;
+    }
+
+    /* Selector de sucursal (admin) */
+    .branch-select{
+      width:100%;
+      padding:9px 10px;
+      border-radius:12px;
+      border:1px solid rgba(0,0,0,.16);
+      font-weight:800;
+      outline:none;
+      background:#fff;
+    }
+    .branch-select:focus{
+      border-color:#0f4fa8;
+      box-shadow:0 0 0 4px rgba(15,79,168,.10);
     }
 
     /* Buscador horizontal bien alineado */
@@ -346,15 +388,35 @@ function factPageUrl(int $toPage, string $q): string {
         <div class="fact-panel-header">
           <p class="title">Pacientes</p>
           <p class="sub">Sucursal actual</p>
+
+          <?php if ($isAdmin): ?>
+            <form method="get" action="/private/facturacion/index.php" style="margin-top:10px;">
+              <select name="branch_id" class="branch-select" onchange="this.form.submit()">
+                <option value="">— Selecciona una sucursal —</option>
+                <?php foreach ($branches as $b): ?>
+                  <option value="<?= (int)$b['id'] ?>" <?= ($branchId === (int)$b['id'] ? 'selected' : '') ?>>
+                    <?= h($b['name']) ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
+            </form>
+          <?php endif; ?>
         </div>
 
         <form class="fact-search" method="get" action="/private/facturacion/index.php">
+          <?php if ($isAdmin && $branchId > 0): ?>
+            <input type="hidden" name="branch_id" value="<?= (int)$branchId ?>">
+          <?php endif; ?>
           <input type="text" name="q" value="<?= h($q) ?>" placeholder="Buscar paciente...">
           <button class="btn btn-primary" type="submit">Buscar</button>
         </form>
 
         <div class="patient-list">
-          <?php if (empty($patients)): ?>
+          <?php if ($isAdmin && $branchId <= 0): ?>
+            <div class="patient-row" style="justify-content:center; font-weight:900; opacity:.75;">
+              Selecciona una sucursal arriba para ver sus pacientes.
+            </div>
+          <?php elseif (empty($patients)): ?>
             <div class="patient-row" style="justify-content:center; font-weight:900; opacity:.75;">
               No hay pacientes<?= ($q !== '' ? " con ese filtro." : ".") ?>
             </div>
