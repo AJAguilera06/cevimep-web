@@ -30,9 +30,13 @@ function colExists(PDO $conn, string $table, string $col): bool {
 
 function tableExistsAnular(PDO $conn, string $table): bool {
     try {
-        $st = $conn->prepare("SHOW TABLES LIKE ?");
-        $st->execute([$table]);
-        return (bool)$st->fetchColumn();
+        $db = (string)$conn->query("SELECT DATABASE()")->fetchColumn();
+        $st = $conn->prepare("
+            SELECT COUNT(*) FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+        ");
+        $st->execute([$db, $table]);
+        return (int)$st->fetchColumn() > 0;
     } catch (Throwable $e) {
         return false;
     }
