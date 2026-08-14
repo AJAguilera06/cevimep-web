@@ -168,6 +168,8 @@ try {
             background:var(--navy-deep);
             color:#fff;
             min-height:100vh;
+            display:flex;
+            flex-direction:column;
         }
         .navbar{ background:rgba(255,255,255,.04); border-bottom:1px solid rgba(255,255,255,.08); }
         .navbar .inner{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; padding:16px 28px; }
@@ -178,7 +180,7 @@ try {
         .btn-pill{ background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16); color:#fff; padding:9px 16px; border-radius:999px; text-decoration:none; font-weight:700; font-size:13px; }
         .btn-pill:hover{ background:rgba(255,255,255,.14); }
 
-        .layout{ display:flex; width:100%; position:relative; }
+        .layout{ display:flex; width:100%; position:relative; flex:1; }
 
         .auth-bg{ position:fixed; inset:0; width:100%; height:100%; z-index:0; opacity:.55; pointer-events:none; }
 
