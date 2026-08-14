@@ -170,13 +170,15 @@ try {
             min-height:100vh;
         }
         .navbar{ background:rgba(255,255,255,.04); border-bottom:1px solid rgba(255,255,255,.08); }
-        .navbar .inner{ max-width:1400px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; padding:16px 28px; }
+        .navbar .inner{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; padding:16px 28px; }
+        .navbar .brand{ grid-column:2; justify-self:center; }
+        .navbar .nav-right{ grid-column:3; justify-self:end; }
         .brand{ display:flex; align-items:center; gap:10px; font-family:'Manrope'; font-weight:800; font-size:15px; letter-spacing:.04em; }
         .brand .dot{ width:9px;height:9px;border-radius:50%;background:var(--teal); box-shadow:0 0 0 4px rgba(20,184,166,.18); }
         .btn-pill{ background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16); color:#fff; padding:9px 16px; border-radius:999px; text-decoration:none; font-weight:700; font-size:13px; }
         .btn-pill:hover{ background:rgba(255,255,255,.14); }
 
-        .layout{ display:flex; max-width:1400px; margin:0 auto; position:relative; }
+        .layout{ display:flex; width:100%; position:relative; }
 
         .auth-bg{ position:fixed; inset:0; width:100%; height:100%; z-index:0; opacity:.55; pointer-events:none; }
 
