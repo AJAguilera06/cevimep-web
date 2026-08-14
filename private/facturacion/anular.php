@@ -164,71 +164,130 @@ try {
 
     /* ===============================
        1) Devolver inventario
+       Si no se puede confirmar la devolución, se detiene TODA la
+       anulación (rollback) en vez de continuar en silencio.
        =============================== */
-    if ($stockTable !== null) {
-        $itemsCols = tableColumnsAnular($conn, "invoice_items");
-        $colItem = in_array("item_id", $itemsCols, true) ? "item_id" : "item_id";
-        $colQty  = in_array("qty", $itemsCols, true) ? "qty" : (in_array("quantity", $itemsCols, true) ? "quantity" : "qty");
+    if ($stockTable === null) {
+        throw new RuntimeException(
+            "No se detectó la tabla de inventario (stock). No se pudo devolver el producto. " .
+            "Revisa el nombre real de la tabla de stock en la base de datos."
+        );
+    }
 
-        $selectExtra = $hasStockDiscounted ? ", stock_qty_discounted" : "";
-        $stLines = $conn->prepare("
-            SELECT {$colItem} AS item_id, {$colQty} AS qty {$selectExtra}
-            FROM invoice_items
-            WHERE invoice_id = ?
-        ");
-        $stLines->execute([$invoiceId]);
-        $invoiceLines = $stLines->fetchAll(PDO::FETCH_ASSOC);
+    $itemsCols = tableColumnsAnular($conn, "invoice_items");
+    $colItem = in_array("item_id", $itemsCols, true)
+        ? "item_id"
+        : (in_array("inventory_item_id", $itemsCols, true) ? "inventory_item_id" : "item_id");
+    $colQty  = in_array("qty", $itemsCols, true)
+        ? "qty"
+        : (in_array("quantity", $itemsCols, true) ? "quantity" : "qty");
 
-        $stRestore = $conn->prepare("
-            UPDATE {$stockTable}
-            SET {$stockQtyCol} = {$stockQtyCol} + ?
-            WHERE {$stockBranchCol} = ?
-              AND {$stockItemCol} = ?
-        ");
+    $selectExtra = $hasStockDiscounted ? ", stock_qty_discounted" : "";
+    $stLines = $conn->prepare("
+        SELECT {$colItem} AS item_id, {$colQty} AS qty {$selectExtra}
+        FROM invoice_items
+        WHERE invoice_id = ?
+    ");
+    $stLines->execute([$invoiceId]);
+    $invoiceLines = $stLines->fetchAll(PDO::FETCH_ASSOC);
 
-        foreach ($invoiceLines as $line) {
-            $iid = (int)$line["item_id"];
-            if ($iid <= 0) continue;
+    if (empty($invoiceLines)) {
+        throw new RuntimeException(
+            "Esta factura no tiene productos en invoice_items (o la columna '{$colItem}'/'{$colQty}' " .
+            "no es la correcta). No se pudo devolver nada al inventario."
+        );
+    }
 
-            $restoreQty = $hasStockDiscounted && $line["stock_qty_discounted"] !== null
-                ? (float)$line["stock_qty_discounted"]
-                : (float)$line["qty"]; // fallback 1:1 para facturas anteriores a la migración
+    $stRestore = $conn->prepare("
+        UPDATE {$stockTable}
+        SET {$stockQtyCol} = {$stockQtyCol} + ?
+        WHERE {$stockBranchCol} = ?
+          AND {$stockItemCol} = ?
+    ");
 
-            if ($restoreQty <= 0) continue;
+    $restoredAny = false;
 
-            $stRestore->execute([$restoreQty, $branchId, $iid]);
+    foreach ($invoiceLines as $line) {
+        $iid = (int)$line["item_id"];
+        if ($iid <= 0) continue;
+
+        $restoreQty = $hasStockDiscounted && $line["stock_qty_discounted"] !== null
+            ? (float)$line["stock_qty_discounted"]
+            : (float)$line["qty"]; // fallback 1:1 para facturas anteriores a la migración
+
+        if ($restoreQty <= 0) continue;
+
+        $stRestore->execute([$restoreQty, $branchId, $iid]);
+
+        if ($stRestore->rowCount() === 0) {
+            throw new RuntimeException(
+                "No existe una fila de stock para el producto ID {$iid} en la sucursal {$branchId} " .
+                "(tabla {$stockTable}). No se pudieron devolver {$restoreQty} unidad(es). " .
+                "Verifica que ese producto tenga registro de inventario en esta sucursal."
+            );
         }
+
+        $restoredAny = true;
+    }
+
+    if (!$restoredAny) {
+        throw new RuntimeException("No se pudo determinar ninguna cantidad válida a devolver al inventario.");
     }
 
     /* ===============================
-       2) Registrar desembolso en caja
+       2) Revertir movimientos de caja
+       Se buscan los ingresos ORIGINALES de esta factura (por método
+       de pago exacto: efectivo/tarjeta/transferencia/cobertura) y se
+       revierte cada uno con type='anulacion' (NO 'desembolso'), para
+       que reste del método de pago correcto y no infle la columna
+       de Desembolsos en la pantalla de Caja.
        =============================== */
     $montoReversar = $hasSubtotal && (float)($invoice["subtotal"] ?? 0) > 0
         ? (float)$invoice["subtotal"]
         : (float)($invoice["total"] ?? 0);
 
-    if ($montoReversar > 0) {
-        $cajaSesionId = (int)caja_get_or_create_session_id($conn, $branchId);
+    $cajaSesionId = (int)caja_get_or_create_session_id($conn, $branchId);
+    if ($cajaSesionId <= 0) {
+        throw new RuntimeException("Debes abrir una caja en esta sucursal antes de anular esta factura.");
+    }
 
-        if ($cajaSesionId <= 0) {
-            throw new RuntimeException("Debes abrir una caja en esta sucursal antes de anular esta factura.");
+    $motivoCaja = "Anulación factura " . ($invoice["invoice_code"] ?? ("#" . $invoiceId)) . " | " . $reason;
+
+    $origPayments = [];
+    if (!empty($invoice["invoice_code"])) {
+        try {
+            $stOrig = $conn->prepare("
+                SELECT metodo_pago, amount
+                FROM cash_movements
+                WHERE branch_id = ?
+                  AND type = 'ingreso'
+                  AND motivo LIKE ?
+            ");
+            $stOrig->execute([$branchId, '%Ingreso por factura ' . $invoice["invoice_code"] . '%']);
+            $origPayments = $stOrig->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable $e) {
+            $origPayments = [];
         }
+    }
 
-        $motivoCaja = "Anulación factura " . ($invoice["invoice_code"] ?? ("#" . $invoiceId)) . " | " . $reason;
+    $stCaja = $conn->prepare("
+        INSERT INTO cash_movements
+            (branch_id, caja_sesion_id, type, motivo, metodo_pago, amount, created_by)
+        VALUES
+            (?, ?, 'anulacion', ?, ?, ?, ?)
+    ");
 
-        $stCaja = $conn->prepare("
-            INSERT INTO cash_movements
-                (branch_id, caja_sesion_id, type, motivo, amount, created_by)
-            VALUES
-                (?, ?, 'desembolso', ?, ?, ?)
-        ");
-        $stCaja->execute([
-            $branchId,
-            $cajaSesionId,
-            $motivoCaja,
-            -abs($montoReversar),
-            $userId > 0 ? $userId : null
-        ]);
+    if (!empty($origPayments)) {
+        // Reversa exacta por cada método de pago que se usó al facturar (soporta MIXTO).
+        foreach ($origPayments as $op) {
+            $amt = (float)($op["amount"] ?? 0);
+            if ($amt <= 0) continue;
+            $metodo = (string)($op["metodo_pago"] ?? "efectivo");
+            $stCaja->execute([$branchId, $cajaSesionId, $motivoCaja, $metodo, -abs($amt), $userId > 0 ? $userId : null]);
+        }
+    } elseif ($montoReversar > 0) {
+        // Fallback: facturas antiguas sin invoice_code o sin match en cash_movements.
+        $stCaja->execute([$branchId, $cajaSesionId, $motivoCaja, "efectivo", -abs($montoReversar), $userId > 0 ? $userId : null]);
     }
 
     /* ===============================

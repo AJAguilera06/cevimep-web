@@ -62,7 +62,7 @@ function getTotalsBySessionIds(PDO $pdo, array $sessionIds): array {
 
   try {
     $ph = implode(",", array_fill(0, count($sessionIds), "?"));
-    $st = $pdo->prepare("\n      SELECT\n        COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='efectivo' THEN amount END),0) AS efectivo,\n        COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='tarjeta' THEN amount END),0) AS tarjeta,\n        COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='transferencia' THEN amount END),0) AS transferencia,\n        COALESCE(SUM(CASE WHEN type='ingreso' AND metodo_pago='cobertura' THEN amount END),0) AS cobertura,\n        COALESCE(SUM(CASE WHEN type='desembolso' THEN ABS(amount) END),0) AS desembolso\n      FROM cash_movements\n      WHERE caja_sesion_id IN ($ph)\n    ");
+    $st = $pdo->prepare("\n      SELECT\n        COALESCE(SUM(CASE WHEN type IN ('ingreso','anulacion') AND metodo_pago='efectivo' THEN amount END),0) AS efectivo,\n        COALESCE(SUM(CASE WHEN type IN ('ingreso','anulacion') AND metodo_pago='tarjeta' THEN amount END),0) AS tarjeta,\n        COALESCE(SUM(CASE WHEN type IN ('ingreso','anulacion') AND metodo_pago='transferencia' THEN amount END),0) AS transferencia,\n        COALESCE(SUM(CASE WHEN type IN ('ingreso','anulacion') AND metodo_pago='cobertura' THEN amount END),0) AS cobertura,\n        COALESCE(SUM(CASE WHEN type='desembolso' THEN ABS(amount) END),0) AS desembolso\n      FROM cash_movements\n      WHERE caja_sesion_id IN ($ph)\n    ");
     $st->execute($sessionIds);
     $r = $st->fetch(PDO::FETCH_ASSOC) ?: $base;
   } catch (Throwable $e) {
@@ -239,6 +239,7 @@ function renderCajaCard(int $num, string $titulo, array $r, float $ing, float $n
           <a class="btn-ghost" href="/private/caja/reporte_diario.php">📄 Reporte diario</a>
           <a class="btn-ghost" href="/private/caja/movimiento_diario.php">📋 Movimiento diario</a>
           <a class="btn-ghost" href="/private/caja/reporte_mensual.php">📅 Reporte mensual</a>
+          <a class="btn-ghost" href="/private/caja/facturas_canceladas.php">🚫 Facturas canceladas</a>
         </div>
       </div>
 
