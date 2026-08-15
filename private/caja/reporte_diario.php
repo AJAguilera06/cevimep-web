@@ -239,9 +239,56 @@ $tTotal = [
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Reporte Diario Caja</title>
 
-  <link rel="stylesheet" href="/assets/css/styles.css?v=50">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <style>
+    :root{
+        --navy-deep:#071B32;
+        --teal:#14B8A6;
+        --teal-dark:#0D9488;
+    }
+    *{ box-sizing:border-box; }
+    body{
+        margin:0;
+        font-family:'Inter',sans-serif;
+        background:var(--navy-deep);
+        color:#fff;
+        min-height:100vh;
+        display:flex;
+        flex-direction:column;
+    }
+    .navbar{ background:rgba(255,255,255,.04); border-bottom:1px solid rgba(255,255,255,.08); }
+    .navbar .inner{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; padding:16px 28px; }
+    .navbar .brand{ grid-column:2; justify-self:center; }
+    .navbar .nav-right{ grid-column:3; justify-self:end; }
+    .brand{ display:flex; align-items:center; gap:10px; font-family:'Manrope'; font-weight:800; font-size:15px; letter-spacing:.04em; }
+    .brand .dot{ width:9px;height:9px;border-radius:50%;background:var(--teal); box-shadow:0 0 0 4px rgba(20,184,166,.18); }
+    .btn-pill{ background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16); color:#fff; padding:9px 16px; border-radius:999px; text-decoration:none; font-weight:700; font-size:13px; }
+    .btn-pill:hover{ background:rgba(255,255,255,.14); }
+
+    .layout{ display:flex; width:100%; position:relative; flex:1; }
+    .auth-bg{ position:fixed; inset:0; width:100%; height:100%; z-index:0; opacity:.55; pointer-events:none; }
+
+    .sidebar{ position:relative; z-index:1; width:230px; flex-shrink:0; padding:24px 16px; }
+    .menu-title{ font-weight:700; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#7D95AC; margin:0 0 14px 6px; }
+    .menu{ display:flex; flex-direction:column; gap:2px; }
+    .menu a{ display:block; padding:10px 12px; border-radius:10px; text-decoration:none; font-size:14px; font-weight:600; color:#B9CBDD; }
+    .menu a:hover{ background:rgba(255,255,255,.06); }
+    .menu a.active{ background:rgba(20,184,166,.18); color:var(--teal); }
+
+    .content{ position:relative; z-index:1; flex:1; width:100%; padding:40px 40px 60px; }
+    .footer{ position:relative; z-index:1; text-align:center; padding:20px; font-size:12px; color:#5C7896; }
+
+    .card{
+        background:rgba(255,255,255,.07);
+        backdrop-filter:blur(14px);
+        -webkit-backdrop-filter:blur(14px);
+        border:1px solid rgba(255,255,255,.12);
+        border-radius:16px;
+    }
+
     .reportTop{
       display:flex;
       align-items:flex-start;
@@ -259,13 +306,15 @@ $tTotal = [
 
     .branchTag{
       font-weight:900;
-      color:#0b3b9a;
+      color:var(--teal);
     }
 
     .reportTitle{
       text-align:center;
       margin:0;
+      font-family:'Manrope';
       font-size:34px;
+      font-weight:900;
       letter-spacing:.5px;
     }
 
@@ -275,9 +324,9 @@ $tTotal = [
       justify-content:center;
       padding:10px 16px;
       border-radius:999px;
-      border:1px solid #dbeafe;
-      background:#fff;
-      color:#052a7a;
+      border:1px solid rgba(255,255,255,.16);
+      background:rgba(255,255,255,.08);
+      color:#fff;
       font-weight:900;
       text-decoration:none;
       cursor:pointer;
@@ -285,30 +334,28 @@ $tTotal = [
     }
 
     .btnLocal:hover{
-      box-shadow:0 10px 25px rgba(2,6,23,.10);
-      transform:translateY(-1px);
+      background:rgba(255,255,255,.14);
     }
 
     .btnPrimary{
-      border:none;
-      background:linear-gradient(180deg,#2f6dff,#0b3b9a);
-      color:#fff;
-      box-shadow:0 18px 40px rgba(11,59,154,.20);
+      border:1px solid var(--teal);
+      background:var(--teal);
+      color:#04211d;
     }
 
     .btnPrimary:hover{
-      filter:brightness(1.03);
+      background:var(--teal-dark);
     }
 
     .pill{
       padding:8px 12px;
       border-radius:14px;
-      border:1px solid #e6eef7;
-      background:#fff;
+      border:1px solid rgba(255,255,255,.16);
+      background:rgba(255,255,255,.05);
     }
 
     .muted{
-      color:#6b7280;
+      color:#9FB6CC;
       font-weight:700;
     }
 
@@ -317,9 +364,9 @@ $tTotal = [
     }
 
     .danger{
-      background:#fff5f5;
-      border:1px solid #fed7d7;
-      color:#b91c1c;
+      background:rgba(220,38,38,.12);
+      border:1px solid rgba(220,38,38,.3);
+      color:#f87171;
       border-radius:14px;
       padding:10px 12px;
       font-weight:800;
@@ -327,11 +374,10 @@ $tTotal = [
 
     .reportFrame{
       margin-top:14px;
-      background:#fff;
-      border:3px solid rgba(11,59,154,.55);
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.14);
       border-radius:24px;
       padding:16px;
-      box-shadow:0 14px 40px rgba(2,6,23,.10);
     }
 
     .gridBox{
@@ -347,8 +393,8 @@ $tTotal = [
     }
 
     .cajaCard{
-      background:#fff;
-      border:1px solid #e6eef7;
+      background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.12);
       border-radius:20px;
       padding:14px;
     }
@@ -356,14 +402,15 @@ $tTotal = [
     .cajaHead{
       text-align:center;
       font-weight:900;
-      color:#0b3b9a;
+      color:var(--teal);
       margin:2px 0 6px;
+      font-family:'Manrope';
     }
 
     .cajaSub{
       text-align:center;
       font-size:12px;
-      color:#6b7280;
+      color:#9FB6CC;
       font-weight:800;
       margin-bottom:8px;
     }
@@ -372,30 +419,42 @@ $tTotal = [
       width:100%;
       border-collapse:collapse;
       margin-top:10px;
-      border:1px solid #e6eef7;
+      border:1px solid rgba(255,255,255,.1);
       border-radius:16px;
       overflow:hidden;
     }
 
     th, td{
       padding:9px 10px;
-      border-bottom:1px solid #eef2f7;
+      border-bottom:1px solid rgba(255,255,255,.08);
       text-align:left;
       font-size:13px;
+      color:#E7EEF6;
     }
 
     thead th{
-      background:#f7fbff;
-      color:#0b3b9a;
+      background:rgba(20,184,166,.12);
+      color:var(--teal);
       font-weight:900;
     }
 
     .sectionTitle{
       margin:10px 0 0;
       text-align:center;
-      color:#0b3b9a;
+      color:var(--teal);
       font-weight:900;
     }
+
+    input[type="date"]::-webkit-calendar-picker-indicator{
+      filter: invert(1);
+      opacity:.8;
+    }
+
+    select{
+      background:rgba(255,255,255,.06)!important;
+      color:#fff;
+    }
+    select option{ background:var(--navy-deep); color:#fff; }
 
     @media print {
       @page {
@@ -404,6 +463,7 @@ $tTotal = [
 
       body {
         background: #fff !important;
+        color:#000 !important;
       }
 
       body * {
@@ -446,10 +506,29 @@ $tTotal = [
         display: none !important;
       }
     }
+
+    @media (max-width: 980px){
+      .layout{ flex-direction:column; }
+      .sidebar{ width:100%; }
+      .content{ padding:24px 18px 40px; }
+    }
   </style>
 </head>
 
 <body>
+
+<svg class="auth-bg" viewBox="0 0 1400 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="130" cy="80" r="240" fill="#0D3A5C" opacity=".5"/>
+    <circle cx="1280" cy="650" r="280" fill="#0F4A63" opacity=".45"/>
+    <g fill="none" stroke="#1D5C7A" stroke-width="1" opacity=".7">
+        <line x1="60" y1="60" x2="180" y2="130"/><line x1="180" y1="130" x2="140" y2="250"/>
+        <line x1="1220" y1="560" x2="1300" y2="620"/><line x1="1300" y1="620" x2="1250" y2="700"/>
+    </g>
+    <g fill="#14B8A6" opacity=".85">
+        <circle cx="60" cy="60" r="3"/><circle cx="180" cy="130" r="4"/><circle cx="140" cy="250" r="3"/>
+        <circle cx="1220" cy="560" r="3"/><circle cx="1300" cy="620" r="4"/><circle cx="1250" cy="700" r="3"/>
+    </g>
+</svg>
 
 <header class="navbar">
   <div class="inner">
@@ -495,7 +574,7 @@ $tTotal = [
             <?php if ($isAdmin && !empty($branchesList)): ?>
               <div class="pill">
                 <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Sucursal</label>
-                <select name="branch_id" style="border:0;outline:none;font-weight:900;background:#fff;">
+                <select name="branch_id" style="border:0;outline:none;font-weight:900;background:transparent;">
                   <?php foreach ($branchesList as $br): ?>
                     <option value="<?= (int)$br["id"] ?>" <?= ((int)$br["id"] === (int)$branchId) ? "selected" : "" ?>>
                       <?= h($br["name"]) ?>
@@ -509,7 +588,7 @@ $tTotal = [
 
             <div class="pill">
               <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Fecha</label>
-              <input type="date" name="date" value="<?= h($date) ?>" style="border:0;outline:none;font-weight:900;">
+              <input type="date" name="date" value="<?= h($date) ?>" style="border:0;outline:none;font-weight:900;background:transparent;color:#fff;">
             </div>
 
             <button class="btnLocal" type="submit">Ver</button>
