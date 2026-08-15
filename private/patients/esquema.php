@@ -377,36 +377,88 @@ $today = date('d/m/Y');
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>CEVIMEP | Esquema de vacunación</title>
 
-    <link rel="stylesheet" href="/assets/css/styles.css?v=60">
-    <link rel="stylesheet" href="/assets/css/paciente.css?v=2">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
-        .patients-wrap{max-width:1500px;margin:0 auto;padding:18px 14px 28px;}
+        :root{
+            --navy-deep:#071B32;
+            --teal:#14B8A6;
+            --teal-dark:#0D9488;
+        }
+        *{ box-sizing:border-box; }
+        body{
+            margin:0;
+            font-family:'Inter',sans-serif;
+            background:var(--navy-deep);
+            color:#fff;
+            min-height:100vh;
+            display:flex;
+            flex-direction:column;
+        }
+        .navbar{ background:rgba(255,255,255,.04); border-bottom:1px solid rgba(255,255,255,.08); }
+        .navbar .inner{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; padding:16px 28px; }
+        .navbar .brand{ grid-column:2; justify-self:center; }
+        .navbar .nav-right{ grid-column:3; justify-self:end; }
+        .brand{ display:flex; align-items:center; gap:10px; font-family:'Manrope'; font-weight:800; font-size:15px; letter-spacing:.04em; }
+        .brand .dot{ width:9px;height:9px;border-radius:50%;background:var(--teal); box-shadow:0 0 0 4px rgba(20,184,166,.18); }
+        .btn-pill{ background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16); color:#fff; padding:9px 16px; border-radius:999px; text-decoration:none; font-weight:700; font-size:13px; }
+        .btn-pill:hover{ background:rgba(255,255,255,.14); }
+
+        .layout{ display:flex; width:100%; position:relative; flex:1; }
+        .auth-bg{ position:fixed; inset:0; width:100%; height:100%; z-index:0; opacity:.55; pointer-events:none; }
+
+        .sidebar{ position:relative; z-index:1; width:230px; flex-shrink:0; padding:24px 16px; }
+        .menu-title{ font-weight:700; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#7D95AC; margin:0 0 14px 6px; }
+        .menu{ display:flex; flex-direction:column; gap:2px; }
+        .menu a{ display:block; padding:10px 12px; border-radius:10px; text-decoration:none; font-size:14px; font-weight:600; color:#B9CBDD; }
+        .menu a:hover{ background:rgba(255,255,255,.06); }
+        .menu a.active{ background:rgba(20,184,166,.18); color:var(--teal); }
+
+        .content{ position:relative; z-index:1; flex:1; padding:40px 40px 60px; width:100%; }
+        .footer{ position:relative; z-index:1; text-align:center; padding:20px; font-size:12px; color:#5C7896; }
+
+        .btn{ display:inline-block; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16); color:#fff; padding:10px 18px; border-radius:999px; text-decoration:none; font-weight:700; font-size:14px; cursor:pointer; transition:background .15s; }
+        .btn:hover{ background:rgba(255,255,255,.14); }
+        .btn-primary{ background:var(--teal); border-color:var(--teal); color:#04211d; }
+        .btn-primary:hover{ background:var(--teal-dark); color:#04211d; }
+
+        .patients-wrap{max-width:1500px;margin:0 auto;padding:0;}
         .patients-header{text-align:center;margin-top:4px;margin-bottom:12px;}
-        .patients-header h1{margin:0;font-size:34px;font-weight:900;}
-        .patients-header p{margin:8px 0 0;opacity:.78;font-weight:600;}
+        .patients-header h1{margin:0;font-family:'Manrope';font-size:34px;font-weight:900;}
+        .patients-header p{margin:8px 0 0;opacity:.78;font-weight:600;color:#9FB6CC;}
         .patients-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:14px 0 20px;}
+
         .grid-top{display:grid;grid-template-columns:350px minmax(920px,1fr);gap:16px;align-items:start;width:100%;max-width:1420px;margin:0 auto;justify-content:center;}
-        .card{background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.08);padding:16px;}
-        .card h3{margin:0 0 12px;font-size:20px;font-weight:900;color:#0b2f6b;text-align:center;}
-        .kv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
-        .kv{background:#f7f9fc;border:1px solid rgba(0,0,0,.06);border-radius:12px;padding:12px;}
-        .kv .k{font-weight:800;opacity:.8;margin-bottom:4px;}
-        .kv .v{font-weight:700;}
+        .card{
+            background:rgba(255,255,255,.07);
+            backdrop-filter:blur(14px);
+            -webkit-backdrop-filter:blur(14px);
+            border:1px solid rgba(255,255,255,.12);
+            border-radius:16px;
+            padding:16px;
+        }
+        .card h3{margin:0 0 12px;font-family:'Manrope';font-size:19px;font-weight:900;color:var(--teal);text-align:center;}
+
         .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
         .form-group{display:flex;flex-direction:column;gap:6px;}
-        .form-group label{font-weight:800;color:#173b7a;}
+        .form-group label{font-weight:800;color:#B9CBDD;font-size:13px;}
         .form-group input,.form-group select,.form-group textarea{
             width:100%;
-            border:1px solid rgba(0,0,0,.12);
+            background:rgba(255,255,255,.06);
+            border:1px solid rgba(255,255,255,.16);
             border-radius:12px;
             padding:9px 11px;
             font:inherit;
             outline:none;
-            background:#fff;
+            color:#fff;
         }
+        .form-group input::placeholder, .form-group textarea::placeholder{ color:#7D95AC; }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus{ border-color:var(--teal); }
+
         .vaccine-box{
-            border:1px solid rgba(0,0,0,.12);
+            border:1px solid rgba(255,255,255,.16);
             border-radius:12px;
             padding:8px;
             max-height:145px;
@@ -414,7 +466,7 @@ $today = date('d/m/Y');
             display:grid;
             grid-template-columns:repeat(2,minmax(0,1fr));
             gap:6px;
-            background:#fff;
+            background:rgba(255,255,255,.04);
         }
         .vaccine-option{
             display:flex;
@@ -422,14 +474,15 @@ $today = date('d/m/Y');
             gap:6px;
             font-size:13px;
             font-weight:700;
-            color:#18223a;
+            color:#E7EEF6;
             padding:5px 6px;
             border-radius:8px;
-            background:#f8fafc;
+            background:rgba(255,255,255,.04);
         }
         .vaccine-option input{
             width:auto;
             margin:0;
+            accent-color:var(--teal);
         }
         .mini-actions{
             display:flex;
@@ -439,15 +492,16 @@ $today = date('d/m/Y');
             flex-wrap:wrap;
         }
         .mini-btn{
-            border:1px solid #dbeafe;
-            background:#fff;
-            color:#0b3b9a;
+            border:1px solid rgba(20,184,166,.4);
+            background:rgba(20,184,166,.1);
+            color:var(--teal);
             border-radius:999px;
             padding:5px 10px;
             font-weight:900;
             cursor:pointer;
             font-size:12px;
         }
+        .mini-btn:hover{ background:rgba(20,184,166,.2); }
         .form-group textarea{min-height:66px;max-height:105px;resize:vertical;}
         .register-card{height:auto;max-width:350px;margin:0;width:100%;}
         .history-card{margin-top:0;max-width:none;margin-left:0;margin-right:0;width:100%;min-width:0;}
@@ -457,8 +511,8 @@ $today = date('d/m/Y');
         .history-card .table td{vertical-align:top;}
         .full{grid-column:1 / -1;}
         .alert{margin-bottom:14px;padding:12px 14px;border-radius:12px;font-weight:700;word-break:break-word;}
-        .alert-success{background:#e9f9ef;color:#166534;border:1px solid #b7ebc6;}
-        .alert-error{background:#fff0f0;color:#991b1b;border:1px solid #f5b5b5;}
+        .alert-success{background:rgba(20,184,166,.12);color:var(--teal);border:1px solid rgba(20,184,166,.3);}
+        .alert-error{background:rgba(220,38,38,.12);color:#f87171;border:1px solid rgba(220,38,38,.3);}
 
         /* Evita que el historial siga creciendo hacia abajo cada vez que agregas vacunas */
         .history-card{
@@ -483,20 +537,22 @@ $today = date('d/m/Y');
             position:sticky;
             top:0;
             z-index:2;
-            background:#0f4fa8;
-            color:#fff;
+            background:rgba(20,184,166,.16);
+            color:var(--teal);
             padding:10px 10px;
             text-align:center;
             font-size:14px;
+            font-weight:800;
         }
         .table td{
             padding:10px 8px;
-            border-bottom:1px solid #eef1f6;
-            background:#fff;
+            border-bottom:1px solid rgba(255,255,255,.08);
+            background:rgba(255,255,255,.02);
             vertical-align:middle;
             text-align:center;
             white-space:normal;
             overflow-wrap:anywhere;
+            color:#E7EEF6;
         }
 
         .table th:nth-child(1), .table td:nth-child(1){width:25%;text-align:center;}
@@ -524,9 +580,12 @@ $today = date('d/m/Y');
         }
         .btn-delete:hover{background:#b91c1c;}
 
-        .empty-state{text-align:center;padding:24px 10px;font-weight:700;opacity:.75;}
+        .empty-state{text-align:center;padding:24px 10px;font-weight:700;opacity:.7;color:#9FB6CC;}
 
-        @media (max-width:980px){
+        @media (max-width: 980px){
+            .layout{ flex-direction:column; }
+            .sidebar{ width:100%; }
+            .content{ padding:24px 18px 40px; }
             .grid-top{grid-template-columns:1fr;max-width:760px;}
             .form-grid,.kv-grid{grid-template-columns:1fr;}
             .register-card{max-width:520px;margin:0 auto;}
@@ -537,6 +596,19 @@ $today = date('d/m/Y');
     </style>
 </head>
 <body>
+
+<svg class="auth-bg" viewBox="0 0 1400 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="130" cy="80" r="240" fill="#0D3A5C" opacity=".5"/>
+    <circle cx="1280" cy="650" r="280" fill="#0F4A63" opacity=".45"/>
+    <g fill="none" stroke="#1D5C7A" stroke-width="1" opacity=".7">
+        <line x1="60" y1="60" x2="180" y2="130"/><line x1="180" y1="130" x2="140" y2="250"/>
+        <line x1="1220" y1="560" x2="1300" y2="620"/><line x1="1300" y1="620" x2="1250" y2="700"/>
+    </g>
+    <g fill="#14B8A6" opacity=".85">
+        <circle cx="60" cy="60" r="3"/><circle cx="180" cy="130" r="4"/><circle cx="140" cy="250" r="3"/>
+        <circle cx="1220" cy="560" r="3"/><circle cx="1300" cy="620" r="4"/><circle cx="1250" cy="700" r="3"/>
+    </g>
+</svg>
 
 <header class="navbar">
     <div class="inner">
