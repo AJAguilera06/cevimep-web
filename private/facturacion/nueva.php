@@ -807,44 +807,113 @@ $today = date("Y-m-d");
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Nueva factura - CEVIMEP</title>
-  <link rel="stylesheet" href="/assets/css/styles.css?v=<?php echo time(); ?>">
-  <link rel="stylesheet" href="/assets/css/facturacion.css?v=<?php echo time(); ?>">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <style>
-    .page-wrap{max-width:1400px !important; width:100% !important;margin:0 auto;padding:18px}
-    .card{background:#fff;border-radius:18px;box-shadow:0 10px 25px rgba(0,0,0,.08);padding:18px;width:100%}
-    .title{font-size:34px;font-weight:900;text-align:center;margin:10px 0 8px}
-    .subtitle{font-size:14px;color:#334155;text-align:center;margin-bottom:10px;font-weight:600}
-    .alert{padding:10px 12px;border-radius:12px;margin:10px auto;max-width:1100px}
-    .alert.err{background:#fee2e2;border:1px solid #fecaca;color:#991b1b}
-    .alert.ok{background:#dcfce7;border:1px solid #bbf7d0;color:#166534}
+    :root{
+        --navy-deep:#071B32;
+        --teal:#14B8A6;
+        --teal-dark:#0D9488;
+    }
+    *{ box-sizing:border-box; }
+    body{
+        margin:0;
+        font-family:'Inter',sans-serif;
+        background:var(--navy-deep);
+        color:#fff;
+        min-height:100vh;
+        display:flex;
+        flex-direction:column;
+    }
+    .navbar{ background:rgba(255,255,255,.04); border-bottom:1px solid rgba(255,255,255,.08); }
+    .navbar .inner{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; padding:16px 28px; }
+    .navbar .brand{ grid-column:2; justify-self:center; }
+    .navbar .nav-right{ grid-column:3; justify-self:end; }
+    .brand{ display:flex; align-items:center; gap:10px; font-family:'Manrope'; font-weight:800; font-size:15px; letter-spacing:.04em; }
+    .brand .dot{ width:9px;height:9px;border-radius:50%;background:var(--teal); box-shadow:0 0 0 4px rgba(20,184,166,.18); }
+    .btn-pill{ background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16); color:#fff; padding:9px 16px; border-radius:999px; text-decoration:none; font-weight:700; font-size:13px; }
+    .btn-pill:hover{ background:rgba(255,255,255,.14); }
+
+    .layout{ display:flex; width:100%; position:relative; flex:1; }
+    .auth-bg{ position:fixed; inset:0; width:100%; height:100%; z-index:0; opacity:.55; pointer-events:none; }
+
+    .sidebar{ position:relative; z-index:1; width:230px; flex-shrink:0; padding:24px 16px; }
+    .menu-title{ font-weight:700; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#7D95AC; margin:0 0 14px 6px; }
+    .menu{ display:flex; flex-direction:column; gap:2px; }
+    .menu a{ display:block; padding:10px 12px; border-radius:10px; text-decoration:none; font-size:14px; font-weight:600; color:#B9CBDD; }
+    .menu a:hover{ background:rgba(255,255,255,.06); }
+    .menu a.active{ background:rgba(20,184,166,.18); color:var(--teal); }
+
+    .content{ position:relative; z-index:1; flex:1; width:100%; align-items:flex-start;justify-content:center;text-align:left;overflow:auto;padding:24px 40px 60px; }
+    .footer{ position:relative; z-index:1; text-align:center; padding:20px; font-size:12px; color:#5C7896; }
+
+    .page-wrap{max-width:1400px !important; width:100% !important;margin:0 auto;padding:0}
+    .card{
+        background:rgba(255,255,255,.07);
+        backdrop-filter:blur(14px);
+        -webkit-backdrop-filter:blur(14px);
+        border:1px solid rgba(255,255,255,.12);
+        border-radius:18px;
+        padding:22px;
+        width:100%;
+    }
+    .title{font-family:'Manrope';font-size:34px;font-weight:900;text-align:center;margin:10px 0 8px;color:#fff;}
+    .subtitle{font-size:14px;color:#9FB6CC;text-align:center;margin-bottom:10px;font-weight:600}
+    .alert{padding:10px 12px;border-radius:12px;margin:10px auto;max-width:1100px;font-weight:700;}
+    .alert.err{background:rgba(220,38,38,.12);border:1px solid rgba(220,38,38,.3);color:#f87171}
+    .alert.ok{background:rgba(20,184,166,.12);border:1px solid rgba(20,184,166,.3);color:var(--teal)}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
     .grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
     @media(max-width:900px){.grid,.grid3,.grid4{grid-template-columns:1fr}}
-    label{font-weight:800;font-size:12px;color:#0f172a;display:block;margin-bottom:6px}
-    input,select{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #e2e8f0;outline:none}
-    input:focus,select:focus{border-color:#2563eb;box-shadow:0 0 0 4px rgba(37,99,235,.12)}
+    label{font-weight:800;font-size:12px;color:#B9CBDD;display:block;margin-bottom:6px}
+    input,select{width:100%;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.16);outline:none;background:rgba(255,255,255,.06);color:#fff;font:inherit;}
+    input::placeholder{color:#7D95AC;}
+    select option{background:var(--navy-deep);color:#fff;}
+    input:focus,select:focus{border-color:var(--teal);box-shadow:0 0 0 4px rgba(20,184,166,.14)}
     .section{margin-top:14px}
-    .section h3{margin:0 0 10px;font-size:15px;font-weight:900;color:#0f172a}
+    .section h3{margin:0 0 10px;font-family:'Manrope';font-size:15px;font-weight:900;color:#fff}
     .btnrow{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
-    .btn{height:40px;border-radius:12px;border:1px solid transparent;padding:0 14px;font-weight:900;cursor:pointer}
-    .btn.primary{background:#0b4d87;color:#fff}
-    .btn.light{background:#eef2ff;color:#1e3a8a;border-color:#dbeafe;text-decoration:none;display:inline-flex;align-items:center}
-    .btn.delete{height:32px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;padding:0 10px;border-radius:10px;font-weight:900;cursor:pointer}
+    .btn{height:40px;border-radius:12px;border:1px solid transparent;padding:0 14px;font-weight:900;cursor:pointer;font-family:inherit;}
+    .btn.primary{background:var(--teal);color:#04211d}
+    .btn.primary:hover{background:var(--teal-dark);}
+    .btn.light{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.16);text-decoration:none;display:inline-flex;align-items:center}
+    .btn.light:hover{background:rgba(255,255,255,.14);}
+    .btn.delete{height:32px;background:rgba(220,38,38,.12);color:#f87171;border:1px solid rgba(220,38,38,.3);padding:0 10px;border-radius:10px;font-weight:900;cursor:pointer}
+    .btn.delete:hover{background:rgba(220,38,38,.2);}
     .lines{width:100%;border-collapse:separate;border-spacing:0;margin-top:10px}
-    .lines th,.lines td{padding:10px 10px;border-bottom:1px solid #eef2f6;font-size:13px}
-    .lines th{color:#0b4d87;text-align:left;font-weight:900;font-size:12px}
+    .lines th,.lines td{padding:10px 10px;border-bottom:1px solid rgba(255,255,255,.08);font-size:13px;color:#E7EEF6;}
+    .lines th{color:var(--teal);text-align:left;font-weight:900;font-size:12px;background:rgba(20,184,166,.1);}
     .lines tr:last-child td{border-bottom:none}
     .money{white-space:nowrap;font-weight:900}
-    .totals{max-width:260px;margin-left:auto;background:#f8fafc;border:1px solid rgba(2,21,44,.08);border-radius:14px;padding:12px}
+    .totals{max-width:260px;margin-left:auto;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px}
     .totals .row{display:flex;justify-content:space-between;gap:10px;margin:6px 0;font-weight:900}
-    .mini{font-size:12px;opacity:.75;font-weight:700}
+    .mini{font-size:12px;opacity:.75;font-weight:700;color:#9FB6CC;}
 
-    .content{align-items:flex-start;justify-content:center;text-align:left;overflow:auto;padding:24px 0;}
+    @media (max-width: 980px){
+      .layout{ flex-direction:column; }
+      .sidebar{ width:100%; }
+      .content{ padding:24px 18px 40px; }
+    }
   </style>
 </head>
 <body>
+
+<svg class="auth-bg" viewBox="0 0 1400 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="130" cy="80" r="240" fill="#0D3A5C" opacity=".5"/>
+    <circle cx="1280" cy="650" r="280" fill="#0F4A63" opacity=".45"/>
+    <g fill="none" stroke="#1D5C7A" stroke-width="1" opacity=".7">
+        <line x1="60" y1="60" x2="180" y2="130"/><line x1="180" y1="130" x2="140" y2="250"/>
+        <line x1="1220" y1="560" x2="1300" y2="620"/><line x1="1300" y1="620" x2="1250" y2="700"/>
+    </g>
+    <g fill="#14B8A6" opacity=".85">
+        <circle cx="60" cy="60" r="3"/><circle cx="180" cy="130" r="4"/><circle cx="140" cy="250" r="3"/>
+        <circle cx="1220" cy="560" r="3"/><circle cx="1300" cy="620" r="4"/><circle cx="1250" cy="700" r="3"/>
+    </g>
+</svg>
 
 <header class="navbar">
   <div class="inner">
