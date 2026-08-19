@@ -129,41 +129,82 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CEVIMEP | Editar producto</title>
 
-  <link rel="stylesheet" href="/assets/css/styles.css?v=30">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <style>
-    /* Contenedor centrado para evitar el “vacío” */
+    :root{
+        --navy-deep:#071B32;
+        --teal:#14B8A6;
+        --teal-dark:#0D9488;
+    }
+    *{ box-sizing:border-box; }
+    body{
+        margin:0;
+        font-family:'Inter',sans-serif;
+        background:var(--navy-deep);
+        color:#fff;
+        min-height:100vh;
+        display:flex;
+        flex-direction:column;
+    }
+    .navbar{ background:rgba(255,255,255,.04); border-bottom:1px solid rgba(255,255,255,.08); }
+    .navbar .inner{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; padding:16px 28px; }
+    .navbar .brand{ grid-column:2; justify-self:center; }
+    .navbar .nav-right{ grid-column:3; justify-self:end; }
+    .brand{ display:flex; align-items:center; gap:10px; font-family:'Manrope'; font-weight:800; font-size:15px; letter-spacing:.04em; }
+    .brand .dot{ width:9px;height:9px;border-radius:50%;background:var(--teal); box-shadow:0 0 0 4px rgba(20,184,166,.18); }
+    .btn-pill{ background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16); color:#fff; padding:9px 16px; border-radius:999px; text-decoration:none; font-weight:700; font-size:13px; }
+    .btn-pill:hover{ background:rgba(255,255,255,.14); }
+
+    .layout{ display:flex; width:100%; position:relative; flex:1; }
+    .auth-bg{ position:fixed; inset:0; width:100%; height:100%; z-index:0; opacity:.55; pointer-events:none; }
+
+    .sidebar{ position:relative; z-index:1; width:230px; flex-shrink:0; padding:24px 16px; }
+    .menu-title{ font-weight:700; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#7D95AC; margin:0 0 14px 6px; }
+    .menu{ display:flex; flex-direction:column; gap:2px; }
+    .menu a{ display:block; padding:10px 12px; border-radius:10px; text-decoration:none; font-size:14px; font-weight:600; color:#B9CBDD; }
+    .menu a:hover{ background:rgba(255,255,255,.06); }
+    .menu a.active{ background:rgba(20,184,166,.18); color:var(--teal); }
+
+    .content{ position:relative; z-index:1; flex:1; width:100%; padding:40px 40px 60px; }
+    .footer{ position:relative; z-index:1; text-align:center; padding:20px; font-size:12px; color:#5C7896; }
+
+    /* Contenedor centrado */
     .pageWrap{
       width:100%;
       max-width: 920px;
       margin: 0 auto;
-      padding: 18px 18px 28px;
     }
 
     .hero{
       text-align:center;
       padding: 14px 10px;
       border-radius: 18px;
-      background: radial-gradient(900px 240px at 50% 0%, rgba(127,178,255,.22), rgba(255,255,255,0));
+      background: radial-gradient(900px 240px at 50% 0%, rgba(20,184,166,.16), rgba(255,255,255,0));
       margin-bottom: 14px;
     }
     .hero h1{
       margin: 2px 0 6px;
+      font-family:'Manrope';
       font-size: 34px;
       letter-spacing: .2px;
-      color:#0b2a4a;
+      font-weight: 900;
+      color:#fff;
     }
     .hero p{
       margin:0;
-      color: rgba(11,42,74,.75);
+      color: #9FB6CC;
       font-weight: 800;
     }
 
     .card{
       border-radius: 18px;
-      background:#fff;
-      border: 1px solid rgba(2,21,44,.10);
-      box-shadow: 0 18px 45px rgba(2,21,44,.08);
+      background:rgba(255,255,255,.07);
+      backdrop-filter:blur(14px);
+      -webkit-backdrop-filter:blur(14px);
+      border: 1px solid rgba(255,255,255,.12);
       padding: 18px;
     }
 
@@ -178,10 +219,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     .cardHead h3{
       margin:0 0 6px;
       font-size:18px;
-      color:#0b2a4a;
+      color:#fff;
       font-weight: 900;
     }
-    .muted{ margin:0; color:rgba(11,42,74,.65); font-weight:700; }
+    .muted{ margin:0; color:#9FB6CC; font-weight:700; }
 
     /* Form */
     .formGrid{
@@ -191,23 +232,30 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       margin-top: 14px;
     }
     .field{ display:flex; flex-direction:column; gap:8px; }
-    .field label{ font-weight:900; color:#0b2a4a; font-size:13px; }
+    .field label{ font-weight:900; color:#9FB6CC; font-size:13px; }
     .field input, .field select{
       height:42px;
       padding:0 12px;
       border-radius:14px;
-      border:1px solid rgba(2,21,44,.12);
+      border:1px solid rgba(255,255,255,.16);
       outline:none;
       font-weight:800;
-      background:#fff;
+      background:rgba(255,255,255,.06);
+      color:#fff;
     }
     .field input:focus, .field select:focus{
-      border-color:#7fb2ff;
-      box-shadow:0 0 0 3px rgba(127,178,255,.20);
+      border-color:var(--teal);
+      box-shadow:0 0 0 3px rgba(20,184,166,.20);
+    }
+    .field select option{ background:var(--navy-deep); color:#fff; }
+    .field input[readonly], .field select[disabled]{
+      background:rgba(255,255,255,.03) !important;
+      color:#9FB6CC !important;
+      cursor:not-allowed !important;
     }
     .spanAll{ grid-column: 1 / -1; }
 
-    /* Botones bonitos */
+    /* Botones */
     .btnx{
       display:inline-flex;
       align-items:center;
@@ -216,20 +264,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       padding: 0 14px;
       border-radius: 999px;
       font-weight: 900;
-      border: 1px solid rgba(2,21,44,.14);
-      background: #fff;
-      color:#0b2a4a;
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.08);
+      color:#fff;
       text-decoration:none;
       cursor:pointer;
-      transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+      transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, background .15s ease;
       user-select:none;
     }
-    .btnx:hover{ transform: translateY(-1px); box-shadow: 0 10px 20px rgba(2,21,44,.10); border-color: rgba(127,178,255,.55); }
+    .btnx:hover{ transform: translateY(-1px); background:rgba(255,255,255,.14); }
     .btnPrimary{
-      background: linear-gradient(180deg, #0f4f8a, #0b2a4a);
-      border-color: rgba(255,255,255,.18);
-      color:#fff;
+      background: var(--teal);
+      border-color: var(--teal);
+      color:#04211d;
     }
+    .btnPrimary:hover{ background: var(--teal-dark); }
     .btnGhost{
       background: transparent;
     }
@@ -241,13 +290,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       flex-wrap:wrap;
       margin-top: 16px;
       padding-top: 14px;
-      border-top: 1px dashed rgba(2,21,44,.12);
+      border-top: 1px dashed rgba(255,255,255,.14);
     }
 
     .err{
-      background:#ffecec;
-      border:1px solid #ffb6b6;
-      color:#a40000;
+      background:rgba(220,38,38,.14);
+      border:1px solid rgba(220,38,38,.35);
+      color:#f87171;
       border-radius:14px;
       padding:10px 12px;
       font-size:13px;
@@ -255,6 +304,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       font-weight: 800;
     }
 
+    @media(max-width:980px){
+      .layout{ flex-direction:column; }
+      .sidebar{ width:100%; }
+      .content{ padding:24px 18px 40px; }
+    }
     @media (max-width: 820px){
       .formGrid{ grid-template-columns:1fr; }
       .hero h1{ font-size: 28px; }
@@ -264,34 +318,38 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 <body>
 
-<!-- NAVBAR igual dashboard -->
-<div class="navbar">
-  <div class="inner">
-    <div class="brand">
-      <span class="dot"></span>
-      <strong>CEVIMEP</strong>
-    </div>
+<svg class="auth-bg" viewBox="0 0 1400 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="130" cy="80" r="240" fill="#0D3A5C" opacity=".5"/>
+    <circle cx="1280" cy="650" r="280" fill="#0F4A63" opacity=".45"/>
+    <g fill="none" stroke="#1D5C7A" stroke-width="1" opacity=".7">
+        <line x1="60" y1="60" x2="180" y2="130"/><line x1="180" y1="130" x2="140" y2="250"/>
+        <line x1="1220" y1="560" x2="1300" y2="620"/><line x1="1300" y1="620" x2="1250" y2="700"/>
+    </g>
+    <g fill="#14B8A6" opacity=".85">
+        <circle cx="60" cy="60" r="3"/><circle cx="180" cy="130" r="4"/><circle cx="140" cy="250" r="3"/>
+        <circle cx="1220" cy="560" r="3"/><circle cx="1300" cy="620" r="4"/><circle cx="1250" cy="700" r="3"/>
+    </g>
+</svg>
 
-    <div class="nav-right">
-      <a class="btn-pill" href="/logout.php">Salir</a>
-    </div>
+<header class="navbar">
+  <div class="inner">
+    <div class="brand"><span class="dot"></span><span>CEVIMEP</span></div>
+    <div class="nav-right"><a href="/logout.php" class="btn-pill">Salir</a></div>
   </div>
-</div>
+</header>
 
 <div class="layout">
 
-  <!-- SIDEBAR igual dashboard -->
   <aside class="sidebar">
-    <h3 class="menu-title">Menú</h3>
-
+    <div class="menu-title">Menú</div>
     <nav class="menu">
-      <a href="/private/dashboard.php"><span class="ico">🏠</span> Panel</a>
-      <a href="/private/patients/index.php"><span class="ico">👤</span> Pacientes</a>
-      <a href="/private/citas/index.php"><span class="ico">📅</span> Citas</a>
-      <a href="/private/facturacion/index.php"><span class="ico">🧾</span> Facturación</a>
-      <a href="/private/caja/index.php"><span class="ico">💳</span> Caja</a>
-      <a class="active" href="/private/inventario/index.php"><span class="ico">📦</span> Inventario</a>
-      <a href="/private/estadisticas/index.php"><span class="ico">📊</span> Estadísticas</a>
+      <a href="/private/dashboard.php">🏠 Panel</a>
+      <a href="/private/patients/index.php">👤 Pacientes</a>
+      <a href="#" onclick="return false;" style="opacity:.5;cursor:not-allowed;">📅 Citas (Próximamente)</a>
+      <a href="/private/facturacion/index.php">🧾 Facturación</a>
+      <a href="/private/caja/index.php">💳 Caja</a>
+      <a class="active" href="/private/inventario/index.php">📦 Inventario</a>
+      <a href="/private/estadistica/index.php">📊 Estadísticas</a>
     </nav>
   </aside>
 
@@ -321,12 +379,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             <div class="field spanAll">
               <label>Nombre</label>
-              <input value="<?= h($item["name"] ?? "") ?>" readonly style="background:#f5f5f5; cursor:not-allowed;">
+              <input value="<?= h($item["name"] ?? "") ?>" readonly>
             </div>
 
             <div class="field">
               <label>Categoría</label>
-              <select disabled style="background:#f5f5f5; cursor:not-allowed;">
+              <select disabled>
                 <option value="0">— Sin categoría —</option>
                 <?php foreach ($categories as $c): ?>
                   <option value="<?= (int)$c["id"] ?>" <?= ((int)($item["category_id"] ?? 0) === (int)$c["id"]) ? "selected" : "" ?>>
@@ -338,7 +396,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             <div class="field">
               <label>Min Stock</label>
-              <input type="number" value="3" readonly style="background:#f5f5f5; cursor:not-allowed;">
+              <input type="number" value="3" readonly>
             </div>
 
             <div class="field">
@@ -348,7 +406,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 step="0.01"
                 value="<?= h($item["sale_price"] ?? 0) ?>"
                 readonly
-                style="background:#f5f5f5; cursor:not-allowed;"
               >
             </div>
 
@@ -383,11 +440,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   </main>
 </div>
 
-<div class="footer">
-  <div class="inner">
-    © <?= $year ?> CEVIMEP. Todos los derechos reservados.
-  </div>
-</div>
+<footer class="footer">© <?= $year ?> CEVIMEP — Todos los derechos reservados.</footer>
 
 
 <script>

@@ -373,14 +373,146 @@ $printData = $_SESSION["entrada_last_print"] ?? null;
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Entrada | CEVIMEP</title>
-  <link rel="stylesheet" href="/assets/css/styles.css?v=60">
-  <link rel="stylesheet" href="/assets/css/inventario.css?v=60">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <style>
-    /* Acuse NO visible en pantalla */
+    :root{
+        --navy-deep:#071B32;
+        --teal:#14B8A6;
+        --teal-dark:#0D9488;
+    }
+    *{ box-sizing:border-box; }
+    body{
+        margin:0;
+        font-family:'Inter',sans-serif;
+        background:var(--navy-deep);
+        color:#fff;
+        min-height:100vh;
+        display:flex;
+        flex-direction:column;
+    }
+    .navbar{ background:rgba(255,255,255,.04); border-bottom:1px solid rgba(255,255,255,.08); }
+    .navbar .inner{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; padding:16px 28px; }
+    .navbar .brand{ grid-column:2; justify-self:center; }
+    .navbar .nav-right{ grid-column:3; justify-self:end; }
+    .brand{ display:flex; align-items:center; gap:10px; font-family:'Manrope'; font-weight:800; font-size:15px; letter-spacing:.04em; }
+    .brand .dot{ width:9px;height:9px;border-radius:50%;background:var(--teal); box-shadow:0 0 0 4px rgba(20,184,166,.18); }
+    .btn-pill{ background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16); color:#fff; padding:9px 16px; border-radius:999px; text-decoration:none; font-weight:700; font-size:13px; }
+    .btn-pill:hover{ background:rgba(255,255,255,.14); }
+
+    .layout{ display:flex; width:100%; position:relative; flex:1; }
+    .auth-bg{ position:fixed; inset:0; width:100%; height:100%; z-index:0; opacity:.55; pointer-events:none; }
+
+    .sidebar{ position:relative; z-index:1; width:230px; flex-shrink:0; padding:24px 16px; }
+    .menu-title{ font-weight:700; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#7D95AC; margin:0 0 14px 6px; }
+    .menu{ display:flex; flex-direction:column; gap:2px; }
+    .menu a{ display:block; padding:10px 12px; border-radius:10px; text-decoration:none; font-size:14px; font-weight:600; color:#B9CBDD; }
+    .menu a:hover{ background:rgba(255,255,255,.06); }
+    .menu a.active{ background:rgba(20,184,166,.18); color:var(--teal); }
+
+    .content{ position:relative; z-index:1; flex:1; width:100%; padding:26px 22px 60px; overflow:auto; }
+    .footer{ position:relative; z-index:1; text-align:center; padding:20px; font-size:12px; color:#5C7896; }
+
+    .inv-wrap{ max-width: 1120px; margin: 0 auto; width:100%; }
+
+    .inv-head{ text-align:center; margin-bottom:14px; }
+    .inv-head h1{ margin:0; font-family:'Manrope'; font-size:40px; font-weight:900; letter-spacing:.3px; }
+    .inv-head .sub{ margin-top:6px; font-weight:800; color:#9FB6CC; }
+    .inv-head .branch{ margin-top:4px; font-weight:900; color:var(--teal); }
+
+    .inv-card{
+      background:rgba(255,255,255,.07);
+      backdrop-filter:blur(14px);
+      -webkit-backdrop-filter:blur(14px);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:18px;
+      padding:16px;
+      margin-top:14px;
+    }
+
+    .section-head{ display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+    .section-head h3{ margin:0; font-size:18px; font-weight:900; color:#fff; }
+    .muted{ margin:6px 0 0; color:#9FB6CC; font-weight:800; font-size:13px; }
+
+    .table-wrap{ overflow:auto; border-radius:14px; border:1px solid rgba(255,255,255,.1); }
+    table{ width:100%; border-collapse:collapse; background:transparent; }
+    thead th{ background:rgba(20,184,166,.12); color:var(--teal); padding:12px; font-size:13px; font-weight:950; }
+    tbody td{ padding:12px; border-top:1px solid rgba(255,255,255,.08); font-weight:800; font-size:13px; color:#E7EEF6; }
+    tbody tr:hover{ background:rgba(20,184,166,.06); }
+
+    /* Inputs / labels */
+    label{ display:block; font-size:13px; font-weight:900; margin-bottom:6px; color:#9FB6CC; }
+    select, input{
+      width:100%;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.16);
+      outline:none;
+      font-weight:800;
+      background:rgba(255,255,255,.06);
+      color:#fff;
+    }
+    select option{ background:var(--navy-deep); color:#fff; }
+    select:focus, input:focus{
+      border-color:var(--teal);
+      box-shadow:0 0 0 3px rgba(20,184,166,.18);
+    }
+    input[readonly]{ background:rgba(255,255,255,.03); color:#9FB6CC; }
+    input::placeholder{ color:#7D95AC; }
+
+    /* Botones */
+    .btn-action{
+      display:inline-flex; align-items:center; justify-content:center; gap:8px;
+      padding:11px 16px; border-radius:999px; font-weight:900;
+      border:1px solid rgba(20,184,166,.55);
+      background:rgba(20,184,166,.18);
+      color:#fff;
+      cursor:pointer;
+      transition: transform .12s ease, filter .12s ease, box-shadow .12s ease, background .15s ease;
+      user-select:none; white-space:nowrap;
+    }
+    .btn-action:hover{ transform:translateY(-1px); box-shadow:0 10px 18px rgba(20,184,166,.22); background:rgba(20,184,166,.28); }
+    .btn-action:active{ transform:translateY(0) scale(.99); }
+    .btn-action[disabled]{ opacity:.55; cursor:not-allowed; transform:none; box-shadow:none; }
+    .btn-primary{ background:var(--teal); border-color:var(--teal); color:#04211d; }
+    .btn-primary:hover{ background:var(--teal-dark); }
+    .btn-ghost{ border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.06); }
+    .btn-ghost:hover{ background:rgba(255,255,255,.12); }
+
+    .hint-small{ font-size:12px; color:#9FB6CC; margin-top:6px; }
+
+    /* Entrada: card de formulario */
+    .entry-card-title{ font-size:18px; font-weight:900; margin-bottom:2px; color:#fff; }
+    .entry-card-sub{ color:#9FB6CC; font-size:13px; margin-bottom:14px; }
+
+    .entry-grid{
+      display:grid;
+      grid-template-columns: 1.2fr 1.2fr;
+      gap:14px 18px;
+      align-items:end;
+    }
+    .entry-grid .full{ grid-column:1 / -1; }
+
+    .row-3{
+      display:grid;
+      grid-template-columns: 260px 1fr 180px 160px;
+      gap:12px;
+      align-items:end;
+    }
+    .entry-actions{ display:flex; justify-content:flex-end; }
+    .save-row{ display:flex; justify-content:flex-end; margin-top:12px; }
+
+    /* Historial colapsable */
+    .hist-body{ display:none; }
+    .hist-body.show{ display:block; }
+
+    /* Acuse NO visible en pantalla (ticket de impresión, se mantiene blanco/negro) */
     .acuse-hidden { display:none; }
 
-    .receipt { padding:18px 24px; font-family:Arial, Helvetica, sans-serif; color:#111; }
+    .receipt { padding:18px 24px; font-family:Arial, Helvetica, sans-serif; color:#111; background:#fff; }
     .receipt .logo { text-align:center; margin-top:8px; }
     .receipt .logo img { width:160px; height:auto; display:inline-block; }
     .receipt .title { text-align:center; margin:10px 0 14px; font-weight:800; font-size:18px; }
@@ -388,17 +520,31 @@ $printData = $_SESSION["entrada_last_print"] ?? null;
     .receipt .meta .col { flex:1; }
     .receipt .meta .row { margin:3px 0; }
     .receipt table { width:100%; border-collapse:collapse; font-size:12px; margin-top:10px; }
-    .receipt th, .receipt td { border:1px solid #cfcfcf; padding:6px 8px; text-align:left; }
+    .receipt th, .receipt td { border:1px solid #cfcfcf; padding:6px 8px; text-align:left; color:#111; }
     .receipt th { font-weight:800; background:#f3f3f3; text-align:center; }
     .receipt td:last-child, .receipt th:last-child { text-align:center; width:90px; }
-    .receipt .footer { text-align:center; margin-top:18px; font-size:11px; color:#333; }
+    .receipt .footer-note { text-align:center; margin-top:18px; font-size:11px; color:#333; }
 
     @media print {
+      *{ -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; }
       .navbar, .sidebar, .footer, .inv-head, .inv-card { display:none !important; }
       .acuse-hidden { display:block !important; }
       body, html { background:#fff !important; }
       .layout { display:block !important; }
-      .content.inv-root { padding:0 !important; margin:0 !important; }
+      .content { padding:0 !important; margin:0 !important; overflow:visible !important; }
+    }
+
+    @media(max-width:1100px){
+      .row-3{ grid-template-columns: 1fr 1fr; }
+    }
+    @media(max-width:980px){
+      .layout{ flex-direction:column; }
+      .sidebar{ width:100%; }
+      .content{ padding:20px 14px 40px; }
+      .inv-head h1{ font-size:clamp(28px,6vw,40px); }
+      .entry-grid{ grid-template-columns:1fr; }
+      .row-3{ grid-template-columns:1fr; }
+      .btn-action{ width:100%; }
     }
   </style>
 </head>
@@ -437,9 +583,9 @@ $printData = $_SESSION["entrada_last_print"] ?? null;
       </div>
 
       <?php if (!empty($errors)): ?>
-        <div class="inv-card" style="border:1px solid rgba(255,0,0,.15); background: rgba(255,0,0,.04);">
-          <strong style="color:#7a1010;">Revisa:</strong>
-          <ul style="margin:8px 0 0 18px;">
+        <div class="inv-card" style="border:1px solid rgba(220,38,38,.35); background: rgba(220,38,38,.10);">
+          <strong style="color:#f87171;">Revisa:</strong>
+          <ul style="margin:8px 0 0 18px; color:#f2b8b8;">
             <?php foreach($errors as $e): ?><li><?= h($e) ?></li><?php endforeach; ?>
           </ul>
         </div>
@@ -470,7 +616,7 @@ $printData = $_SESSION["entrada_last_print"] ?? null;
                 <?php endforeach; ?>
               </tbody>
             </table>
-            <div class="footer">© <?= (int)date("Y") ?> CEVIMEP. Todos los derechos reservados.</div>
+            <div class="footer-note">© <?= (int)date("Y") ?> CEVIMEP. Todos los derechos reservados.</div>
           </div>
         </div>
       <?php endif; ?>
@@ -597,7 +743,7 @@ $printData = $_SESSION["entrada_last_print"] ?? null;
           </form>
 
           <!-- ✅ Texto como pediste -->
-          <button id="btnSave" class="btn-action" type="submit" form="saveForm">Guardar e Imprimir</button>
+          <button id="btnSave" class="btn-action btn-primary" type="submit" form="saveForm">Guardar e Imprimir</button>
         </div>
       </div>
 
