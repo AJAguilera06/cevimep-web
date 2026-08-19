@@ -302,14 +302,59 @@ try {
     }
     @media print{
       @page{margin:9mm;}
-      body{background:#fff!important;color:#000!important;}
-      .navbar,.sidebar,.footer,.actions,.filter{display:none!important;}
+      *{ -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; }
+      body{background:#fff!important;color:#111!important;}
+      .navbar,.sidebar,.footer,.actions,.filter,.auth-bg{display:none!important;}
       .layout{display:block!important;height:auto!important;}
       .content{padding:0!important;overflow:visible!important;}
-      .report-card{box-shadow:none!important;border-radius:0!important;padding:0!important;}
+      .report-card{
+        background:#fff!important;
+        backdrop-filter:none!important;
+        -webkit-backdrop-filter:none!important;
+        border:none!important;
+        box-shadow:none!important;
+        border-radius:0!important;
+        padding:0!important;
+      }
+      .title{color:#0B1F33!important;}
+      .sub{color:#333!important;}
+
+      .table-wrap{border:1px solid #ccc!important;}
       table{min-width:0!important;font-size:10px;}
-      th,td{font-size:10px;padding:6px 5px;}
+      th,td{
+        font-size:10px;
+        padding:6px 5px;
+        color:#111!important;
+        border-bottom:1px solid #ddd!important;
+      }
+      th{
+        background:#E6F7F5!important;
+        color:#0D9488!important;
+      }
+      td.money,th.money{color:#111!important;}
+
+      .badge{
+        background:#E6F7F5!important;
+        border:1px solid #0D9488!important;
+        color:#0D9488!important;
+      }
+      .badge.des{
+        background:#FEF6E0!important;
+        border:1px solid #CA8A04!important;
+        color:#92650A!important;
+      }
+      .des-row td{background:#FFFBEA!important;}
+
+      tfoot td{background:#F1F5F9!important;color:#111!important;}
+      .empty{color:#555!important;}
+
       .summary{grid-template-columns:repeat(4,1fr);}
+      .sum-card{
+        background:#F8FAFC!important;
+        border:1px solid #ddd!important;
+        color:#111!important;
+      }
+      .sum-card small{color:#555!important;}
     }
   </style>
 </head>
