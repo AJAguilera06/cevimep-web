@@ -457,13 +457,15 @@ $tTotal = [
     select option{ background:var(--navy-deep); color:#fff; }
 
     @media print {
+      *{ -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; }
+
       @page {
         margin: 10mm;
       }
 
       body {
         background: #fff !important;
-        color:#000 !important;
+        color:#111 !important;
       }
 
       body * {
@@ -481,11 +483,14 @@ $tTotal = [
         top: 0 !important;
         width: 100% !important;
         margin: 0 !important;
+        background:#fff !important;
       }
 
       #printArea.card {
         box-shadow: none !important;
         border: none !important;
+        backdrop-filter:none !important;
+        -webkit-backdrop-filter:none !important;
       }
 
       .sidebar,
@@ -505,6 +510,22 @@ $tTotal = [
       .pill {
         display: none !important;
       }
+
+      /* Contraste correcto sobre fondo blanco */
+      .reportTitle{ color:#0B1F33 !important; }
+      .branchTag{ color:#0D9488 !important; }
+      .muted{ color:#444 !important; }
+      .danger{ background:#FDECEC !important; border:1px solid #E5A6A6 !important; color:#9B1C1C !important; }
+
+      .reportFrame{ background:#fff !important; border:1px solid #ddd !important; }
+
+      .cajaCard{ background:#fff !important; border:1px solid #ddd !important; }
+      .cajaHead{ color:#0D9488 !important; }
+      .cajaSub{ color:#555 !important; }
+
+      table{ border:1px solid #ccc !important; }
+      th, td{ color:#111 !important; border-bottom:1px solid #ddd !important; }
+      thead th{ background:#E6F7F5 !important; color:#0D9488 !important; }
     }
 
     @media (max-width: 980px){
