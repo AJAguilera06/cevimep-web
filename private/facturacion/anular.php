@@ -245,15 +245,17 @@ try {
        revierte cada uno con type='anulacion' (NO 'desembolso'), para
        que reste del método de pago correcto y no infle la columna
        de Desembolsos en la pantalla de Caja.
+
+       ✅ CORRECCIÓN: se busca también el caja_sesion_id EXACTO donde
+       se registró cada cobro original, y la reversa se aplica ahí
+       mismo — sin importar si esa caja (1 o 2) ya está cerrada. Antes
+       se pedía/creaba una sesión "actual" para reversar, lo que
+       obligaba a abrir la otra caja del turno y descontaba el dinero
+       de la caja equivocada.
        =============================== */
     $montoReversar = $hasSubtotal && (float)($invoice["subtotal"] ?? 0) > 0
         ? (float)$invoice["subtotal"]
         : (float)($invoice["total"] ?? 0);
-
-    $cajaSesionId = (int)caja_get_or_create_session_id($conn, $branchId);
-    if ($cajaSesionId <= 0) {
-        throw new RuntimeException("Debes abrir una caja en esta sucursal antes de anular esta factura.");
-    }
 
     $motivoCaja = "Anulación factura " . ($invoice["invoice_code"] ?? ("#" . $invoiceId)) . " | " . $reason;
 
@@ -261,7 +263,7 @@ try {
     if (!empty($invoice["invoice_code"])) {
         try {
             $stOrig = $conn->prepare("
-                SELECT metodo_pago, amount
+                SELECT metodo_pago, amount, caja_sesion_id
                 FROM cash_movements
                 WHERE branch_id = ?
                   AND type = 'ingreso'
@@ -274,6 +276,18 @@ try {
         }
     }
 
+    // Solo se exige abrir/crear una sesión "actual" si NO encontramos
+    // los cobros originales (facturas viejas sin match), porque ahí sí
+    // no hay forma de saber en qué caja se cobró.
+    $cajaSesionId = 0;
+    if (empty($origPayments)) {
+        $cajaSesionId = (int)caja_get_or_create_session_id($conn, $branchId);
+        if ($cajaSesionId <= 0) {
+            throw new RuntimeException("Debes abrir una caja en esta sucursal antes de anular esta factura.");
+        }
+    }
+
+
     $stCaja = $conn->prepare("
         INSERT INTO cash_movements
             (branch_id, caja_sesion_id, type, motivo, metodo_pago, amount, created_by)
@@ -283,14 +297,24 @@ try {
 
     if (!empty($origPayments)) {
         // Reversa exacta por cada método de pago que se usó al facturar (soporta MIXTO).
+        // Se usa la MISMA caja_sesion_id del cobro original (abierta o cerrada).
         foreach ($origPayments as $op) {
             $amt = (float)($op["amount"] ?? 0);
             if ($amt <= 0) continue;
             $metodo = (string)($op["metodo_pago"] ?? "efectivo");
-            $stCaja->execute([$branchId, $cajaSesionId, $motivoCaja, $metodo, -abs($amt), $userId > 0 ? $userId : null]);
+            $origSessionId = (int)($op["caja_sesion_id"] ?? 0);
+            $targetSessionId = $origSessionId > 0 ? $origSessionId : $cajaSesionId;
+            $stCaja->execute([$branchId, $targetSessionId, $motivoCaja, $metodo, -abs($amt), $userId > 0 ? $userId : null]);
         }
     } elseif ($montoReversar > 0) {
         // Fallback: facturas antiguas sin invoice_code o sin match en cash_movements.
+        // Aquí sí usamos/creamos la sesión actual porque no hay forma de saber la original.
+        if ($cajaSesionId <= 0) {
+            $cajaSesionId = (int)caja_get_or_create_session_id($conn, $branchId);
+        }
+        if ($cajaSesionId <= 0) {
+            throw new RuntimeException("Debes abrir una caja en esta sucursal antes de anular esta factura.");
+        }
         $stCaja->execute([$branchId, $cajaSesionId, $motivoCaja, "efectivo", -abs($montoReversar), $userId > 0 ? $userId : null]);
     }
 
