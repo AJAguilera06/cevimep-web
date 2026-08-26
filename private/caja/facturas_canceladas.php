@@ -93,6 +93,9 @@ try {
 
 /* Detectar columnas de nombre en patients y users (esquema flexible) */
 $patientNameCol = pickNameCol($conn, "patients", ["full_name", "name", "nombre", "nombre_completo"]);
+$patientHasFirstLast = !$patientNameCol
+  && colExists($conn, "patients", "first_name")
+  && colExists($conn, "patients", "last_name");
 $userNameCol = pickNameCol($conn, "users", ["full_name", "name", "nombre", "username"]);
 
 $hasSubtotal = colExists($conn, "invoices", "subtotal");
@@ -103,7 +106,11 @@ $totalAnulado = 0.0;
 $totalCount = 0;
 
 try {
-  $selPatient = $patientNameCol ? "p.`$patientNameCol` AS patient_name" : "NULL AS patient_name";
+  $selPatient = $patientNameCol
+    ? "p.`$patientNameCol` AS patient_name"
+    : ($patientHasFirstLast
+        ? "TRIM(CONCAT(COALESCE(p.first_name,''),' ',COALESCE(p.last_name,''))) AS patient_name"
+        : "NULL AS patient_name");
   $selUser    = $userNameCol ? "u.`$userNameCol` AS cancelled_by_name" : "NULL AS cancelled_by_name";
 
   $joinPatient = tableExists($conn, "patients")
