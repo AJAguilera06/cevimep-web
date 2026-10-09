@@ -13,6 +13,9 @@ $branch_id = (int)($user["branch_id"] ?? 0);
 $id  = (int)($_GET["id"] ?? 0);
 $rep = trim((string)($_GET["rep"] ?? ""));
 
+// Mostrar precio por línea solo si se pide explícitamente: print.php?id=X&precios=1
+$showPrices = ((string)($_GET["precios"] ?? "") === "1");
+
 if ($branch_id <= 0) { die("Sucursal inválida."); }
 if ($id <= 0) { die("Factura inválida."); }
 
@@ -251,7 +254,9 @@ foreach ($logoCandidates as $path) {
   .subtitle{ font-size:10px; margin:.5mm 0 0 0; }
   .branch{ font-size:12px; font-weight:900; margin-top:2mm; }
   .item{ margin:1.2mm 0; }
+  .item-row{ display:flex; justify-content:space-between; align-items:baseline; gap:2mm; }
   .item-name{ font-weight:900; text-transform:uppercase; }
+  .item-price{ font-weight:900; white-space:nowrap; }
   .item-meta{ margin-top:.4mm; }
   .total{ font-size:14px; font-weight:900; display:flex; justify-content:space-between; margin-top:1mm; }
   .footer{ font-size:10px; text-align:center; margin-top:2mm; opacity:.85; }
@@ -296,9 +301,26 @@ foreach ($logoCandidates as $path) {
     <div class="divider"></div>
   <?php else: ?>
     <?php foreach ($items as $it): ?>
+      <?php
+        $qty       = (int)($it["qty"] ?? 0);
+        $unitPrice = (float)($it["unit_price"] ?? 0);
+        $lineTotal = (float)($it["line_total"] ?? 0);
+        if ($lineTotal <= 0 && $unitPrice > 0) $lineTotal = $unitPrice * $qty;
+        if ($unitPrice <= 0 && $lineTotal > 0 && $qty > 0) $unitPrice = $lineTotal / $qty;
+      ?>
       <div class="item">
-        <div class="item-name"><?= h($it["item_name"] ?? "") ?></div>
-        <div class="item-meta"><span class="bold">Cantidad:</span> <?= (int)($it["qty"] ?? 0) ?></div>
+        <div class="item-row">
+          <span class="item-name"><?= h($it["item_name"] ?? "") ?></span>
+          <?php if ($showPrices): ?>
+            <span class="item-price"><?= money($lineTotal) ?></span>
+          <?php endif; ?>
+        </div>
+        <div class="item-meta">
+          <span class="bold">Cantidad:</span> <?= $qty ?>
+          <?php if ($showPrices && $qty > 1): ?>
+            x <?= money($unitPrice) ?>
+          <?php endif; ?>
+        </div>
       </div>
       <div class="divider"></div>
     <?php endforeach; ?>
